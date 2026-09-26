@@ -1,193 +1,270 @@
-import type { Decor, DecorKind, EnemyKind, EnemySeed, LevelId, Obstacle, ObstacleKind, Point, Pond, WorldDefinition, WorldObject } from './types';
+import { buildWorld, type ChapterSpec } from './worldgen';
+import type { LevelId, NpcLook, QuestDef, WorldDefinition } from './types';
 
 export const LEVEL_ORDER: LevelId[] = ['meadow', 'woods', 'summit'];
-const W = 3000, H = 2100;
 
-const rng = (seed: number) => { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; };
-const obj = (id: string, kind: WorldObject['kind'], x: number, y: number, name: string, extra: Partial<WorldObject> = {}): WorldObject => ({ id, kind, x, y, name, ...extra });
+const look = (robe: string, hat: NpcLook['hat'], extra: Partial<NpcLook> = {}): Partial<NpcLook> => ({ robe, hat, hatColor: extra.hatColor || '#4a5b3e', skin: '#f0c8a2', hair: '#6b3f2a', ...extra });
+const q = (def: QuestDef) => def;
 
-// Shared story layout: every chapter follows the same readable arc from the camp (top-left) to the finale (bottom-right).
-const L = {
-  guide: { x: 470, y: 300 }, helper: { x: 500, y: 640 }, courier: { x: 330, y: 1510 },
-  keys: [{ x: 730, y: 360 }, { x: 1410, y: 590 }, { x: 2400, y: 850 }],
-  collect: [{ x: 790, y: 1160 }, { x: 1570, y: 1320 }, { x: 2380, y: 1510 }],
-  item: { x: 980, y: 1660 }, shrine: { x: 760, y: 930 }, finale: { x: 2690, y: 1740 }, boss: { x: 2540, y: 1640 },
+// ═════════════════════════════ Chapter I · Sunpetal Meadow
+const meadow: ChapterSpec = {
+  id: 'meadow', chapter: 1, title: 'Sunpetal Meadow', subtitle: 'The Broken Beacon', region: 'Sunpetal Valley', seed: 17,
+  palette: { ground: '#7fa05a', alternate: '#8fb065', path: '#d8c48e', pathEdge: '#a8915f', accent: '#f5cd5c', water: '#58a7b4', waterDeep: '#3d7f8f', foliage: ['#35593f', '#5d8a4c', '#a3c46a'], trunk: '#6f5337', rock: '#8c8f80', pod: '#f2b84b', roof: ['#b85a44', '#c9803d', '#8a5a44', '#a8644e'], wall: '#efe0bf' },
+  darkness: 0, ambient: 'petals', ground: 'grass', levelHint: 4, enemyScale: 1, xpScale: 1,
+  pois: [
+    { id: 'rest', name: 'Bridgekeeper’s Rest', kind: 'start', x: 1000, y: 1000, r: 380 },
+    { id: 'sunpetal', name: 'Sunpetal Village', kind: 'village', x: 2500, y: 2050, r: 480 },
+    { id: 'millbrook', name: 'Millbrook Farm', kind: 'farm', x: 1250, y: 3350, r: 440 },
+    { id: 'mirror', name: 'Mirror Lake', kind: 'lake', x: 3600, y: 3900, r: 560 },
+    { id: 'stones', name: 'Old Stone Garden', kind: 'ruins', x: 4300, y: 1250, r: 380 },
+    { id: 'hollow', name: 'Gloom Hollow', kind: 'lair', x: 1900, y: 5550, r: 430 },
+    { id: 'willow', name: 'Willowmere', kind: 'village', x: 5700, y: 2650, r: 480 },
+    { id: 'shepherd', name: 'Shepherd’s Hill', kind: 'lookout', x: 7300, y: 1050, r: 360 },
+    { id: 'camp', name: 'Hunter’s Camp', kind: 'camp', x: 6300, y: 4700, r: 340 },
+    { id: 'faerie', name: 'Faerie Ring', kind: 'grove', x: 4300, y: 5850, r: 380 },
+    { id: 'shrine', name: 'Sun Shrine', kind: 'shrine', x: 8400, y: 3000, r: 280 },
+    { id: 'rot', name: 'Rotwood Den', kind: 'lair', x: 7300, y: 3500, r: 400 },
+    { id: 'rise', name: 'The Beacon Rise', kind: 'finale', x: 8500, y: 5850, r: 440 },
+  ],
+  lakeSize: { mirror: 380 },
+  links: [['sunpetal', 'willow'], ['mirror', 'faerie'], ['camp', 'rise'], ['willow', 'shrine'], ['millbrook', 'hollow']],
+  keyAt: ['stones', 'hollow', 'shepherd'], keyName: 'Sun-crystal', shrineName: 'Sun Shrine', finaleName: 'Meadow Beacon',
+  trees: [['tree', 7], ['bush', 3], ['rock', 2]], decorKinds: [['grass', 10], ['flower', 4], ['pebble', 1], ['clover', 2]], decorColors: ['#f7d774', '#f2a1b8', '#ffffff', '#c7a6f2', '#ff9b73'],
+  enemyKinds: [['gloomling', 6], ['thornling', 3]], boss: 'mossback', critters: [['rabbit', 5], ['bird', 6], ['deer', 2], ['duck', 3], ['frog', 2], ['squirrel', 2]],
+  villagerNames: ['Hollis', 'Marigold', 'Fen', 'Bertie', 'Clover', 'Aldo', 'Posy', 'Jem', 'Rook', 'Nell', 'Tobin', 'Wynn', 'Ada', 'Cress', 'Bramwell', 'Lark'],
+  chatter: ['Ever since the star fell, the nights feel colder.', 'The bakery in Willowmere makes the best honey buns.', 'Watch the tall grass — gloomlings love to hide there.', 'My grandmother says the Beacon was lit by a fox and a girl, long ago.', 'The roads all meet at the villages. Follow them and you won’t get lost.', 'I found a chest in the woods once. Empty. Still proud of it.', 'If you see a stone with glowing runes, read it! They remember old stories.', 'A well’s cool water fixes most troubles.'],
+  barks: ['Lovely day!', 'Mind the gloomlings.', 'Hello, traveller!', 'Busy, busy…', 'Have you tried the honey buns?', 'The Beacon is dark…', 'Good winds today.'],
+  npcs: [
+    { id: 'guide', name: 'Bridgekeeper Tamsin', portrait: '🧑‍🌾', at: 'rest', dx: -40, dy: -60, activity: 'idle', role: 'guide', look: look('#d99857', 'straw', { hatColor: '#d9b45a' }), lines: [], barks: ['Over here, Mira!', 'The Beacon needs you.'] },
+    { id: 'pip', name: 'Pip the Courier', portrait: '🐿️', at: 'rest', dx: 170, dy: 40, activity: 'wander', look: look('#c16d59', 'ears', { hatColor: '#a0522d', small: true }), lines: ['Letters, parcels, gossip — Pip delivers!'], barks: ['Where did I put it…', 'Busy courier coming through!'] },
+    { id: 'rowan', name: 'Elder Rowan', portrait: '🧙🏼', at: 'sunpetal', dx: -60, dy: 90, activity: 'idle', look: look('#818ca8', 'wizard', { hatColor: '#5b5480', beard: true, hair: '#e8e2d0' }), lines: ['The valley has seen darker days. Not many.'], barks: ['Hmm, the stars are restless.'] },
+    { id: 'maren', name: 'Healer Maren', portrait: '👩‍⚕️', at: 'sunpetal', dx: 150, dy: -40, activity: 'sweep', look: look('#7a9a5a', 'bonnet', { hatColor: '#e8e2d0' }), lines: ['Herbs, bandages, kind words. That’s the whole trade.'], barks: ['Stay healthy, dear!'] },
+    { id: 'wren', name: 'Postmistress Wren', portrait: '📮', at: 'sunpetal', dx: 60, dy: 190, activity: 'idle', look: look('#6f8fb8', 'cap', { hatColor: '#3f5a8a' }), lines: ['Mail goes out at dawn. Well — it used to.'], barks: ['Letters for everyone!'] },
+    { id: 'bram', name: 'Farmer Bram', portrait: '👨‍🌾', at: 'millbrook', dx: 60, dy: 60, activity: 'farm', look: look('#a0785a', 'straw', { hatColor: '#d9b45a', beard: true }), lines: ['Turnips don’t grow themselves. Well, mine don’t.'], barks: ['Good soil this year.', 'Shoo, gloomlings!'] },
+    { id: 'lou', name: 'Fisher Lou', portrait: '🎣', at: 'mirror', dx: -60, activity: 'fish', look: look('#5a8a8a', 'cap', { hatColor: '#3a5a5a', beard: true }), lines: ['Shh. The big one is listening.'], barks: ['Nibble…', 'Quiet, please!'] },
+    { id: 'ottilie', name: 'Mayor Ottilie', portrait: '👵', at: 'willow', dx: -90, dy: -30, activity: 'idle', look: look('#b07a9a', 'bonnet', { hatColor: '#8a4f6a', hair: '#e8e2d0' }), lines: ['Welcome to Willowmere. Please wipe your boots.'], barks: ['Order, order!'] },
+    { id: 'tilly', name: 'Little Tilly', portrait: '👧', at: 'willow', dx: 120, dy: 120, activity: 'play', look: look('#f2a1b8', 'none', { small: true, hair: '#b8743c' }), lines: ['Wanna play tag? You’re it!'], barks: ['Tag!', 'Hee hee!'] },
+    { id: 'garrick', name: 'Hunter Garrick', portrait: '🏹', at: 'camp', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a', beard: true }), lines: ['Tracks everywhere. The creatures are bold this season.'], barks: ['Keep your eyes open.'] },
+    { id: 'odo', name: 'Old Shepherd Odo', portrait: '🧓', at: 'shepherd', dx: -60, dy: 60, activity: 'wander', look: look('#c9a24c', 'straw', { hatColor: '#a8844a', beard: true, hair: '#e8e2d0' }), lines: ['From this hill you can see the whole valley. Mostly clouds today.'], barks: ['Baa… I mean, hello.'] },
+    { id: 'hale', name: 'Woodcutter Hale', portrait: '🪓', at: 'sunpetal', dx: -330, dy: -260, activity: 'chop', look: look('#8a5a3a', 'cap', { hatColor: '#6b3f2a', beard: true }), lines: ['Only fallen and old trees. The forest gives, I take a little.'], barks: ['Timber!', 'One more log…'] },
+    { id: 'cart', name: 'Trader Bex', portrait: '🧳', at: 'sunpetal', to: 'willow', activity: 'travel', look: look('#c07850', 'scarf', { hatColor: '#8a3b2f' }), lines: ['Sunpetal to Willowmere and back, every day. Good for the legs.'], barks: ['On the road again!', 'Fine wares, fine prices!'] },
+  ],
+  quests: [
+    q({ id: 'glowbugs', title: 'Lanterns for the Night', giver: 'rowan', kind: 'collect', count: 5, near: 'mirror', item: 'Glowbug', icon: 'bug', summary: 'Catch glowbugs around Mirror Lake.', reward: { xp: 110, hearts: 1 },
+      text: { offer: ['The night paths are hard to see since the star fell.', 'Could you catch five glowbugs by Mirror Lake? They’ll light our lanterns.'], progress: ['The glowbugs gather by Mirror Lake, south of here.'], complete: ['Five little lights! The lanterns will glow again.', 'Take this heartwood charm. You feel sturdier already.'], after: ['The lanterns hum with glowbugs. Thank you, Mira.'] } }),
+    q({ id: 'bell', title: 'Pip’s Silver Bell', giver: 'pip', kind: 'collect', count: 1, near: 'faerie', item: 'Silver bell', icon: 'toy', summary: 'Find Pip’s bell near the Faerie Ring.', reward: { xp: 90, regen: .8 },
+      text: { offer: ['I dropped my silver bell while running from a gloomling!', 'Somewhere near the Faerie Ring, down south. Please?'], progress: ['The Faerie Ring is far to the south. The bell has a star scratched on it.'], complete: ['My bell! Ding-ding!', 'Have a star biscuit. Your magic will flow faster.'], after: ['Ding! Everyone knows Pip is coming now.'] } }),
+    q({ id: 'wheat', title: 'Gloom in the Wheat', giver: 'bram', kind: 'slay', count: 6, enemy: 'gloomling', summary: 'Defeat gloomlings anywhere in the valley.', reward: { xp: 140, mana: 10 },
+      text: { offer: ['Gloomlings trample my fields every night!', 'Chase off six of them and I’ll owe you a turnip pie.'], progress: ['Still counting gloomlings? Keep at it!'], complete: ['The fields are quiet. Here — the pie, and a bit of farm magic. (+10 max mana)'], after: ['My turnips salute you.'] } }),
+    q({ id: 'herbs', title: 'Sunpetal Remedy', giver: 'maren', kind: 'collect', count: 6, near: 'stones', item: 'Sunpetal herb', icon: 'herb', summary: 'Gather sunpetal herbs around the Old Stone Garden.', reward: { xp: 120 },
+      text: { offer: ['Half the village has the sniffles.', 'Sunpetal herbs grow around the Old Stone Garden, north-east. Bring me six?'], progress: ['Six herbs, dear. They glow a little in the sun.'], complete: ['Wonderful! I’ll brew the remedy at once.'], after: ['Achoo! …That was the last sneeze, I promise.'] } }),
+    q({ id: 'letter', title: 'A Letter to Willowmere', giver: 'wren', kind: 'deliver', count: 1, to: 'ottilie', item: 'Sealed letter', summary: 'Bring Wren’s letter to Mayor Ottilie in Willowmere.', reward: { xp: 90 },
+      text: { offer: ['The couriers are too scared to travel since the gloom came.', 'Would you carry this letter to Mayor Ottilie in Willowmere? Follow the east road.'], progress: ['Mayor Ottilie lives in Willowmere, east along the road.'], complete: [], after: ['Letters are moving again. Bless you.'], deliver: ['A letter from Wren? Finally!', 'Tell her Willowmere still stands. And thank you, Mira.'] } }),
+    q({ id: 'toy', title: 'Tilly’s Wooden Fox', giver: 'tilly', kind: 'collect', count: 1, near: 'camp', item: 'Wooden fox', icon: 'toy', summary: 'Find Tilly’s toy near the Hunter’s Camp.', reward: { xp: 70 },
+      text: { offer: ['I lost my wooden fox! A big gloomling took it!', 'It ran toward the Hunter’s Camp. South-east!'], progress: ['My fox has a red painted tail!'], complete: ['FOXY! You found him!', 'You can be the fox in our next game.'], after: ['Foxy says hi to your fox!'] } }),
+    q({ id: 'thorns', title: 'Thorns on the Trail', giver: 'garrick', kind: 'slay', count: 5, enemy: 'thornling', summary: 'Defeat thornlings.', reward: { xp: 150, hearts: 1 },
+      text: { offer: ['Thornlings are shooting at travellers on the east road.', 'Take down five and the roads will be safe again.'], progress: ['Thornlings stay put and spit thorns. Dash through the gaps.'], complete: ['Five! You hunt like a fox.', 'Wear my old leather vest — it’s turned more thorns than I can count.'], after: ['The trail is quiet. Good work.'] } }),
+    q({ id: 'view', title: 'Light on the Hill', giver: 'odo', kind: 'visit', count: 1, place: 'shrine', summary: 'Visit the Sun Shrine to the east.', reward: { xp: 100 },
+      text: { offer: ['On a clear night I used to see the Sun Shrine glowing from here.', 'Will you walk there and see if it still stands? It’s far to the east.'], progress: ['The Sun Shrine is east, past Willowmere.'], complete: ['It still stands? Then there is hope for the Beacon too.'], after: ['I can almost see its glow again.'] } }),
+    q({ id: 'bait', title: 'Bait for the Big One', giver: 'lou', kind: 'collect', count: 4, near: 'faerie', item: 'Fat mushroom', icon: 'mushroom', summary: 'Pick fat mushrooms around the Faerie Ring.', reward: { xp: 100, mana: 10 },
+      text: { offer: ['The big one only bites on faerie mushrooms.', 'Four of them grow near the Faerie Ring, south of the lake.'], progress: ['Four mushrooms. Fat ones. The big one is picky.'], complete: ['Perfect bait! Here, a lucky fishing charm. (+10 max mana)'], after: ['Any day now. Any day.'] } }),
+  ],
+  lore: [
+    { at: 'stones', name: 'Runestone', text: ['“Here the first beacon-keepers planted their garden of stones, one for every star that watched over them.”'] },
+    { at: 'hollow', name: 'Cracked runestone', text: ['“Where light forgets, the gloom remembers. It is not evil — only hungry for warmth.”'] },
+    { at: 'faerie', name: 'Mossy runestone', text: ['“Dance in the ring at midnight and the faeries will guide your feet home.”'] },
+    { at: 'rise', name: 'Beacon runestone', text: ['“Mossback sleeps beneath the Rise, guardian of the flame, until three sun-crystals wake it.”'] },
+    { at: 'shepherd', name: 'Weathered stone', text: ['“From the hill, a shepherd counted sheep and stars. The stars were easier. They did not wander off.”'] },
+  ],
+  script: {
+    keyLabel: 'Sun-crystals', bossName: 'Mossback', bossTitle: 'Ancient Guardian of the Rise', finaleName: 'Meadow Beacon',
+    guide: {
+      intro: n => ['The beacon went dark the night the star fell. Three sun-crystals can wake it again.', `You carry ${n} of 3. One lies in the Old Stone Garden, one in Gloom Hollow, one on Shepherd’s Hill.`, 'The valley is wide — follow the roads, talk to folk, help where you can. You will grow stronger, and learn new spells as you do.'],
+      ready: ['All three crystals! The Beacon Rise is open, far to the south-east.', 'Mossback guards it. Watch the ground glow before its slam, and dodge the boulders it hurls.'],
+      done: ['The valley is bright again, thanks to you.'],
+    },
+    shrine: { bless: ['Warm light pours from the shrine and fills you.', 'The Sun blesses you. (+Experience, full health and magic)'], again: ['The shrine glows warmly. Rest here a while.'] },
+    finale: { locked: ['The beacon is dim. Three sun-crystals are needed before its guardian stirs.'], guarded: ['Mossback is here. Defeat the guardian to restore the beacon.'], done: ['The beacon blazes gold! Across the valley, a second light answers from Whisperroot Woods.'] },
+    pickupKey: 'Sun-crystal found! {n}/3',
+    sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! Dash (Shift) makes you untouchable for a heartbeat. Level up to learn new spells.',
+    victory: { title: 'The beacon shines again.', text: 'Mossback returns to its quiet grove, and a second light glimmers beyond the hills. Whisperroot Woods is calling.' },
+  },
 };
-const route: Point[] = [{ x: 260, y: 260 }, { x: 720, y: 370 }, { x: 980, y: 680 }, { x: 1460, y: 600 }, { x: 1780, y: 880 }, { x: 2200, y: 930 }, { x: 2650, y: 1720 }];
 
-function distToRoute(p: Point) {
-  let best = Infinity;
-  for (let i = 1; i < route.length; i++) {
-    const a = route[i - 1], b = route[i], dx = b.x - a.x, dy = b.y - a.y;
-    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
-    best = Math.min(best, Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t)));
-  }
-  return best;
-}
-
-function scatterObstacles(seed: number, count: number, kinds: Array<[ObstacleKind, number]>, avoid: Point[], ponds: Pond[]): Obstacle[] {
-  const rand = rng(seed), out: Obstacle[] = [];
-  const total = kinds.reduce((s, [, w]) => s + w, 0);
-  for (let tries = 0; out.length < count && tries < count * 20; tries++) {
-    const x = 90 + rand() * (W - 180), y = 100 + rand() * (H - 200);
-    if (avoid.some(p => Math.hypot(p.x - x, p.y - y) < 165)) continue;
-    if (ponds.some(p => Math.hypot(p.x - x, (p.y - y) * 1.6) < p.r + 50)) continue;
-    if (distToRoute({ x, y }) < 70) continue;
-    if (out.some(p => Math.hypot(p.x - x, p.y - y) < 105)) continue;
-    let pick = rand() * total, kind: ObstacleKind = kinds[0][0];
-    for (const [k, w] of kinds) { if ((pick -= w) <= 0) { kind = k; break; } }
-    out.push({ x, y, r: 18 + rand() * 14, kind, seed: rand() });
-  }
-  // A ring of border trees makes the map edge feel like a forest rather than a wall.
-  const edge = kinds[0][0];
-  for (let x = 40; x < W; x += 95) { out.push({ x, y: 30 + rand() * 20, r: 26 + rand() * 8, kind: edge, seed: rand() }); out.push({ x: x + 40, y: H - 30 - rand() * 20, r: 26 + rand() * 8, kind: edge, seed: rand() }); }
-  for (let y = 120; y < H - 60; y += 95) { out.push({ x: 25 + rand() * 20, y, r: 26 + rand() * 8, kind: edge, seed: rand() }); out.push({ x: W - 25 - rand() * 20, y: y + 40, r: 26 + rand() * 8, kind: edge, seed: rand() }); }
-  return out;
-}
-
-function scatterDecor(seed: number, count: number, kinds: Array<[DecorKind, number]>, colors: string[], ponds: Pond[]): Decor[] {
-  const rand = rng(seed), out: Decor[] = [];
-  const total = kinds.reduce((s, [, w]) => s + w, 0);
-  for (let i = 0; i < count; i++) {
-    const x = 30 + rand() * (W - 60), y = 30 + rand() * (H - 60);
-    if (ponds.some(p => Math.hypot(p.x - x, (p.y - y) * 1.7) < p.r + 8)) continue;
-    let pick = rand() * total, kind: DecorKind = kinds[0][0];
-    for (const [k, w] of kinds) { if ((pick -= w) <= 0) { kind = k; break; } }
-    if (kind !== 'pebble' && distToRoute({ x, y }) < 40) continue;
-    out.push({ x, y, kind, seed: rand(), color: colors[Math.floor(rand() * colors.length)] });
-  }
-  return out.sort((a, b) => a.y - b.y);
-}
-
-function scatterPods(seed: number, count: number, obstacles: Obstacle[], avoid: Point[]): Point[] {
-  const rand = rng(seed), out: Point[] = [];
-  for (let tries = 0; out.length < count && tries < 800; tries++) {
-    const x = 200 + rand() * (W - 400), y = 200 + rand() * (H - 400);
-    if (obstacles.some(o => Math.hypot(o.x - x, o.y - y) < o.r + 40)) continue;
-    if (avoid.some(p => Math.hypot(p.x - x, p.y - y) < 120) || out.some(p => Math.hypot(p.x - x, p.y - y) < 260)) continue;
-    out.push({ x, y });
-  }
-  return out;
-}
-
-function enemies(prefix: string, groups: Array<[EnemyKind, number[][]]>, boss: EnemyKind): EnemySeed[] {
-  const out: EnemySeed[] = [];
-  let n = 0;
-  for (const [kind, spots] of groups) for (const [x, y] of spots) out.push({ id: `${prefix}-${kind}-${n++}`, kind, x, y });
-  out.push({ id: `${prefix}-boss`, kind: boss, x: L.boss.x, y: L.boss.y, boss: true });
-  return out;
-}
-
-const avoidAll: Point[] = [{ x: 260, y: 260 }, L.guide, L.helper, L.courier, ...L.keys, ...L.collect, L.item, L.shrine, L.finale, L.boss, { x: 2620, y: 1700 }];
-
-function build(def: Omit<WorldDefinition, 'obstacles' | 'decor' | 'pods' | 'route' | 'width' | 'height' | 'spawn'> & { seed: number; treeKinds: Array<[ObstacleKind, number]>; decorKinds: Array<[DecorKind, number]>; decorColors: string[] }): WorldDefinition {
-  const { seed, treeKinds, decorKinds, decorColors, ...rest } = def;
-  const obstacles = scatterObstacles(seed, 64, treeKinds, avoidAll, def.ponds);
-  return {
-    ...rest, width: W, height: H, spawn: { x: 260, y: 260 }, route,
-    obstacles, decor: scatterDecor(seed + 1, 1500, decorKinds, decorColors, def.ponds), pods: scatterPods(seed + 2, 16, obstacles, avoidAll),
-  };
-}
-
-export const WORLDS: Record<LevelId, WorldDefinition> = {
-  meadow: build({
-    id: 'meadow', chapter: 1, title: 'Sunpetal Meadow', subtitle: 'The Broken Beacon', region: 'Sunpetal Valley', seed: 17,
-    palette: { ground: '#7fa05a', alternate: '#8fb065', path: '#d8c48e', pathEdge: '#a8915f', accent: '#f5cd5c', water: '#58a7b4', waterDeep: '#3d7f8f', foliage: ['#35593f', '#5d8a4c', '#a3c46a'], trunk: '#6f5337', rock: '#8c8f80', pod: '#f2b84b' },
-    darkness: 0, ambient: 'petals', spell: 'sunfire',
-    ponds: [{ x: 1780, y: 450, r: 175 }, { x: 720, y: 1500, r: 125 }, { x: 2200, y: 1420, r: 135 }],
-    treeKinds: [['tree', 6], ['bush', 3], ['rock', 2]], decorKinds: [['grass', 10], ['flower', 5], ['pebble', 1]], decorColors: ['#f7d774', '#f2a1b8', '#ffffff', '#c7a6f2', '#ff9b73'],
-    objects: [
-      obj('guide', 'npc', L.guide.x, L.guide.y, 'Bridgekeeper Tamsin', { role: 'guide', color: '#d99857', portrait: '🧑‍🌾' }),
-      obj('helper', 'npc', L.helper.x, L.helper.y, 'Elder Rowan', { role: 'helper', color: '#818ca8', portrait: '🧙🏼' }),
-      obj('courier', 'npc', L.courier.x, L.courier.y, 'Pip the Courier', { role: 'courier', color: '#c16d59', portrait: '🐿️' }),
-      ...L.keys.map((p, i) => obj(`key-${i}`, 'key', p.x, p.y, 'Sun-crystal')),
-      ...L.collect.map((p, i) => obj(`col-${i}`, 'collectible', p.x, p.y, 'Glowbug')),
-      obj('item', 'item', L.item.x, L.item.y, 'Silver bell'),
-      obj('shrine', 'shrine', L.shrine.x, L.shrine.y, 'Sunfire Tome'),
-      obj('finale', 'finale', L.finale.x, L.finale.y, 'Meadow Beacon'),
-    ],
-    enemies: enemies('meadow', [['gloomling', [[800, 720], [1260, 930], [1960, 520], [2240, 1230], [1430, 1550], [560, 1030], [2010, 1680]]], ['thornling', [[1120, 400], [1840, 1040], [680, 1370]]]], 'mossback'),
-    zoneLabels: [{ x: 410, y: 210, name: 'Bridgekeeper’s Rest' }, { x: 1160, y: 640, name: 'Sunpetal Fields' }, { x: 1920, y: 1180, name: 'Old Stone Garden' }, { x: 2510, y: 1560, name: 'The Beacon Rise' }],
-    script: {
-      keyLabel: 'Sun-crystals', collectLabel: 'Glowbugs', itemLabel: 'Pip’s silver bell', bossName: 'Mossback', bossTitle: 'Ancient Guardian of the Rise', finaleName: 'Meadow Beacon',
-      guide: {
-        intro: n => ['The beacon went dark the night the star fell. Three sun-crystals can wake it again.', `You carry ${n} of 3. Follow the glowing arrow — the fox and I marked the way.`, 'There is an old tome in the fields that teaches Sunfire. You will want it.'],
-        ready: ['All three crystals! The Beacon Rise is open.', 'Mossback guards it. Watch the ground glow before its slam, and dodge the boulders it hurls.'],
-      },
-      helper: { ask: ['The night paths are hard to see. Could you catch three glowbugs for me?', 'Gentle hands. They are the tiny floating lights.'], thanks: ['All three! They will guide travelers home.', 'Take this heartwood charm — you feel sturdier already. (+1 max heart)'], done: ['The glowbugs hum happily in their jar.'] },
-      courier: { ask: ['I dropped my silver bell on the far side of the meadow!', 'It has a tiny star scratched into it.'], thanks: ['My bell! You found it!', 'A star biscuit for you — your magic flows faster now.'], done: ['The Beacon Rise is just beyond the old stone garden.'] },
-      shrine: { learn: ['The tome flips open by itself, pages blazing gold.', 'You learned SUNFIRE! Press R to hurl an exploding sun orb.'], again: ['The tome glows warmly. Sunfire is yours.'] },
-      finale: { locked: ['The beacon is dim. Three sun-crystals are needed before its guardian stirs.'], guarded: ['Mossback is here. Defeat the guardian to restore the beacon.'], done: ['The beacon blazes gold! Across the valley, a second light answers from Whisperroot Woods.'] },
-      pickup: { key: 'Sun-crystal found! {n}/3', collect: 'Glowbug caught gently. {n}/3', item: 'You found the silver bell. Return it to Pip.' },
-      sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! Dash (Shift) makes you untouchable for a heartbeat.',
-      victory: { title: 'The beacon shines again.', text: 'Mossback returns to its quiet grove, and a second light glimmers beyond the hills. Whisperroot Woods is calling.' },
+// ═════════════════════════════ Chapter II · Whisperroot Woods
+const woods: ChapterSpec = {
+  id: 'woods', chapter: 2, title: 'Whisperroot Woods', subtitle: 'The Bell Beneath the Roots', region: 'Whisperroot Wilds', seed: 72,
+  palette: { ground: '#4d6a50', alternate: '#587757', path: '#ad9c72', pathEdge: '#7a7153', accent: '#b6df91', water: '#3f7580', waterDeep: '#2b5560', foliage: ['#1f3a2c', '#355c3e', '#6f9a5c'], trunk: '#553f2d', rock: '#6f7568', pod: '#9fe3c9', roof: ['#5a6e4a', '#7a5a3f', '#4a5a6a', '#6e4a4a'], wall: '#cbb892' },
+  darkness: .42, ambient: 'leaves', ground: 'grass', levelHint: 8, enemyScale: 1.8, xpScale: 1.6,
+  pois: [
+    { id: 'camp', name: 'Mosskeeper’s Camp', kind: 'start', x: 900, y: 5800, r: 380 },
+    { id: 'bellhollow', name: 'Bellhollow', kind: 'village', x: 2400, y: 4600, r: 480 },
+    { id: 'shroomfarm', name: 'Glowcap Farm', kind: 'farm', x: 1100, y: 2800, r: 440 },
+    { id: 'glade', name: 'Moonlit Glade', kind: 'grove', x: 3700, y: 3000, r: 400 },
+    { id: 'pool', name: 'Blackwater Pool', kind: 'lake', x: 4300, y: 5500, r: 520 },
+    { id: 'ruins', name: 'Root Ruins', kind: 'ruins', x: 2600, y: 1200, r: 400 },
+    { id: 'nest', name: 'Thornling Nest', kind: 'lair', x: 5300, y: 1500, r: 420 },
+    { id: 'market', name: 'Lanternmarket', kind: 'village', x: 5700, y: 3800, r: 480 },
+    { id: 'lodge', name: 'Trapper’s Lodge', kind: 'camp', x: 7300, y: 5700, r: 340 },
+    { id: 'watch', name: 'Owl Watchtower', kind: 'lookout', x: 7400, y: 2700, r: 360 },
+    { id: 'spring', name: 'Moss Shrine', kind: 'shrine', x: 6700, y: 800, r: 280 },
+    { id: 'den', name: 'Gloom Den', kind: 'lair', x: 8400, y: 4300, r: 420 },
+    { id: 'bell', name: 'The Old Bell', kind: 'finale', x: 8600, y: 1200, r: 440 },
+  ],
+  lakeSize: { pool: 360 },
+  links: [['bellhollow', 'market'], ['glade', 'market'], ['watch', 'bell'], ['lodge', 'den'], ['shroomfarm', 'ruins']],
+  keyAt: ['ruins', 'nest', 'watch'], keyName: 'Root rune', shrineName: 'Moss Shrine', finaleName: 'Ancient Root Bell',
+  trees: [['tree', 7], ['mushroom', 2], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 6], ['fern', 5], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
+  enemyKinds: [['gloomling', 5], ['thornling', 4], ['wisp', 1]], boss: 'brambleWarden', critters: [['deer', 4], ['rabbit', 3], ['bird', 3], ['frog', 4], ['squirrel', 4], ['duck', 1]],
+  villagerNames: ['Moss', 'Tansy', 'Fennick', 'Briar', 'Hazel', 'Oakley', 'Sorrel', 'Wick', 'Ivy', 'Thistle', 'Burr', 'Nettle', 'Rowe', 'Juniper'],
+  chatter: ['The trees whisper at night. Mostly complaints about the damp.', 'Lanternmarket never sleeps — the lanterns keep it awake.', 'Don’t follow the blue lights into the dark. Trust me.', 'The Old Bell used to ring every dawn. The birds miss it.', 'Glowcaps taste like starlight and socks.', 'The owls at the watchtower see everything. They are terrible gossips.'],
+  barks: ['Mind the roots.', 'Evening… or is it morning?', 'Lantern oil, anyone?', 'Hush, the trees listen.', 'Mossy day, isn’t it?'],
+  npcs: [
+    { id: 'guide', name: 'Mosskeeper Oda', portrait: '🧝', at: 'camp', dx: -40, dy: -60, activity: 'idle', role: 'guide', look: look('#728f5a', 'hood', { hatColor: '#4a5b3e' }), lines: [], barks: ['The bell, Mira. The bell.'] },
+    { id: 'pip', name: 'Pip the Courier', portrait: '🐿️', at: 'camp', dx: 170, dy: 40, activity: 'wander', look: look('#c16d59', 'ears', { hatColor: '#a0522d', small: true }), lines: ['Even in the woods, Pip delivers!'], barks: ['So many roots to trip on!'] },
+    { id: 'bellkeeper', name: 'Old Bellkeeper', portrait: '🧓', at: 'bellhollow', dx: -60, dy: 90, activity: 'idle', look: look('#9c7860', 'cap', { hatColor: '#6b4a3a', beard: true, hair: '#e8e2d0' }), lines: ['I polished that bell for sixty years.'], barks: ['Ding… dong…'] },
+    { id: 'nana', name: 'Nana Bristle', portrait: '👵', at: 'bellhollow', dx: 150, dy: -40, activity: 'sweep', look: look('#8a6fb0', 'bonnet', { hatColor: '#5b5480', hair: '#e8e2d0' }), lines: ['Sit, eat, you’re too thin for a hero.'], barks: ['Soup’s on!'] },
+    { id: 'hale', name: 'Woodcutter Hale', portrait: '🪓', at: 'shroomfarm', dx: 120, dy: -120, activity: 'chop', look: look('#8a5a3a', 'cap', { hatColor: '#6b3f2a', beard: true }), lines: ['Followed the good timber all the way here.'], barks: ['Timber!'] },
+    { id: 'fenn', name: 'Lamplighter Fenn', portrait: '🏮', at: 'market', dx: -90, dy: -30, activity: 'wander', look: look('#c9a24c', 'hood', { hatColor: '#8a6a30' }), lines: ['A lantern for every path, that’s the rule.'], barks: ['Light the way!'] },
+    { id: 'juna', name: 'Herbalist Juna', portrait: '🌿', at: 'market', dx: 150, dy: 80, activity: 'idle', look: look('#5a8a5a', 'scarf', { hatColor: '#3f6a3f' }), lines: ['Every leaf here is medicine. Or poison. Mostly medicine.'], barks: ['Fresh herbs!'] },
+    { id: 'pim', name: 'Little Pim', portrait: '👦', at: 'market', dx: 120, dy: 200, activity: 'play', look: look('#6f8fb8', 'none', { small: true, hair: '#2e2420' }), lines: ['I’m not scared of the dark! Mostly.'], barks: ['Catch me!'] },
+    { id: 'ysolde', name: 'Trapper Ysolde', portrait: '🏹', at: 'lodge', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a' }), lines: ['Quiet feet catch more than loud ones.'], barks: ['Shh.'] },
+    { id: 'ivo', name: 'Scout Ivo', portrait: '💂', at: 'watch', dx: -60, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a' }), lines: ['From the tower I see every lantern in the woods.'], barks: ['All clear… for now.'] },
+    { id: 'trader', name: 'Peddler Gus', portrait: '🧳', at: 'bellhollow', to: 'market', activity: 'travel', look: look('#c07850', 'scarf', { hatColor: '#8a3b2f', beard: true }), lines: ['Pots, pans, and a very small lute.'], barks: ['Wares for sale!'] },
+    { id: 'lou', name: 'Fisher Lou', portrait: '🎣', at: 'pool', dx: -40, activity: 'fish', look: look('#5a8a8a', 'cap', { hatColor: '#3a5a5a', beard: true }), lines: ['Blackwater fish glow. Tasty, too.'], barks: ['Nibble…'] },
+  ],
+  quests: [
+    q({ id: 'moths', title: 'Moths for the Lantern Tree', giver: 'bellkeeper', kind: 'collect', count: 5, near: 'glade', item: 'Moon moth', icon: 'bug', summary: 'Catch moon moths in the Moonlit Glade.', reward: { xp: 120, hearts: 1 },
+      text: { offer: ['My moon moths fled to the Moonlit Glade. Without them the lantern tree won’t catch.', 'Five of them, please.'], progress: ['The Moonlit Glade lies east of here.'], complete: ['They’re home! Listen to them hum.', 'Take this bark-woven vest.'], after: ['The lantern tree glows again.'] } }),
+    q({ id: 'satchel', title: 'Pip’s Satchel', giver: 'pip', kind: 'collect', count: 1, near: 'pool', item: 'Courier satchel', icon: 'bundle', summary: 'Find Pip’s satchel near Blackwater Pool.', reward: { xp: 100, regen: .8 },
+      text: { offer: ['I lost my satchel near Blackwater Pool!', 'Red strap, very loud buckle.'], progress: ['Blackwater Pool, east of Bellhollow.'], complete: ['My satchel! The biscuits survived!', 'Have one — your magic flows faster.'], after: ['Pip delivers, always.'] } }),
+    q({ id: 'timber', title: 'Clear the Timber Road', giver: 'hale', kind: 'slay', count: 6, enemy: 'thornling', summary: 'Defeat thornlings.', reward: { xp: 150 },
+      text: { offer: ['Thornlings shoot at my cart every time I haul logs.', 'Six fewer thornlings would make my week.'], progress: ['Thornlings hide in thick brush.'], complete: ['The road’s clear! My cart thanks you.'], after: ['Timber flows again.'] } }),
+    q({ id: 'oil', title: 'Lantern Oil for the Lodge', giver: 'fenn', kind: 'deliver', count: 1, to: 'ysolde', item: 'Lantern oil', summary: 'Bring lantern oil to Trapper Ysolde at the lodge.', reward: { xp: 110 },
+      text: { offer: ['Trapper Ysolde’s lodge has gone dark.', 'Carry this oil to her — south-east, past the pool.'], progress: ['Trapper’s Lodge is south-east.'], complete: [], after: ['Every lantern lit. As it should be.'], deliver: ['Oil! Fenn remembered me.', 'The lodge will shine tonight. Thank you.'] } }),
+    q({ id: 'glowcaps', title: 'Glowcap Stew', giver: 'nana', kind: 'collect', count: 6, near: 'shroomfarm', item: 'Glowcap', icon: 'mushroom', summary: 'Pick glowcaps around Glowcap Farm.', reward: { xp: 130, mana: 12 },
+      text: { offer: ['I’m making glowcap stew for the whole village.', 'Six glowcaps from around the farm up north.'], progress: ['Six, dear. The shiny ones.'], complete: ['Now that’s a stew! Have the first bowl. (+12 max mana)'], after: ['More stew? Always.'] } }),
+    q({ id: 'gloomhunt', title: 'Push Back the Gloom', giver: 'ivo', kind: 'slay', count: 8, enemy: 'any', summary: 'Defeat any creatures of the gloom.', reward: { xp: 170, hearts: 1 },
+      text: { offer: ['The gloom creeps closer to the watchtower every night.', 'Defeat eight of its creatures and we can breathe again.'], progress: ['Any creature will do. They all serve the gloom.'], complete: ['Eight! The owls are cheering. Probably.', 'Wear this ranger’s cloak.'], after: ['The tower stands strong.'] } }),
+    q({ id: 'spring', title: 'The Mossy Spring', giver: 'juna', kind: 'visit', count: 1, place: 'spring', summary: 'Visit the Moss Shrine in the north.', reward: { xp: 120 },
+      text: { offer: ['The Moss Shrine’s spring gave the best herbs. Nobody has been there in years.', 'Could you see if it still flows? North, past the nest.'], progress: ['The Moss Shrine is north.'], complete: ['It flows! Then the herbs will return.'], after: ['I can smell spring moss already.'] } }),
+    q({ id: 'ball', title: 'Pim’s Lucky Ball', giver: 'pim', kind: 'collect', count: 1, near: 'glade', item: 'Lucky ball', icon: 'toy', summary: 'Find Pim’s ball near the Moonlit Glade.', reward: { xp: 90 },
+      text: { offer: ['I kicked my lucky ball really far. Like, glade far.', 'Please find it? I’ll let you kick it once.'], progress: ['It’s blue with a star!'], complete: ['MY BALL! Okay, one kick. Just one.'], after: ['Best. Ball. Ever.'] } }),
+    q({ id: 'feathers', title: 'Owl Feathers', giver: 'ysolde', kind: 'collect', count: 5, near: 'watch', item: 'Owl feather', icon: 'feather', summary: 'Collect owl feathers around the watchtower.', reward: { xp: 130, mana: 10 },
+      text: { offer: ['I fletch arrows with owl feathers — shed ones, of course.', 'Five lie around the Owl Watchtower to the north.'], progress: ['Soft grey feathers. Owls drop them everywhere.'], complete: ['Beautiful. Take an arrow charm. (+10 max mana)'], after: ['Swift and silent.'] } }),
+  ],
+  lore: [
+    { at: 'ruins', name: 'Root-carved stone', text: ['“The roots were here before the woods. They will be here after. Speak kindly to them.”'] },
+    { at: 'glade', name: 'Moonstone', text: ['“Once a year the moon comes down to drink from this glade. Leave it a little water.”'] },
+    { at: 'nest', name: 'Scratched stone', text: ['“Thornlings are born from brambles that were never loved. Sing to a bramble, and it may flower instead.”'] },
+    { at: 'bell', name: 'Bell-stone', text: ['“The Bramble Warden wears the thorns so the bell will not. It guards, and it grieves.”'] },
+    { at: 'watch', name: 'Tower stone', text: ['“Built by owls, finished by people. The owls still claim credit.”'] },
+  ],
+  script: {
+    keyLabel: 'Root runes', bossName: 'Bramble Warden', bossTitle: 'Thorn-Crowned Keeper of Roots', finaleName: 'Ancient Root Bell',
+    guide: {
+      intro: n => ['Welcome to Whisperroot. The ancient bell in the far north-east is strangled by roots.', `Three root runes can wake its guardian. You have ${n} of 3: they lie in the Root Ruins, the Thornling Nest and the Owl Watchtower.`, 'The woods are deep and full of folk who need help. Grow stronger — you will need every spell.'],
+      ready: ['The runes are singing. The Bramble Warden stirs by the bell.', 'It throws rings of thorns and sends roots racing through the soil. Keep moving!'],
+      done: ['The woods breathe easy again.'],
     },
-  }),
-  woods: build({
-    id: 'woods', chapter: 2, title: 'Whisperroot Woods', subtitle: 'The Bell Beneath the Roots', region: 'Whisperroot Wilds', seed: 72,
-    palette: { ground: '#4d6a50', alternate: '#587757', path: '#ad9c72', pathEdge: '#7a7153', accent: '#b6df91', water: '#3f7580', waterDeep: '#2b5560', foliage: ['#1f3a2c', '#355c3e', '#6f9a5c'], trunk: '#553f2d', rock: '#6f7568', pod: '#9fe3c9' },
-    darkness: .42, ambient: 'leaves', spell: 'shield',
-    ponds: [{ x: 1760, y: 460, r: 175 }, { x: 720, y: 1500, r: 115 }, { x: 2190, y: 1400, r: 145 }],
-    treeKinds: [['tree', 6], ['mushroom', 2], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 6], ['fern', 5], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
-    objects: [
-      obj('guide', 'npc', L.guide.x, L.guide.y, 'Mosskeeper Oda', { role: 'guide', color: '#728f5a', portrait: '🧝' }),
-      obj('helper', 'npc', L.helper.x, L.helper.y, 'Old Bellkeeper', { role: 'helper', color: '#9c7860', portrait: '🧓' }),
-      obj('courier', 'npc', L.courier.x, L.courier.y, 'Pip the Courier', { role: 'courier', color: '#c16d59', portrait: '🐿️' }),
-      ...L.keys.map((p, i) => obj(`key-${i}`, 'key', p.x, p.y, 'Root rune')),
-      ...L.collect.map((p, i) => obj(`col-${i}`, 'collectible', p.x, p.y, 'Moon moth')),
-      obj('item', 'item', L.item.x, L.item.y, 'Courier satchel'),
-      obj('shrine', 'shrine', L.shrine.x, L.shrine.y, 'Moss Shield Shrine'),
-      obj('finale', 'finale', L.finale.x, L.finale.y, 'Ancient Root Bell'),
-    ],
-    enemies: enemies('woods', [['gloomling', [[800, 730], [1260, 930], [1970, 520], [2250, 1220], [1420, 1550], [560, 1030], [2010, 1680], [1740, 360]]], ['thornling', [[1110, 410], [1830, 1040], [680, 1370], [2290, 530]]]], 'brambleWarden'),
-    zoneLabels: [{ x: 410, y: 200, name: 'Mosskeeper’s Camp' }, { x: 1160, y: 650, name: 'Whisperroot Trail' }, { x: 1920, y: 1180, name: 'Root-Cave Approach' }, { x: 2500, y: 1560, name: 'The Old Bell' }],
-    script: {
-      keyLabel: 'Root runes', collectLabel: 'Moon moths', itemLabel: 'Pip’s satchel', bossName: 'Bramble Warden', bossTitle: 'Thorn-Crowned Keeper of Roots', finaleName: 'Ancient Root Bell',
-      guide: {
-        intro: n => ['Welcome to Whisperroot. The ancient bell is strangled by roots.', `Three root runes can wake its guardian. You have ${n} of 3.`, 'Find the moss shrine first — its shield turns thorns back on those who throw them.'],
-        ready: ['The runes are singing. The Bramble Warden stirs by the bell.', 'It throws rings of thorns and sends roots racing through the soil. Keep moving!'],
-      },
-      helper: { ask: ['My moon moths fled into the dark. Without them the lanterns won’t catch.', 'Three of them. Please.'], thanks: ['They’re home! Listen to them hum.', 'Take this bark-woven vest. (+1 max heart)'], done: ['The lantern tree glows again.'] },
-      courier: { ask: ['I lost my satchel somewhere near the root-cave!', 'Red strap, very loud buckle.'], thanks: ['My satchel! The biscuits survived!', 'Have one — your magic will flow faster.'], done: ['The ancient bell is further east.'] },
-      shrine: { learn: ['Moss curls around your arms and hardens into a glowing ward.', 'You learned MOSS SHIELD! Press F — it blocks harm and reflects projectiles.'], again: ['The shrine hums softly.'] },
-      finale: { locked: ['Three root runes are needed to wake the guardian.'], guarded: ['The Bramble Warden blocks the bell.'], done: ['The ancient bell rings through every root. Shadows drift away as petals.', 'High above, the fallen star flickers on Starfall Summit…'] },
-      pickup: { key: 'Root rune awakened. {n}/3', collect: 'A moon moth follows your lantern. {n}/3', item: 'Courier satchel recovered. It smells of apple cake.' },
-      sealed: 'The Warden is wrapped in sleeping roots. Wake the three runes first.', tip: 'Moss Shield reflects thorns. Raise it just as a ring of thorns flies at you!',
-      victory: { title: 'The bell rings through the valley.', text: 'The roots loosen and the woods breathe again. But high on Starfall Summit, the fallen star has gone hollow and dark.' },
-    },
-  }),
-  summit: build({
-    id: 'summit', chapter: 3, title: 'Starfall Summit', subtitle: 'The Hollow Star', region: 'The Silver Heights', seed: 131,
-    palette: { ground: '#3e4a6b', alternate: '#46527a', path: '#8f93b8', pathEdge: '#62678c', accent: '#c9b6ff', water: '#5a6fc0', waterDeep: '#34408a', foliage: ['#1c2b45', '#2e4a63', '#6a93a8'], trunk: '#3c3346', rock: '#6f7493', pod: '#c9b6ff' },
-    darkness: .6, ambient: 'stars', spell: 'starfall',
-    ponds: [{ x: 1760, y: 460, r: 165 }, { x: 720, y: 1500, r: 120 }, { x: 2190, y: 1400, r: 140 }],
-    treeKinds: [['pine', 6], ['crystal', 3], ['rock', 2]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 2], ['flower', 2]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
-    objects: [
-      obj('guide', 'npc', L.guide.x, L.guide.y, 'Sky-warden Ilsa', { role: 'guide', color: '#6c78b8', portrait: '🧝‍♀️' }),
-      obj('helper', 'npc', L.helper.x, L.helper.y, 'Astronomer Vale', { role: 'helper', color: '#8a6fb0', portrait: '🔭' }),
-      obj('courier', 'npc', L.courier.x, L.courier.y, 'Pip the Courier', { role: 'courier', color: '#c16d59', portrait: '🐿️' }),
-      ...L.keys.map((p, i) => obj(`key-${i}`, 'key', p.x, p.y, 'Star shard')),
-      ...L.collect.map((p, i) => obj(`col-${i}`, 'collectible', p.x, p.y, 'Star wisp')),
-      obj('item', 'item', L.item.x, L.item.y, 'Brass lens'),
-      obj('shrine', 'shrine', L.shrine.x, L.shrine.y, 'Starfall Altar'),
-      obj('finale', 'finale', L.finale.x, L.finale.y, 'Star Cradle'),
-    ],
-    enemies: enemies('summit', [['wisp', [[800, 730], [1960, 520], [1420, 1550], [2010, 1680], [1740, 360], [1200, 1200]]], ['gloomling', [[1260, 930], [2250, 1220], [560, 1030], [1650, 800]]], ['thornling', [[1110, 410], [1830, 1040], [680, 1370], [2290, 530]]]], 'hollowStar'),
-    zoneLabels: [{ x: 410, y: 200, name: 'Warden’s Lookout' }, { x: 1160, y: 650, name: 'Silver Switchbacks' }, { x: 1920, y: 1180, name: 'Crystal Hollow' }, { x: 2500, y: 1560, name: 'The Star Cradle' }],
-    script: {
-      keyLabel: 'Star shards', collectLabel: 'Star wisps', itemLabel: 'Pip’s brass lens', bossName: 'The Hollow Star', bossTitle: 'Heart of the Fallen Light',
-      finaleName: 'Star Cradle',
-      guide: {
-        intro: n => ['You made it to the Summit. The fallen star was hollowed out by the dark — and now it hunts.', `Three star shards can crack its shell. You carry ${n} of 3.`, 'The altar in the switchbacks teaches Starfall. Use the sky against it.'],
-        ready: ['The shards are bright enough. The Hollow Star waits at the Cradle.', 'It spirals void-light, rains meteors, and blinks right next to you. Stay brave.'],
-      },
-      helper: { ask: ['Three star wisps escaped my telescope. Without them I cannot chart the way home.', 'They drift, glittering. Catch them for me?'], thanks: ['Wonderful! The constellations make sense again.', 'Wear this starsilver cloak. (+1 max heart)'], done: ['The stars align nicely tonight.'] },
-      courier: { ask: ['I climbed all this way and dropped my brass lens!', 'It rolled toward the crystal hollow.'], thanks: ['My lens! Now I can see the whole valley!', 'Last biscuit, just for you. Your magic flows faster.'], done: ['I’ll deliver the news of your victory. Soon!'] },
-      shrine: { learn: ['The altar opens to the sky. A star answers your call.', 'You learned STARFALL! Press T to rain stars on every nearby foe.'], again: ['The altar glitters like a tiny night sky.'] },
-      finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['The Hollow Star circles the Cradle. Defeat it!'], done: ['You lay the shards into the Cradle. The star remembers its light and rises home.', 'Every beacon in the valley blazes at once.'] },
-      pickup: { key: 'Star shard gathered. {n}/3', collect: 'A star wisp twirls around you. {n}/3', item: 'You found the brass lens. Pip will be thrilled.' },
-      sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall (T) turns the sky on your enemies.',
-      victory: { title: 'The star rises home.', text: 'The Hollow Star shines whole again and returns to the sky. Mira and the fox watch every light in the valley wake at once.' },
-    },
-  }),
+    shrine: { bless: ['Moss curls around your arms, cool and bright.', 'The woods bless you. (+Experience, full health and magic)'], again: ['The shrine hums softly.'] },
+    finale: { locked: ['Three root runes are needed to wake the guardian.'], guarded: ['The Bramble Warden blocks the bell.'], done: ['The ancient bell rings through every root. Shadows drift away as petals.', 'High above, the fallen star flickers on Starfall Summit…'] },
+    pickupKey: 'Root rune awakened. {n}/3',
+    sealed: 'The Warden is wrapped in sleeping roots. Wake the three runes first.', tip: 'Moss Shield (learned at level 7) reflects thorns. Raise it just as a ring of thorns flies at you!',
+    victory: { title: 'The bell rings through the valley.', text: 'The roots loosen and the woods breathe again. But high on Starfall Summit, the fallen star has gone hollow and dark.' },
+  },
 };
+
+// ═════════════════════════════ Chapter III · Starfall Summit
+const summit: ChapterSpec = {
+  id: 'summit', chapter: 3, title: 'Starfall Summit', subtitle: 'The Hollow Star', region: 'The Silver Heights', seed: 131,
+  palette: { ground: '#3e4a6b', alternate: '#46527a', path: '#8f93b8', pathEdge: '#62678c', accent: '#c9b6ff', water: '#5a6fc0', waterDeep: '#34408a', foliage: ['#1c2b45', '#2e4a63', '#6a93a8'], trunk: '#3c3346', rock: '#6f7493', pod: '#c9b6ff', roof: ['#5a5f8a', '#6e5a8a', '#4a6a8a', '#7a6a9a'], wall: '#c8cce0' },
+  darkness: .6, ambient: 'stars', ground: 'snow', levelHint: 12, enemyScale: 2.8, xpScale: 2.4,
+  pois: [
+    { id: 'lookout', name: 'Warden’s Lookout', kind: 'start', x: 1000, y: 6000, r: 380 },
+    { id: 'hamlet', name: 'Frostpine Hamlet', kind: 'village', x: 2500, y: 5000, r: 480 },
+    { id: 'observatory', name: 'Old Observatory', kind: 'lookout', x: 4200, y: 5900, r: 380 },
+    { id: 'tarn', name: 'Mirrorsky Tarn', kind: 'lake', x: 3500, y: 3400, r: 540 },
+    { id: 'crystal', name: 'Crystal Hollow', kind: 'ruins', x: 1400, y: 2600, r: 400 },
+    { id: 'terrace', name: 'Goatherd’s Terrace', kind: 'farm', x: 5200, y: 4400, r: 440 },
+    { id: 'rift', name: 'Void Rift', kind: 'lair', x: 6500, y: 5800, r: 430 },
+    { id: 'pass', name: 'Silver Pass Camp', kind: 'camp', x: 5600, y: 2500, r: 340 },
+    { id: 'bloom', name: 'Starbloom Grove', kind: 'grove', x: 3100, y: 1100, r: 400 },
+    { id: 'altar', name: 'Star Altar', kind: 'shrine', x: 7300, y: 3900, r: 280 },
+    { id: 'spire', name: 'Broken Spire', kind: 'ruins', x: 7400, y: 1700, r: 400 },
+    { id: 'skyhold', name: 'Skyhold', kind: 'village', x: 8500, y: 5400, r: 480 },
+    { id: 'cradle', name: 'The Star Cradle', kind: 'finale', x: 8600, y: 700, r: 440 },
+  ],
+  lakeSize: { tarn: 380 },
+  links: [['hamlet', 'tarn'], ['terrace', 'altar'], ['pass', 'spire'], ['skyhold', 'altar'], ['crystal', 'bloom']],
+  keyAt: ['crystal', 'rift', 'spire'], keyName: 'Star shard', shrineName: 'Star Altar', finaleName: 'Star Cradle',
+  trees: [['pine', 7], ['crystal', 2], ['rock', 3]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 2], ['flower', 2]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
+  enemyKinds: [['wisp', 5], ['gloomling', 3], ['thornling', 3]], boss: 'hollowStar', critters: [['goat', 6], ['bird', 3], ['rabbit', 3], ['duck', 1]],
+  villagerNames: ['Frost', 'Astra', 'Corin', 'Vesper', 'Lumi', 'Soren', 'Nyx', 'Halden', 'Skye', 'Orrin', 'Elna', 'Birk', 'Selka', 'Tarn'],
+  chatter: ['Up here the stars are close enough to hear.', 'Skyhold’s monks haven’t slept since the star went hollow.', 'Goats are the only ones who like this wind.', 'If the void wisps sing, don’t sing back.', 'The observatory lens once saw a comet sneeze.'],
+  barks: ['Brr!', 'Mind the ice.', 'Clear skies tonight.', 'The star is so dark…', 'Stay warm!'],
+  npcs: [
+    { id: 'guide', name: 'Sky-warden Ilsa', portrait: '🧝‍♀️', at: 'lookout', dx: -40, dy: -60, activity: 'idle', role: 'guide', look: look('#6c78b8', 'hood', { hatColor: '#3f4a8a' }), lines: [], barks: ['The Cradle waits.'] },
+    { id: 'pip', name: 'Pip the Courier', portrait: '🐿️', at: 'lookout', dx: 170, dy: 40, activity: 'wander', look: look('#c16d59', 'ears', { hatColor: '#a0522d', small: true }), lines: ['So cold! Even my tail is shivering.'], barks: ['Brrr!'] },
+    { id: 'vale', name: 'Astronomer Vale', portrait: '🔭', at: 'observatory', dx: -60, dy: 60, activity: 'idle', look: look('#8a6fb0', 'wizard', { hatColor: '#5b5480', beard: true, hair: '#8a8a8a' }), lines: ['The sky is a map, if you know how to read it.'], barks: ['Fascinating…'] },
+    { id: 'brun', name: 'Goatherd Brun', portrait: '🐐', at: 'terrace', dx: 60, dy: 60, activity: 'farm', look: look('#a0785a', 'scarf', { hatColor: '#8a3b2f', beard: true }), lines: ['My goats climb higher than any hero.'], barks: ['Come back, Bramble!'] },
+    { id: 'sella', name: 'Monk Sella', portrait: '🧘', at: 'skyhold', dx: -90, dy: -30, activity: 'sweep', look: look('#c9a24c', 'hood', { hatColor: '#a8844a' }), lines: ['We pray for the star every hour.'], barks: ['Peace be with you.'] },
+    { id: 'orla', name: 'Smith Orla', portrait: '⚒️', at: 'skyhold', dx: 150, dy: 80, activity: 'hammer', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: ['Starsilver sings when you strike it.'], barks: ['Clang!'] },
+    { id: 'dov', name: 'Quartermaster Dov', portrait: '💂', at: 'pass', dx: 80, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a', beard: true }), lines: ['Nobody crosses the pass without my say-so. Except wisps. They don’t ask.'], barks: ['Halt! Oh, it’s you.'] },
+    { id: 'aune', name: 'Healer Aune', portrait: '👩‍⚕️', at: 'hamlet', dx: 150, dy: -40, activity: 'idle', look: look('#7a9aba', 'bonnet', { hatColor: '#e8e2d0' }), lines: ['Frostbite, starburn, heartache — I treat them all.'], barks: ['Keep your hands warm!'] },
+    { id: 'ren', name: 'Pilgrim Ren', portrait: '🧳', at: 'hamlet', to: 'observatory', activity: 'travel', look: look('#b07a9a', 'scarf', { hatColor: '#8a4f6a' }), lines: ['I walk to the observatory and back, every day, for luck.'], barks: ['One more step…'] },
+    { id: 'kiri', name: 'Little Kiri', portrait: '👧', at: 'hamlet', dx: 120, dy: 200, activity: 'play', look: look('#8ee8ff', 'none', { small: true, hair: '#d9c08a' }), lines: ['Snowball fight! You can’t dodge forever!'], barks: ['Snowball!'] },
+    { id: 'hale', name: 'Woodcutter Hale', portrait: '🪓', at: 'hamlet', dx: -330, dy: -260, activity: 'chop', look: look('#8a5a3a', 'cap', { hatColor: '#6b3f2a', beard: true }), lines: ['Frostpine burns bright. Worth the climb.'], barks: ['Timber!'] },
+  ],
+  quests: [
+    q({ id: 'wisps', title: 'Wisps for the Telescope', giver: 'vale', kind: 'collect', count: 5, near: 'tarn', item: 'Star wisp', icon: 'bug', summary: 'Catch star wisps around Mirrorsky Tarn.', reward: { xp: 140, hearts: 1 },
+      text: { offer: ['Five star wisps escaped my telescope. They drift around Mirrorsky Tarn.', 'Without them I cannot chart the way to the Cradle.'], progress: ['Glittering little things, by the tarn.'], complete: ['Wonderful! The constellations make sense again.', 'Wear this starsilver cloak.'], after: ['The stars align nicely tonight.'] } }),
+    q({ id: 'lens', title: 'Pip’s Brass Lens', giver: 'pip', kind: 'collect', count: 1, near: 'crystal', item: 'Brass lens', icon: 'gem', summary: 'Find Pip’s lens in Crystal Hollow.', reward: { xp: 110, regen: .8 },
+      text: { offer: ['I climbed all this way and dropped my brass lens!', 'It rolled toward Crystal Hollow.'], progress: ['Crystal Hollow is north.'], complete: ['My lens! Now I can see the whole valley!', 'Last biscuit, just for you.'], after: ['Everything looks so tiny from up here.'] } }),
+    q({ id: 'herd', title: 'Wisps in the Herd', giver: 'brun', kind: 'slay', count: 6, enemy: 'wisp', summary: 'Defeat void wisps.', reward: { xp: 170 },
+      text: { offer: ['Void wisps spook my goats right off the cliffs!', 'Six of them, and the herd can graze in peace.'], progress: ['Wisps dart side to side. Spark finds them for you.'], complete: ['The goats are grazing again! Have some goat cheese. It’s… strong.'], after: ['Maaa!'] } }),
+    q({ id: 'scroll', title: 'A Prayer for the Pass', giver: 'sella', kind: 'deliver', count: 1, to: 'dov', item: 'Prayer scroll', summary: 'Bring Sella’s prayer scroll to Quartermaster Dov.', reward: { xp: 130 },
+      text: { offer: ['The guards at Silver Pass have lost hope.', 'Please bring this prayer scroll to Quartermaster Dov.'], progress: ['Silver Pass Camp is north of the terrace.'], complete: [], after: ['May the star return.'], deliver: ['A prayer from Skyhold? Hm. It does help, actually.', 'Thank you, Mira.'] } }),
+    q({ id: 'frostbloom', title: 'Frostbloom Tonic', giver: 'aune', kind: 'collect', count: 6, near: 'bloom', item: 'Frostbloom', icon: 'flower', summary: 'Pick frostbloom in the Starbloom Grove.', reward: { xp: 150, mana: 14 },
+      text: { offer: ['Frostblooms make the best tonic against the cold.', 'Six from the Starbloom Grove, far north.'], progress: ['They sparkle like frost on petals.'], complete: ['A tonic fit for a hero. (+14 max mana)'], after: ['Warm hands, warm heart.'] } }),
+    q({ id: 'pass', title: 'Hold the Pass', giver: 'dov', kind: 'slay', count: 8, enemy: 'any', summary: 'Defeat any creatures of the void.', reward: { xp: 200, hearts: 1 },
+      text: { offer: ['The void sends creature after creature at my camp.', 'Defeat eight and we can hold the pass.'], progress: ['Any creature. They’re all trouble.'], complete: ['Eight! You fight like a whole squad.', 'Take my old starsilver guard.'], after: ['The pass holds.'] } }),
+    q({ id: 'altar', title: 'The Pilgrim’s Path', giver: 'ren', kind: 'visit', count: 1, place: 'altar', summary: 'Visit the Star Altar in the east.', reward: { xp: 140 },
+      text: { offer: ['I’ve walked to the observatory a thousand times, but never to the Star Altar.', 'Would you go for me? Tell me if it still shines.'], progress: ['The Star Altar lies east of the terrace.'], complete: ['It shines? Then I will walk there tomorrow.'], after: ['One more step, and another.'] } }),
+    q({ id: 'kite', title: 'Kiri’s Star Kite', giver: 'kiri', kind: 'collect', count: 1, near: 'terrace', item: 'Star kite', icon: 'toy', summary: 'Find Kiri’s kite near the Goatherd’s Terrace.', reward: { xp: 100 },
+      text: { offer: ['The wind stole my star kite!', 'It flew toward the goats. They might be eating it!'], progress: ['It has a long sparkly tail!'], complete: ['My kite! Only a little goat-nibbled!'], after: ['Wheee!'] } }),
+    q({ id: 'chips', title: 'Starsilver Chips', giver: 'orla', kind: 'collect', count: 5, near: 'spire', item: 'Crystal chip', icon: 'gem', summary: 'Gather crystal chips around the Broken Spire.', reward: { xp: 150, mana: 12 },
+      text: { offer: ['Starsilver needs crystal chips from the Broken Spire.', 'Five should do. Watch for wisps up there.'], progress: ['They glow violet. Hard to miss.'], complete: ['Perfect chips! I forged you a charm. (+12 max mana)'], after: ['Clang! That’s the sound of progress.'] } }),
+  ],
+  lore: [
+    { at: 'crystal', name: 'Crystal tablet', text: ['“The crystals grow where starlight pools. Each hums the note of the star that made it.”'] },
+    { at: 'bloom', name: 'Frosted stone', text: ['“Starblooms open only when someone is watching the sky. Nobody knows who watches the flowers.”'] },
+    { at: 'spire', name: 'Spire fragment', text: ['“The spire once reached the fallen star. It fell with it, and still points the way.”'] },
+    { at: 'cradle', name: 'Cradle-stone', text: ['“Every star is a heart. A hollow heart can be filled again — with light, with shards, with courage.”'] },
+    { at: 'observatory', name: 'Brass plaque', text: ['“Observatory of the Silver Heights. Please do not feed the comets.”'] },
+  ],
+  script: {
+    keyLabel: 'Star shards', bossName: 'The Hollow Star', bossTitle: 'Heart of the Fallen Light', finaleName: 'Star Cradle',
+    guide: {
+      intro: n => ['You made it to the Summit. The fallen star was hollowed out by the dark — and now it hunts.', `Three star shards can crack its shell. You carry ${n} of 3: Crystal Hollow, the Void Rift and the Broken Spire hold them.`, 'The Star Cradle lies in the far north-east. Grow strong — Starfall is learned at level 10.'],
+      ready: ['The shards are bright enough. The Hollow Star waits at the Cradle.', 'It spirals void-light, rains meteors, and blinks right next to you. Stay brave.'],
+      done: ['The sky is whole again.'],
+    },
+    shrine: { bless: ['The altar opens to the sky. A star answers your call.', 'The stars bless you. (+Experience, full health and magic)'], again: ['The altar glitters like a tiny night sky.'] },
+    finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['The Hollow Star circles the Cradle. Defeat it!'], done: ['You lay the shards into the Cradle. The star remembers its light and rises home.', 'Every beacon in the valley blazes at once.'] },
+    pickupKey: 'Star shard gathered. {n}/3',
+    sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall (T) turns the sky on your enemies.',
+    victory: { title: 'The star rises home.', text: 'The Hollow Star shines whole again and returns to the sky. Mira and the fox watch every light in the valley wake at once.' },
+  },
+};
+
+const SPECS: Record<LevelId, ChapterSpec> = { meadow, woods, summit };
+const cache = new Map<LevelId, WorldDefinition>();
+/** Worlds are generated on first use (a few milliseconds) and then cached. */
+export function getWorld(id: LevelId): WorldDefinition {
+  let w = cache.get(id);
+  if (!w) { w = buildWorld(SPECS[id]); cache.set(id, w); }
+  return w;
+}
+/** Menu metadata without generating the map. */
+export const WORLDS: Record<LevelId, Pick<WorldDefinition, 'id' | 'chapter' | 'title' | 'subtitle' | 'levelHint' | 'script'>> = SPECS;

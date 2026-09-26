@@ -1,6 +1,6 @@
 # Starfall Grove
 
-A responsive single-player 2D action-RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API; React handles menus, HUD, touch controls, dialogue and the journal. Sound effects are synthesized with Web Audio, so there are no asset files.
+A responsive single-player 2D action RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API, and React handles the menus, HUD, touch controls, dialogue, journal and map. All music and sound are synthesized live with Web Audio, so there are no asset files.
 
 ## Run the project
 
@@ -13,48 +13,120 @@ npm run build    # production build
 npm run preview  # preview the build
 ```
 
-## Chapters, spells and guardians
+Every push to `master` deploys to GitHub Pages through `.github/workflows/deploy.yml`.
 
-Each chapter teaches a new spell at its shrine and ends with a boss that has its own attack patterns and an enraged second phase.
+## The world
 
-| Chapter | New spell | Boss | Boss attacks |
-| --- | --- | --- | --- |
-| I · Sunpetal Meadow | **Sunfire** (R): exploding sun orb | Mossback | Ground slam, boulder barrage, summons Gloomlings |
-| II · Whisperroot Woods | **Moss Shield** (F): blocks damage, reflects projectiles | Bramble Warden | Thorn nova rings, racing root lines, bramble charge |
-| III · Starfall Summit | **Starfall** (T): meteor shower on nearby foes | The Hollow Star | Void spiral, meteor rain, blink-and-slam |
+Each chapter is a large open map of 9600 × 6720 px, about 10× bigger than before. Every map has:
 
-Always available: **Spark** (J / Space, homing and can crit), **Dash** (Shift / K, you can't be hit while dashing) and **Leaf Burst** (Q).
+- **13 named places:** villages, farms, camps, ruins, lakes, creature lairs, groves, a shrine, a lookout and the guardian's lair.
+- **Roads between the places**, with signposts that point the way.
+- **Forests shaped by noise**, open meadows and extra ponds between them.
+- **Fog of war:** the minimap and the full map (M) reveal the world as you explore.
+- **Discovery rewards:** a new place gives XP and becomes a resting point.
 
-Every chapter also has three key items that break the boss seal, two side quests (+1 max heart, faster mana), breakable glow pods that drop mana and hearts, and enemies that wander, notice you and chase.
+The world lives on its own:
 
-## Living world
+- **Villagers:** they sweep, hammer, farm, chop wood, fish, patrol, play tag and travel the roads between villages. They call out to you as you pass.
+- **Animals:** rabbits, deer, squirrels, goats, frogs and ducks run away from you, and birds take flight.
+- **Buildings:** chimneys smoke, windmills turn, and in the woods and on the summit house windows glow at night.
 
-Trees and grass sway in the wind, and grass bends as Mira walks through it. Leaves and petals fall, butterflies and fireflies drift, water ripples and sparkles, and cloud shadows pass over the meadow. The woods and summit use dynamic lighting from lanterns, spells, mushrooms and crystals. Combat adds screen shake, hit-stop, particles, combo counts, damage numbers and cinematic boss intros. It respects `prefers-reduced-motion`.
+Things to find:
+
+- Chests (loot and XP)
+- Runestones with lore (XP the first time you read one)
+- Wells and campfires (restore health and set your resting point)
+- Glow pods (mana and hearts)
+
+## Levels, spells and quests
+
+Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing quests, opening chests, reading runestones and discovering places all give XP. Levelling up restores health and magic, raises max mana and spell power, and adds hearts at levels 4, 8 and 12.
+
+| Level | Spell learned |
+| --- | --- |
+| 1 | Spark (J / Space), Dash (Shift / K) |
+| 2 | Leaf Burst (Q) |
+| 4 | Sunfire (R) |
+| 7 | Moss Shield (F) |
+| 10 | Starfall (T) |
+
+Level, XP and quest rewards carry over between chapters.
+
+**Main quest:** talk to the guide, find three key items spread across the map, defeat the guardian, then restore the finale.
+
+**Side quests:** each chapter has 9, of four kinds:
+
+- **Collect:** gather items in a named area.
+- **Slay:** defeat a number of creatures.
+- **Deliver:** carry an item to someone in another village.
+- **Visit:** travel to a distant place.
+
+NPC markers show where quests are: **!** means a quest is available, **?** means one is ready to hand in. Click a quest in the journal to follow it; a green arrow then points to its goal.
+
+Creatures respawn after a while so you can keep levelling. Lairs hold packs with a gold-starred elite.
+
+| Chapter | Guardian | Guardian level |
+| --- | --- | --- |
+| I · Sunpetal Meadow | Mossback | 4+ |
+| II · Whisperroot Woods | Bramble Warden | 8+ |
+| III · Starfall Summit | The Hollow Star | 12+ |
+
+## Sound and music
+
+- **Music:** composed themes for the menu, each chapter, boss fights and victory (`music.ts`). They crossfade, and chapter themes add a percussion layer when creatures are near.
+- **Custom music files:** to use recorded tracks instead, add them under `public/music/` with a `manifest.json` such as `{ "meadow": "meadow.mp3" }`.
+- **Sound effects:** layered and positional, so they pan and fade with distance, with a shared reverb.
+- **Ambience:** birds, crickets, owls, dripping water, wind and crystal chimes per chapter. Water and campfires get louder as you walk near them.
+- **Footsteps:** they change with the ground (grass, road, stone, snow).
+- **Volume:** master, music and effects sliders in the pause menu.
+
+## Performance
+
+- **Ground:** pre-rendered into cached 512 px chunks.
+- **Trees and buildings:** cached sprites that sway with a cheap skew.
+- **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
+- **Distant entities:** creatures, villagers and animals far from Mira sleep.
+- **Resolution:** canvas resolution is capped by a pixel budget.
+- **Adaptive quality:** ambient detail thins out if frames run long.
 
 ## Controls
 
-**Keyboard:** WASD / arrows move · J / Space Spark · Shift / K Dash · Q Leaf Burst · R Sunfire · F Moss Shield · T Starfall · E / Enter interact · Tab journal · M mute · Esc pause.
+**Keyboard:**
 
-**Touch:** virtual joystick on the left, spell wheel on the right. The layout switches automatically on touch devices.
+- Move: WASD / arrows
+- Spells: J / Space Spark · Shift / K Dash · Q Leaf Burst · R Sunfire · F Moss Shield · T Starfall
+- E / Enter interact · M map · Tab journal · N mute · Esc pause
+
+**Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices.
 
 ## Project structure
 
 ```text
 src/
-  App.tsx              Screens, HUD, banners, dialogue, journal, touch controls
+  App.tsx              Screens, HUD, banners, dialogue, journal, map overlay, touch controls
   TitleBackdrop.tsx    Animated night-sky menu background
   styles.css           Visual system and animation library
   game/
     types.ts           Shared game types
-    spells.ts          Spell table and per-chapter unlocks
-    worlds.ts          Three chapter maps, scripts and procedural scenery
-    engine.ts          Movement, combat, boss AI, quests, particles, saves
-    render.ts          Canvas renderer: scenery, characters, effects, lighting, minimap
-    audio.ts           Synthesized sound effects
-    GameCanvas.tsx     Game loop and autosave
+    spells.ts          Spell table and unlock levels
+    progression.ts     Levels, XP curve and the hero profile that carries between chapters
+    worlds.ts          Chapter layouts: places, people, quests, lore and scripts
+    worldgen.ts        Builds each map: roads, villages, forests, creatures, loot, critters
+    spatial.ts         Uniform grid for fast proximity and view queries
+    engine.ts          Movement, combat, bosses, quests, villagers, wildlife, exploration, saves
+    render.ts          Canvas renderer: ground chunks, sprites, characters, lighting, minimap, world map
+    audio.ts           Audio core, sound effects, footsteps and ambient soundscapes
+    music.ts           Music sequencer and composed themes
+    GameCanvas.tsx     Game loop, pixel budget, adaptive quality, music switching, autosave
     storage.ts         In-chapter save helpers
 ```
 
 ## Save data
 
-Progress is stored in browser storage on the current device (campaign `starfall-grove-save-v2`, plus a per-chapter session save). Chapters cleared under the old two-chapter save carry over.
+Progress is stored in browser storage on the current device:
+
+- `starfall-grove-save-v2`: chapters completed and stars.
+- `starfall-grove-hero-v1`: level, XP and quest rewards.
+- `starfall-grove-session-v3-<chapter>`: the in-chapter state (position, quests, chests, explored map).
+
+A chapter in progress under the older save format starts fresh; completed chapters are kept.
