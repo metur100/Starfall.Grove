@@ -1,3 +1,4 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-export default defineConfig({ plugins: [react()] });
+// Relative base so the build works under the GitHub Pages sub-path (/Starfall.Grove/).
+export default defineConfig({ base: './', plugins: [react()] });
