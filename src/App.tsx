@@ -44,6 +44,7 @@ function App() {
   const [journal, setJournal] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number; active: boolean }>({ ox: 0, oy: 0, x: 0, y: 0, active: false });
+  const stickOrigin = useRef<{ ox: number; oy: number } | null>(null);
   const [muted, setMuted] = useState(sfx.isMuted());
   const [chapterBanner, setChapterBanner] = useState(0);
   const [zone, setZone] = useState<{ name: string; discovered: boolean; key: number } | null>(null);
@@ -72,7 +73,7 @@ function App() {
   const onSnapshot = useCallback((state: GameSnapshot) => setSnapshot(state), []);
   const onEvent = useCallback((event: EngineEvent) => {
     switch (event.type) {
-      case 'dialogue': engineRef.current?.setMovement(0, 0); setStick(s => ({ ...s, x: 0, y: 0, active: false })); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then }); break;
+      case 'dialogue': engineRef.current?.setMovement(0, 0); stickOrigin.current = null; setStick(s => ({ ...s, x: 0, y: 0, active: false })); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then }); break;
       case 'notice': notify(event.text, event.tone); break;
       case 'zone': setZone(z => ({ name: event.name, discovered: event.discovered, key: (z?.key || 0) + 1 })); break;
       case 'spellLearned': setSpellQueue(q => [...q, event.spell]); break;
@@ -96,7 +97,7 @@ function App() {
   const startGame = (id: LevelId, fresh = false) => {
     sfx.unlock();
     if (fresh) clearSession(id);
-    setLevelId(id); setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setStick({ ox: 0, oy: 0, x: 0, y: 0, active: false });
+    setLevelId(id); setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); stickOrigin.current = null; setStick({ ox: 0, oy: 0, x: 0, y: 0, active: false });
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setToasts([]); setChapterBanner(b => b + 1); setMode('play');
   };
   const newGame = () => { for (const id of LEVEL_ORDER) clearSession(id); resetProfile(); const s = blankSave(); setSave(s); saveNow(s); startGame('meadow', true); };
@@ -162,26 +163,28 @@ function App() {
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); keys.current.clear(); engineRef.current?.setMovement(0, 0); };
   }, [mode]);
-  useEffect(() => { if (paused || dialogue || mapOpen) keys.current.clear(); }, [paused, dialogue, mapOpen]);
+  useEffect(() => { if (paused || dialogue || mapOpen) { keys.current.clear(); engineRef.current?.setMovement(0, 0); } }, [paused, dialogue, mapOpen]);
 
   const isGamePaused = paused || !!dialogue || mapOpen || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
+  // Movement is driven synchronously from the pointer events; React state is only for drawing the stick.
+  // (Calling the engine inside a setState updater let a stale, deferred move land after release.)
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
     const r = el.getBoundingClientRect();
+    stickOrigin.current = { ox: clientX - r.left, oy: clientY - r.top };
     setStick({ ox: clientX - r.left, oy: clientY - r.top, x: 0, y: 0, active: true });
   };
   const stickMove = (el: HTMLDivElement, clientX: number, clientY: number) => {
+    const o = stickOrigin.current; if (!o) return;
     const r = el.getBoundingClientRect();
-    setStick(s => {
-      let x = (clientX - r.left - s.ox) / STICK_R, y = (clientY - r.top - s.oy) / STICK_R;
-      const mag = Math.hypot(x, y); if (mag > 1) { x /= mag; y /= mag; }
-      const dead = mag < .12 ? 0 : 1;
-      engineRef.current?.setMovement(x * dead, y * dead);
-      return { ...s, x, y };
-    });
+    let x = (clientX - r.left - o.ox) / STICK_R, y = (clientY - r.top - o.oy) / STICK_R;
+    const mag = Math.hypot(x, y); if (mag > 1) { x /= mag; y /= mag; }
+    const dead = mag < .12 ? 0 : 1;
+    engineRef.current?.setMovement(x * dead, y * dead);
+    setStick(s => ({ ...s, x, y }));
   };
-  const stickEnd = () => { setStick(s => ({ ...s, x: 0, y: 0, active: false })); engineRef.current?.setMovement(0, 0); };
+  const stickEnd = () => { stickOrigin.current = null; setStick(s => ({ ...s, x: 0, y: 0, active: false })); engineRef.current?.setMovement(0, 0); };
   const tracked = snapshot?.quests.find(q => q.tracked && q.status !== 'done');
 
   return <div className={`app-shell mode-${mode}`}>
