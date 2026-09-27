@@ -56,6 +56,9 @@ export default function GameCanvas({ runKey, paused, graphics, touch, onReady, o
       }
       if (!pausedRef.current) engine.update(dt); else engine.settleFx(dt);
       renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
+      // The touch prompt follows the person in reach; styles are written directly so the HUD doesn't re-render every frame.
+      const stage = canvas.parentElement, ns = renderer.nearScreen;
+      if (stage && ns) { stage.style.setProperty('--near-x', `${Math.round(ns.x)}px`); stage.style.setProperty('--near-y', `${Math.round(ns.y)}px`); }
       const busy = (performance.now() - now) / 1000;
       if (quality === 'auto' && raw > 0 && raw < .25 && !pausedRef.current && now > calmUntil) {
         frameSum += raw; busySum += busy; frames++;

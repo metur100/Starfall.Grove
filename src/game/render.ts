@@ -134,6 +134,8 @@ export class Renderer {
   private roadBoxes: Array<{ pts: Point[]; x0: number; y0: number; x1: number; y1: number }> = [];
   private draws: Array<{ y: number; run: () => void }> = [];
   private near: ReturnType<GameEngine['nearest']> = null;
+  /** Screen position (CSS px) just above the nearby person or object, or null when nothing is in reach. */
+  nearScreen: Point | null = null;
   /** 1 = full detail, .75 balanced, .5 low (weak tablets): fewer glows, particles and screen effects. */
   quality = 1;
   /** Touch devices have no keyboard, so key hints are left out. */
@@ -216,6 +218,10 @@ export class Renderer {
     ctx.restore();
 
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
+    // Where the touch "Talk" button goes: just above the head of whoever (or whatever) is in reach.
+    const nr = this.near;
+    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
+    else this.nearScreen = null;
     const dark = this.darkAt(world, camX + vw / 2);
     if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, amb === 'stars');
     if (amb === 'leaves' && rich && this.weather) this.drawGodRays(ctx, w, h);

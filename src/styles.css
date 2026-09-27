@@ -502,8 +502,11 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .lands p { display: flex; justify-content: space-between; margin: 6px 0 0; font-size: 13px; }
 .lands p span { color: var(--muted); font-weight: 800; }
 /* Phone prompt: just the action word, as a small pill. */
-.near-prompt.compact { padding: 7px 18px; gap: 0; }
-.near-prompt.compact span { font: 900 14px var(--ui); color: var(--gold); letter-spacing: .04em; }
+/* Touch prompt: a yellow pill with dark text, floating just above the person or object in reach. */
+.near-prompt.compact { left: clamp(48px, var(--near-x, 50%), calc(100% - 48px)); top: clamp(64px, var(--near-y, 40%), calc(100% - 60px)); bottom: auto; transform: translate(-50%, -100%); padding: 8px 22px; gap: 0; border: 2px solid #fff1c0; background: linear-gradient(180deg, #ffe49a, #f5c04a 60%, #e8a13a); box-shadow: 0 4px 14px rgba(0, 0, 0, .45), 0 0 18px rgba(245, 190, 90, .5); animation: prompt-float 1.6s ease-in-out infinite; }
+.near-prompt.compact::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; margin-left: -6px; background: #e8a13a; border-right: 2px solid #fff1c0; border-bottom: 2px solid #fff1c0; transform: rotate(45deg); }
+@keyframes prompt-float { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 4px)); } }
+.near-prompt.compact span { position: relative; z-index: 1; font: 900 15px var(--ui); color: #2a1a08; letter-spacing: .04em; }
 .region-banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; text-align: center; animation: level-in 4.2s ease both; white-space: nowrap; }
 .region-banner small { font: 800 12px var(--ui); letter-spacing: .45em; text-transform: uppercase; color: var(--gold); text-shadow: 0 2px 10px #000; }
 .region-banner h3 { margin: 0; font: 900 clamp(26px, 4.5vw, 46px)/1.1 var(--deco); color: #fff4d6; text-shadow: 0 3px 18px rgba(0, 0, 0, .8), 0 0 30px rgba(245, 210, 122, .4); }
@@ -546,9 +549,6 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .level-banner { top: 16%; } .level-banner b { font-size: 56px; }
   .chapter-banner h2 { font-size: 44px; } .chapter-banner small { font-size: 11px; }
   .combo { top: 40%; } .combo b { font-size: 30px; }
-  /* Bottom centre is free between the joystick and the spell wheel, and never covers the person being talked to. */
-  .near-prompt { top: auto; bottom: 14px; }
-  .near-prompt.compact { padding: 10px 28px; }
   .zone-banner { max-width: 100%; overflow: hidden; text-overflow: ellipsis; gap: 8px; }
   /* Dialogue: short and wide, with Accept on the right where the "continue" hint was. */
   .dialogue { bottom: 8px; padding: 10px 12px; gap: 10px; width: min(820px, calc(100% - 16px)); border-radius: 18px; }
