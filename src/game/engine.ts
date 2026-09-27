@@ -1,12 +1,12 @@
 import { ambience, footstep, sfx, type Sfx } from './audio';
 import { ITEMS, ITEM_ORDER, rollItem } from './items';
 import { HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, upgradeCost, xpToNext, type Profile } from './progression';
-import { SPELLS, SPELL_ORDER } from './spells';
+import { HEROES, SPELLS } from './spells';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
 import type {
-  CritterKind, EngineEvent, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
+  CritterKind, EngineEvent, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
   QuestDef, QuestOffer, QuestRow, QuestState, Region, RegionId, SpellId, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
@@ -16,6 +16,8 @@ export type Hero = {
   dashTime: number; dashX: number; dashY: number; castTime: number;
   /** Seconds left of being slowed by spider silk. */
   slowT: number;
+  /** Kael: seconds left of Bladestorm, and whether the current dash is a Charge. */
+  stormT: number; stormTick: number; charging: boolean;
 };
 export type Enemy = EnemySeed & {
   hp: number; maxHp: number; r: number; dead: boolean; deadT: number; cd: number; windup: number; hitFlash: number;
@@ -24,7 +26,7 @@ export type Enemy = EnemySeed & {
   pattern: number; summons: number; chargeX: number; chargeY: number; lunge: number; angle: number; summoned?: boolean;
   /** 0 calm → 1 attacking; drives the red aggro tint. */
   rage: number;
-  /** Seconds left of a Chain Lightning stun; `blinkT` counts down to a frost wraith's next blink. */
+  /** Seconds left of a stun; `blinkT` counts down to a frost wraith's next blink. */
   stunT: number; blinkT: number;
 };
 export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string };
@@ -37,7 +39,8 @@ export type Orb = { x: number; y: number; vx: number; vy: number; kind: 'mana' |
 export type Pod = { id: number; x: number; y: number; dead: boolean; hitT: number };
 export type FloatText = { x: number; y: number; text: string; life: number; max: number; color: string; size: number };
 export type Afterimage = { x: number; y: number; life: number; faceX: number };
-export type Bolt = { ax: number; ay: number; bx: number; by: number; life: number; max: number; seed: number };
+/** Kael's sword swings, drawn as a fading arc. */
+export type Slash = { x: number; y: number; angle: number; life: number; max: number; reach: number };
 export type EngineSave = {
   version: 4; hero: { x: number; y: number; hp: number; mana: number }; main: MainQuest; quests: Record<string, QuestState>; got: string[];
   opened: string[]; read: string[]; discovered: string[]; explored: string; brokenPods: number[]; checkpoint: Point; elapsed: number; defeated: number;
@@ -69,7 +72,7 @@ const ENEMY_STATS: Record<EnemyKind, { hp: number; r: number; speed: number; nam
 };
 const hpMul = (level: number) => 1.5 * (1 + .3 * (level - 1));
 /** Damage of one ordinary creature hit at a level, in health points. */
-const hitAt = (level: number) => 10 + 4 * level;
+const hitAt = (level: number) => 12 + 5.5 * level;
 const BOSS_PATTERNS: Record<string, BossAction[][]> = {
   mossback: [['slam', 'boulders', 'slam', 'boulders'], ['boulders', 'slam', 'charge', 'boulders', 'slam', 'charge']],
   brambleWarden: [['nova', 'roots', 'slam', 'charge'], ['nova', 'charge', 'roots', 'nova', 'slam', 'roots']],
@@ -107,7 +110,11 @@ export class GameEngine {
   readonly orbs: Orb[] = [];
   readonly floating: FloatText[] = [];
   readonly afterimages: Afterimage[] = [];
-  readonly bolts: Bolt[] = [];
+  readonly slashes: Slash[] = [];
+  readonly heroId: HeroId;
+  /** This hero's abilities, in button order. */
+  readonly spellIds: SpellId[];
+  private chargeHit = new Set<Enemy>();
   readonly main: MainQuest = { keys: [], bosses: [], finales: [] };
   readonly quests = new Map<string, QuestState>();
   readonly got = new Set<string>();
@@ -155,12 +162,13 @@ export class GameEngine {
   private markerCache = new Map<string, { mark: '!' | '?'; main: boolean } | null>();
   private markerCacheVersion = -1;
 
-  constructor(onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
+  constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
+    this.heroId = heroId; this.spellIds = HEROES[heroId].spells;
     this.world = getWorld(); this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
-    this.profile = loadProfile();
-    const cds = Object.fromEntries(SPELL_ORDER.map(s => [s, 0])) as Record<SpellId, number>;
+    this.profile = loadProfile(heroId);
+    const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
-    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0 };
+    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false };
     this.obstacleGrid = new Grid(256, this.world.obstacles);
     this.roads = new RoadIndex(this.world.roads);
     this.enemies = this.world.enemies.map(seed => this.makeEnemy(seed));
@@ -222,7 +230,9 @@ export class GameEngine {
 
   // ───────────────────────────── helpers
   private notice(text: string, tone: NoticeTone = 'info', short?: string) { this.eventHandler({ type: 'notice', text, tone, short }); }
-  private say(speaker: string, portrait: string, lines: string[], then?: 'complete') { if (!lines.length) return; sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker, portrait, lines, then }); }
+  /** The story is written for Mira; other heroes get their own name in it. */
+  private personal(lines: string[]) { if (this.heroId === 'mira') return lines; const n = HEROES[this.heroId].name; return lines.map(l => l.replace(/\bMira\b/g, n).replace(/\bgirl with the fox\b/g, 'lad with the fox').replace(/\b([Mm])y brave girl\b/g, '$1y brave lad')); }
+  private say(speaker: string, portrait: string, lines: string[], then?: 'complete') { if (!lines.length) return; sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker, portrait, lines: this.personal(lines), then }); }
   private play(s: Sfx, pos?: Point) { sfx.play(s, pos); }
   regionAt(x: number): Region { const r = this.world.regions; return r[clamp(Math.floor(x / REGION_W), 0, r.length - 1)]; }
   region(id: RegionId) { return this.world.regions.find(r => r.id === id)!; }
@@ -273,7 +283,7 @@ export class GameEngine {
       this.emit(h.x, h.y, 60, ['#fff1b8', '#ffd35c', '#ffffff', '#b9f29d'], { speed: 300, life: 1.3, kind: 'star', glow: true, size: 6 });
       this.ring(h.x, h.y, 200, '#ffd35c', .9); this.flash = .45; this.play('levelUp');
       this.eventHandler({ type: 'levelUp', level: p.level });
-      for (const id of SPELL_ORDER) if (SPELLS[id].level === p.level) this.eventHandler({ type: 'spellLearned', spell: id });
+      for (const id of this.spellIds) if (SPELLS[id].level === p.level) this.eventHandler({ type: 'spellLearned', spell: id });
     }
     if (p.level >= MAX_LEVEL) p.xp = 0;
     saveProfile(p);
@@ -303,14 +313,16 @@ export class GameEngine {
     if (!this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
     if (id === 'spark') return this.attack();
     if (id === 'dash') return this.dash();
+    if (id === 'slash') return this.swordSlash();
+    if (id === 'charge') return this.charge();
     if (h.cds[id] > 0) { this.play('nope'); return; }
     if (h.mana < info.cost) { this.play('nope'); this.notice('Not enough magic! Break glow pods and defeat creatures for mana.', 'warn', 'No magic'); return; }
-    if (id === 'chain' && !this.nearestTarget(420, true)) { this.play('nope'); this.notice('No creature close enough for Chain Lightning.', 'warn', 'No target'); return; }
     h.mana -= info.cost; h.cds[id] = info.cooldown; h.castTime = .3;
-    if (id === 'chain') this.chainLightning();
-    else if (id === 'sunfire') this.sunfire();
-    else if (id === 'shield') this.mossShield();
+    if (id === 'sunfire') this.sunfire();
+    else if (id === 'shield' || id === 'guard') this.mossShield();
     else if (id === 'starfall') this.starfall();
+    else if (id === 'slam') this.earthsplitter();
+    else if (id === 'bladestorm') this.bladestorm();
   }
   private attack() {
     const h = this.hero; if (h.cds.spark > 0) return;
@@ -333,22 +345,62 @@ export class GameEngine {
     this.emit(h.x, h.y + 14, 14, ['#e9f7ff', '#bfe8ff', '#ffffff'], { speed: 140, life: .45, kind: 'smoke', size: 7, angle: Math.atan2(-dy, -dx), spread: 1.6 });
     this.play('dash');
   }
-  /** Lightning leaps from creature to creature, weaker with every jump, and stuns each one briefly. */
-  private chainLightning() {
-    const h = this.hero, hit = new Set<Enemy>();
-    let from: Point = { x: h.x + h.faceX * 16, y: h.y - 26 }, dmg = 26 * this.power;
-    for (let i = 0; i < 5; i++) {
-      let best: Enemy | null = null, bd = i === 0 ? 420 : 300;
-      for (const e of this.enemies) { if (e.dead || e.spawnT > 0 || hit.has(e) || !this.canHurt(e) || Math.abs(e.x - from.x) > bd || Math.abs(e.y - from.y) > bd) continue; const d = dist(from, e); if (d < bd) { bd = d; best = e; } }
-      if (!best) break;
-      hit.add(best);
-      this.bolts.push({ ax: from.x, ay: from.y, bx: best.x, by: best.y - 12, life: .32, max: .32, seed: Math.random() * 100 });
-      this.emit(best.x, best.y - 10, 12, ['#e8f8ff', '#8fd8ff', '#ffffff'], { speed: 220, life: .35, glow: true, size: 3 });
-      if (!best.boss) { best.stunT = .8; best.windup = 0; best.lunge = 0; }
-      this.damageEnemy(best, dmg);
-      from = { x: best.x, y: best.y - 12 }; dmg *= .85;
+  // ───────────────────────────── Kael's abilities
+  /** A wide sword arc in front of Kael; it turns toward the nearest foe in reach. */
+  private swordSlash() {
+    const h = this.hero; if (h.cds.slash > 0) return;
+    h.cds.slash = SPELLS.slash.cooldown; h.castTime = .26;
+    const t = this.nearestTarget(190);
+    if (t) { const d = Math.max(1, dist(h, t)); h.faceX = (t.x - h.x) / d; h.faceY = (t.y - h.y) / d; }
+    const ang = Math.atan2(h.faceY, h.faceX), reach = 118, crit = Math.random() < .15;
+    this.slashes.push({ x: h.x, y: h.y - 12, angle: ang, life: .22, max: .22, reach });
+    let hits = 0;
+    for (const e of this.enemies) {
+      if (e.dead || e.spawnT > 0 || Math.abs(e.x - h.x) > reach + 60 || Math.abs(e.y - h.y) > reach + 60) continue;
+      const d = dist(h, e); if (d > reach + e.r) continue;
+      let da = Math.atan2(e.y - h.y, e.x - h.x) - ang; da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > 1.25 && d > e.r + 20) continue;
+      this.damageEnemy(e, 15 * this.power * (crit ? 2 : 1), crit); if (!e.boss) this.knock(e, h, 170); hits++;
     }
-    this.flash = Math.max(this.flash, .18); this.addShake(5); this.play('crit'); this.play('spark');
+    for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
+    this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(2 + Math.min(4, hits));
+  }
+  /** Rushes at the nearest foe (or straight ahead); everything in the way is hurt, knocked aside and stunned. */
+  private charge() {
+    const h = this.hero; if (h.cds.charge > 0 || h.dashTime > 0) return;
+    const t = this.nearestTarget(460, true), moving = Math.hypot(this.moveX, this.moveY) > .1;
+    let dx = t ? t.x - h.x : moving ? this.moveX : h.faceX, dy = t ? t.y - h.y : moving ? this.moveY : h.faceY;
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = .34; h.charging = true; h.cds.charge = SPELLS.charge.cooldown; h.slowT = 0;
+    this.chargeHit.clear();
+    this.emit(h.x, h.y + 14, 18, ['#ffd0a0', '#ffb35c', '#ffffff'], { speed: 160, life: .45, kind: 'smoke', size: 8, angle: Math.atan2(-dy, -dx), spread: 1.4 });
+    this.play('dash'); this.play('roar');
+  }
+  /** A shockwave around Kael that hurts and stuns. */
+  private earthsplitter() {
+    const h = this.hero;
+    this.hazards.push({ x: h.x, y: h.y, r: 175, delay: .22, maxDelay: .22, damage: 45 * this.power, level: 0, owner: 'hero', kind: 'slam', fromX: h.x, fromY: h.y });
+    h.castTime = .3; this.addShake(4); this.play('roar');
+  }
+  private bladestorm() { const h = this.hero; h.stormT = 3; h.stormTick = 0; this.play('dash'); this.flash = Math.max(this.flash, .15); }
+  private updateWarrior(dt: number) {
+    const h = this.hero;
+    if (h.dashTime <= 0) h.charging = false;
+    if (h.charging) for (const e of this.enemies) {
+      if (e.dead || e.spawnT > 0 || this.chargeHit.has(e) || Math.abs(e.x - h.x) > 90 || Math.abs(e.y - h.y) > 90 || dist(e, h) > e.r + 34) continue;
+      this.chargeHit.add(e); this.damageEnemy(e, 22 * this.power);
+      if (!e.boss) { e.stunT = 1; e.windup = 0; e.lunge = 0; this.knock(e, { x: e.x - h.dashY * 30 - h.dashX * 10, y: e.y + h.dashX * 30 - h.dashY * 10 }, 420); }
+      this.addShake(6); this.hitStop = Math.max(this.hitStop, .04);
+    }
+    if (h.stormT > 0) {
+      h.stormT -= dt; h.stormTick -= dt;
+      if (Math.random() < dt * 20) { const a = rand(0, 6.28); this.emit(h.x + Math.cos(a) * 60, h.y - 10 + Math.sin(a) * 40, 1, ['#ffd0a0', '#ffffff', '#ff8a6b'], { speed: 120, life: .3, glow: true, size: 3, angle: a + 1.6, spread: .4 }); }
+      if (h.stormTick <= 0) {
+        h.stormTick = .25; this.play('dash');
+        for (const e of this.enemies) if (!e.dead && e.spawnT <= 0 && Math.abs(e.x - h.x) < 200 && Math.abs(e.y - h.y) < 200 && dist(e, h) < 150 + e.r) { this.damageEnemy(e, 14 * this.power); if (!e.boss) this.knock(e, h, 90); }
+        for (const p of this.pods) if (!p.dead && dist(h, p) < 150) this.breakPod(p);
+      }
+    }
   }
   private sunfire() {
     const h = this.hero, target = this.nearestTarget(620);
@@ -424,7 +476,7 @@ export class GameEngine {
   }
   private offerQuest(q: QuestDef, n: Npc, before: string[] = []) {
     const offer: QuestOffer = { id: q.id, title: q.title, summary: q.summary, reward: this.rewardText(q), main: !!q.main };
-    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: [...before, ...q.text.offer], offer });
+    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: this.personal([...before, ...q.text.offer]), offer });
   }
   /** Called by the UI when the player presses Accept on an offer. */
   acceptQuest(id: string) {
@@ -630,7 +682,7 @@ export class GameEngine {
       case 'campfire': {
         this.setCheckpoint(); h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
         this.emit(o.x, o.y - 10, 24, ['#ffcf6e', '#ff9a4a', '#fff1b8'], { speed: 90, life: 1.1, kind: 'ember', glow: true, grav: -40 });
-        this.notice('You rest by the fire. Health and magic restored — Mira will return here if she falls.', 'good', 'Rested');
+        this.notice('You rest by the fire. Fully restored — you will return here if you fall.', 'good', 'Rested');
         return;
       }
       case 'shrine': {
@@ -670,12 +722,12 @@ export class GameEngine {
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
-      return this.say(n.name, n.portrait, ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Health and magic restored — Mira will return here if she falls.)']);
+      return this.say(n.name, n.portrait, ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Fully restored — you will return here if you fall.)']);
     }
     const mine = this.questsFor(n.id);
     const active = mine.find(q => q.main && this.qs(q.id).status === 'active') || mine.find(q => this.qs(q.id).status === 'active');
     if (active) { const st = this.qs(active.id), counted = active.count > 1 && (active.kind === 'collect' || active.kind === 'slay' || active.kind === 'key'); return this.say(n.name, n.portrait, [...active.text.progress, counted ? `(${st.progress}/${active.count})` : ''].filter(Boolean)); }
-    if (n.role === 'guide') { const cur = this.currentMain(), reg = this.region(n.region); return this.say(n.name, n.portrait, m.finales.includes(n.region) || !cur ? reg.script.guide.done : [`${cur.title}: ${cur.summary}`, 'Follow the gold markers, Mira. The valley is counting on you.']); }
+    if (n.role === 'guide') { const cur = this.currentMain(), reg = this.region(n.region); return this.say(n.name, n.portrait, m.finales.includes(n.region) || !cur ? reg.script.guide.done : [`${cur.title}: ${cur.summary}`, `Follow the gold markers, ${HEROES[this.heroId].name}. The valley is counting on you.`]); }
     const done = mine.find(q => this.qs(q.id).status === 'done');
     this.say(n.name, n.portrait, done && Math.random() < .5 ? done.text.after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
   }
@@ -731,8 +783,8 @@ export class GameEngine {
     const drops = e.boss ? 14 : e.summoned ? 1 : e.elite ? 6 : 2;
     for (let i = 0; i < drops; i++) this.spawnOrb(e.x, e.y, Math.random() < (e.boss ? .3 : e.elite ? .3 : .1) ? 'heart' : 'mana');
     if (!e.summoned) { const coins = e.boss ? 10 : e.elite ? 3 : 1 + Number(Math.random() < .4); for (let i = 0; i < coins; i++) this.spawnOrb(e.x, e.y, 'gold', Math.round((2 + e.level * .9) * (e.boss ? 5 : 1))); }
-    const grey = this.profile.level - e.level >= 5 ? .25 : 1;
-    const xp = ENEMY_STATS[e.kind].xp * (e.boss ? 1 : (1 + .22 * (e.level - 1)) * (e.elite ? 3 : e.summoned ? .3 : 1) * grey);
+    const gap = this.profile.level - e.level, grey = gap >= 5 ? .1 : gap >= 3 ? .5 : 1;
+    const xp = ENEMY_STATS[e.kind].xp * (e.boss ? 1 : .5 * (1 + .2 * (e.level - 1)) * (e.elite ? 3 : e.summoned ? .3 : 1) * grey);
     if (e.boss) { this.addItem(rollItem()); this.addItem('healthPotion'); }
     else if (e.elite ? Math.random() < .45 : !e.summoned && Math.random() < .04) this.addItem(e.elite ? rollItem() : 'healthPotion');
     if (e.kind === 'sporecap') this.addHazard(e.x, e.y, 110, .7, 'spore', e, hitAt(e.level) * .8, e.level);
@@ -768,7 +820,7 @@ export class GameEngine {
     const h = this.hero;
     if (h.hurtTime > 0 || h.dashTime > 0 || this.completeTimer > 0) return;
     if (h.shieldTime > 0) { this.ring(h.x, h.y, 50, '#9fe8b0', .25); this.play('reflect'); return; }
-    const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1)));
+    const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1) * (h.stormT > 0 ? .5 : 1)));
     h.hp -= dmg; h.hurtTime = .9; this.damageFlash = .35; this.combo = 0;
     const dx = h.x - from.x, dy = h.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     h.vx += dx / d * 520; h.vy += dy / d * 520;
@@ -789,7 +841,7 @@ export class GameEngine {
       if (e.boss) e.hp = Math.min(e.maxHp, e.hp + Math.round(e.maxHp * .25));
     }
     this.bossIntroShown.clear();
-    this.notice(`Mira wakes at her last resting place.${lost ? ` She dropped ${lost} gold.` : ''} Quest progress is safe.`, 'warn', lost ? `Defeated · −${lost} gold` : 'Defeated');
+    this.notice(`${HEROES[this.heroId].name} wakes at the last resting place.${lost ? ` ${lost} gold was lost.` : ''} Quest progress is safe.`, 'warn', lost ? `Defeated · −${lost} gold` : 'Defeated');
   }
   setCheckpoint() { this.checkpoint = { x: this.hero.x, y: this.hero.y }; }
 
@@ -809,7 +861,7 @@ export class GameEngine {
     if (this.slowMo > 0) { this.slowMo -= dt; dt *= .3; }
     this.elapsed += dt;
     const h = this.hero;
-    for (const id of SPELL_ORDER) h.cds[id] = Math.max(0, h.cds[id] - dt);
+    for (const id of this.spellIds) h.cds[id] = Math.max(0, h.cds[id] - dt);
     h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt); h.slowT = Math.max(0, h.slowT - dt);
     h.mana = Math.min(h.maxMana, h.mana + h.manaRegen * dt);
     this.comboTime -= dt; if (this.comboTime <= 0) this.combo = 0;
@@ -858,9 +910,9 @@ export class GameEngine {
     }
   }
   private updateHero(dt: number) {
-    const h = this.hero, speed = 270 * (this.buffs.swiftTonic ? 1.4 : 1) * (h.slowT > 0 ? .5 : 1);
+    const h = this.hero, speed = (this.heroId === 'kael' ? 255 : 270) * (this.buffs.swiftTonic ? 1.4 : 1) * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
     if (h.dashTime > 0) {
-      h.dashTime -= dt; h.vx = h.dashX * 900; h.vy = h.dashY * 900;
+      h.dashTime -= dt; const ds = h.charging ? 1050 : 900; h.vx = h.dashX * ds; h.vy = h.dashY * ds;
       if (Math.random() < .9) this.afterimages.push({ x: h.x, y: h.y, life: .28, faceX: h.faceX });
     } else {
       const k = Math.min(1, dt * 14);
@@ -879,7 +931,8 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && Math.abs(p.x - h.x) < 60 && Math.abs(p.y - h.y) < 60) this.pushOut(h, p.x, p.y, 34);
     for (const n of this.npcs) if (Math.abs(n.x - h.x) < 40 && Math.abs(n.y - h.y) < 40 && this.npcVisible(n)) this.pushOut(h, n.x, n.y, 28);
     for (let i = this.afterimages.length - 1; i >= 0; i--) { this.afterimages[i].life -= dt; if (this.afterimages[i].life <= 0) swapRemove(this.afterimages, i); }
-    for (let i = this.bolts.length - 1; i >= 0; i--) { this.bolts[i].life -= dt; if (this.bolts[i].life <= 0) swapRemove(this.bolts, i); }
+    for (let i = this.slashes.length - 1; i >= 0; i--) { this.slashes[i].life -= dt; if (this.slashes[i].life <= 0) swapRemove(this.slashes, i); }
+    this.updateWarrior(dt);
     if (h.shieldTime > 0 && Math.random() < dt * 12) this.emit(h.x + rand(-30, 30), h.y + rand(-30, 20), 1, '#9fe8b0', { speed: 30, life: .7, kind: 'leaf', size: 5, grav: -20 });
     sfx.setListener(h.x, h.y);
   }
@@ -1335,7 +1388,7 @@ export class GameEngine {
       if (z.owner === 'enemy') {
         if (dist(h, z) < z.r + 8) this.hurt(z.damage, z, z.level);
       } else {
-        for (const e of this.enemies) if (!e.dead && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) { this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : 160); }
+        for (const e of this.enemies) if (!e.dead && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) { this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : 160); if (z.kind === 'slam' && !e.boss) { e.stunT = 1.2; e.windup = 0; } }
         for (const p of this.pods) if (!p.dead && dist(p, z) < z.r) this.breakPod(p);
       }
       this.detonateFx(z);
@@ -1528,14 +1581,14 @@ export class GameEngine {
     const chests = this.world.objects.filter(o => o.kind === 'chest'), lore = this.world.objects.filter(o => o.kind === 'lore');
     const sides = this.sideQuests();
     return {
-      region: this.heroRegion.id, chapter: this.chapter, hp: h.hp, maxHp: h.maxHp, mana: Math.round(h.mana), maxMana: h.maxMana, shield: h.shieldTime > 0,
-      level: p.level, xp: p.xp, xpNext: xpToNext(p.level), gold: p.gold,
-      spells: SPELL_ORDER.map(id => ({ id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: SPELLS[id].cooldown ? h.cds[id] / SPELLS[id].cooldown : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost })),
+      hero: this.heroId, region: this.heroRegion.id, chapter: this.chapter, hp: h.hp, maxHp: h.maxHp, mana: Math.round(h.mana), maxMana: h.maxMana, shield: h.shieldTime > 0,
+      level: p.level, xp: p.xp, xpNext: xpToNext(p.level), gold: p.gold, upgrades: { ...p.upgrades },
+      spells: this.spellIds.map(id => ({ id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: SPELLS[id].cooldown ? h.cds[id] / SPELLS[id].cooldown : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost, damage: Math.round((SPELLS[id].dmg || 0) * this.power) })),
       nearName, nearAction,
       main: this.mainRow(), mainQuests: this.questRows(true), quests: this.questRows(false), defeated: this.defeated, combo: this.combo,
       items: ITEM_ORDER.map(id => ({ id, count: p.items[id] || 0 })),
       buffs: ITEM_ORDER.filter(id => this.buffs[id]).map(id => ({ id, time: this.buffs[id]!, max: ITEMS[id].duration })),
-      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round(10 * this.power), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1), elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
+      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.power), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1), elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
       boss: b ? { name: this.bossName(b), title: this.bossTitle(b), hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase, level: b.level } : null,
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: this.opened.size, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };

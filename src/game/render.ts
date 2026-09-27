@@ -204,7 +204,7 @@ export class Renderer {
 
     this.drawOrbs(ctx, e);
     this.drawProjectiles(ctx, e);
-    this.drawBolts(ctx, e);
+    this.drawSlashes(ctx, e);
     for (const z of e.hazards) this.drawHazardAir(ctx, z);
     this.drawParticles(ctx, e.particles);
     if (this.weather) { this.updateAmbient(e, view, dt); this.drawAmbient(ctx); } else this.ambient.length = 0;
@@ -1155,6 +1155,7 @@ export class Renderer {
     this.lights.push({ x, y, r: 60, a: .4 });
   }
   private drawHero(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    if (e.heroId === 'kael') return this.drawWarrior(ctx, e);
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1;
     for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfe8ff'); circle(ctx, a.x, a.y - 18, 12, '#e6f7ff'); }
     ctx.globalAlpha = 1;
@@ -1199,6 +1200,69 @@ export class Renderer {
     this.lights.push({ x: h.x, y: h.y - 10, r: 320, a: 1 }, { x: tipX, y: tipY, r: 120 + raise * 120, color: '#ffe38a', a: .9 });
   }
 
+  /** Kael: plate armour, a plumed helm, a kite shield on one arm and a sword that swings with each Slash. */
+  private drawWarrior(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, storm = h.stormT > 0;
+    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 18, 24, '#ffd0a0'); circle(ctx, a.x, a.y - 18, 12, '#fff0e0'); }
+    ctx.globalAlpha = 1;
+    const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3.5 : Math.sin(t * 2.2) * 1;
+    shadow(ctx, h.x, h.y + 20, 22, 7, .32);
+    if (h.shieldTime > 0) {
+      const a = Math.min(1, h.shieldTime * 2);
+      glow(ctx, h.x, h.y - 8, 70, '#b8c8e0', .5 * a);
+      ctx.strokeStyle = `rgba(220,232,255,${.8 * a})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(h.x, h.y - 8, 44 + Math.sin(t * 10) * 2, 0, TAU); ctx.stroke();
+      for (let i = 0; i < 6; i++) { const ang = t * 1.2 + i * TAU / 6; ctx.fillStyle = `rgba(200,215,240,${.7 * a})`; ctx.save(); ctx.translate(h.x + Math.cos(ang) * 44, h.y - 8 + Math.sin(ang) * 44); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, -2); ctx.lineTo(0, 9); ctx.lineTo(-6, -2); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    }
+    if (storm) {
+      // Bladestorm: the sword whirls in a full circle, leaving a steel ring.
+      const spin = t * 22;
+      ctx.save(); ctx.translate(h.x, h.y - 6); ctx.scale(1, .7);
+      ctx.strokeStyle = 'rgba(255,200,160,.35)'; ctx.lineWidth = 26; ctx.beginPath(); ctx.arc(0, 0, 118, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,240,220,.8)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 122, spin, spin + 2.4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 122, spin + Math.PI, spin + Math.PI + 2.4); ctx.stroke();
+      ctx.restore();
+      this.lights.push({ x: h.x, y: h.y, r: 240, color: '#ffb08a', a: .9 });
+    }
+    const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
+    ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
+    if (storm) ctx.rotate(Math.sin(t * 22) * .15);
+    const step = moving ? Math.sin(h.walkTime) * 5 : 0, steel = hurtFlash ? '#ffffff' : '#9aa6b8', dark = '#5a6478';
+    // cape
+    const wave = Math.sin(t * 7) * 3;
+    ctx.fillStyle = '#8a2a2a'; ctx.beginPath(); ctx.moveTo(-10, -8); ctx.quadraticCurveTo(-22, 6 + wave, -20, 22 + wave * .5); ctx.lineTo(-2, 20); ctx.closePath(); ctx.fill();
+    // legs and boots
+    rect(ctx, -9 + step, 10, 7, 11, dark); rect(ctx, 3 - step, 10, 7, 11, dark);
+    ellipse(ctx, -6 + step, 22, 6, 3, '#3a3040'); ellipse(ctx, 6 - step, 22, 6, 3, '#3a3040');
+    // breastplate
+    ctx.fillStyle = steel; ctx.beginPath(); ctx.moveTo(-14, -8); ctx.lineTo(14, -8); ctx.lineTo(13, 12); ctx.quadraticCurveTo(0, 18, -13, 12); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(-10, -6, 5, 14);
+    rect(ctx, -14, 6, 28, 4, '#6a4a30'); circle(ctx, 0, 8, 2.8, '#e8c46a');
+    // pauldrons
+    ellipse(ctx, -13, -8, 7, 5, dark); ellipse(ctx, 13, -8, 7, 5, dark);
+    // head and helm
+    circle(ctx, 0, -18, 11.5, hurtFlash ? '#ffffff' : '#f0c8a2');
+    ctx.fillStyle = steel; ctx.beginPath(); ctx.arc(0, -21, 13, Math.PI * .95, Math.PI * 2.05); ctx.lineTo(13, -16); ctx.lineTo(-13, -16); ctx.closePath(); ctx.fill();
+    rect(ctx, 2, -20, 11, 3, '#2a2430');
+    ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(-2, -33); ctx.quadraticCurveTo(-18 - wave, -40, -20 - wave, -24); ctx.quadraticCurveTo(-10, -32, -1, -30); ctx.fill();
+    // shield on the back arm
+    ctx.save(); ctx.translate(-12, 2);
+    ctx.fillStyle = '#3f5a8a'; ctx.beginPath(); ctx.moveTo(-9, -12); ctx.lineTo(9, -12); ctx.lineTo(9, 2); ctx.quadraticCurveTo(0, 16, -9, 2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#c9a44c'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#e8c46a'; star(ctx, 0, -3, 5, 4, .4); ctx.fill();
+    ctx.restore();
+    // sword arm: resting, or swinging through a Slash
+    const swing = h.castTime > 0 ? 1 - h.castTime / .26 : 0, ang = storm ? t * 22 : h.castTime > 0 ? -2.1 + swing * 2.9 : -.5;
+    ctx.save(); ctx.translate(12, 0); ctx.rotate(ang);
+    rect(ctx, -2, -4, 4, 10, '#6a4a30'); rect(ctx, -7, -6, 14, 3, '#c9a44c');
+    ctx.fillStyle = '#e6ecf5'; ctx.beginPath(); ctx.moveTo(-3, -6); ctx.lineTo(-2.5, -38); ctx.lineTo(0, -44); ctx.lineTo(2.5, -38); ctx.lineTo(3, -6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(-1, -38, 1.5, 30);
+    if (h.castTime > 0 || storm) glow(ctx, 0, -30, 26, '#ffd0a0', .7);
+    ctx.restore();
+    circle(ctx, 12, 0, 4, '#f0c8a2');
+    ctx.restore();
+    this.lights.push({ x: h.x, y: h.y - 10, r: 320, a: 1 });
+  }
   // ───────────────────────────── enemies
   private drawEnemy(ctx: CanvasRenderingContext2D, en: Enemy, e: GameEngine) {
     const t = this.time + en.homeX * .01, h = e.hero;
@@ -1615,18 +1679,17 @@ export class Renderer {
       this.lights.push({ x: o.x, y, r: 50, color: o.kind === 'heart' ? '#ff7a8a' : o.kind === 'gold' ? '#ffd35c' : '#7fc8ff', a: .6 });
     }
   }
-  /** Chain Lightning: jagged bolts that flicker between the creatures it jumps to. */
-  private drawBolts(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    for (const b of e.bolts) {
-      const k = b.life / b.max, dx = b.bx - b.ax, dy = b.by - b.ay, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len, n = Math.max(4, Math.round(len / 28));
-      const pts: Point[] = [];
-      for (let i = 0; i <= n; i++) { const f = i / n, j = i === 0 || i === n ? 0 : Math.sin(b.seed + i * 12.9 + this.time * 40) * 16; pts.push({ x: b.ax + dx * f + nx * j, y: b.ay + dy * f + ny * j }); }
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      for (const [w, c] of [[9, `rgba(143,216,255,${.35 * k})`], [4, `rgba(200,240,255,${.9 * k})`], [1.6, `rgba(255,255,255,${k})`]] as Array<[number, string]>) {
-        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+  /** Kael's sword swings: a bright crescent that sweeps and fades. */
+  private drawSlashes(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    for (const sl of e.slashes) {
+      const k = sl.life / sl.max, sweep = 1 - k, a0 = sl.angle - 1.25, a1 = a0 + 2.5 * Math.min(1, sweep * 1.8 + .25);
+      ctx.save(); ctx.translate(sl.x, sl.y); ctx.scale(1, .8);
+      ctx.lineCap = 'round';
+      for (const [w, c, r] of [[22, `rgba(255,180,110,${.25 * k})`, sl.reach * .8], [10, `rgba(255,230,200,${.75 * k})`, sl.reach * .82], [3, `rgba(255,255,255,${k})`, sl.reach * .86]] as Array<[number, string, number]>) {
+        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.arc(0, 0, r, a0, a1); ctx.stroke();
       }
-      glow(ctx, b.bx, b.by, 40, '#8fd8ff', k);
-      this.lights.push({ x: (b.ax + b.bx) / 2, y: (b.ay + b.by) / 2, r: len * .7 + 80, color: '#8fd8ff', a: k });
+      ctx.restore();
+      this.lights.push({ x: sl.x + Math.cos(sl.angle) * 60, y: sl.y + Math.sin(sl.angle) * 50, r: 140, color: '#ffd0a0', a: k });
     }
   }
   private drawParticles(ctx: CanvasRenderingContext2D, list: Particle[]) {

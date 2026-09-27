@@ -17,7 +17,7 @@ const shopLines = {
 const meadow: RegionSpec = {
   id: 'meadow', chapter: 1, title: 'Sunpetal Meadow', subtitle: 'The Broken Beacon', name: 'Sunpetal Valley', seed: 17,
   palette: { ground: '#7fa05a', alternate: '#8fb065', path: '#d8c48e', pathEdge: '#a8915f', accent: '#f5cd5c', water: '#58a7b4', waterDeep: '#3d7f8f', foliage: ['#35593f', '#5d8a4c', '#a3c46a'], trunk: '#6f5337', rock: '#8c8f80', pod: '#f2b84b', roof: ['#b85a44', '#c9803d', '#8a5a44', '#a8644e'], wall: '#efe0bf' },
-  darkness: 0, ambient: 'petals', ground: 'grass', levels: [1, 6], xpScale: .7,
+  darkness: 0, ambient: 'petals', ground: 'grass', levels: [1, 6], xpScale: .5,
   pois: [
     { id: 'rest', name: 'Bridgekeeper’s Rest', kind: 'start', x: 900, y: 900, r: 380 },
     { id: 'sunpetal', name: 'Sunpetal Village', kind: 'village', x: 2400, y: 1900, r: 520 },
@@ -116,7 +116,7 @@ const meadow: RegionSpec = {
 const woods: RegionSpec = {
   id: 'woods', chapter: 2, title: 'Whisperroot Woods', subtitle: 'The Bell Beneath the Roots', name: 'Whisperroot Wilds', seed: 72,
   palette: { ground: '#4d6a50', alternate: '#587757', path: '#ad9c72', pathEdge: '#7a7153', accent: '#b6df91', water: '#3f7580', waterDeep: '#2b5560', foliage: ['#1f3a2c', '#355c3e', '#6f9a5c'], trunk: '#553f2d', rock: '#6f7568', pod: '#9fe3c9', roof: ['#5a6e4a', '#7a5a3f', '#4a5a6a', '#6e4a4a'], wall: '#cbb892' },
-  darkness: .42, ambient: 'leaves', ground: 'grass', levels: [7, 12], xpScale: 1.6,
+  darkness: .42, ambient: 'leaves', ground: 'grass', levels: [7, 12], xpScale: 1.25,
   pois: [
     { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
     { id: 'camp', name: 'Mosskeeper’s Camp', kind: 'start', x: 1000, y: 3900, r: 380 },
@@ -213,7 +213,7 @@ const woods: RegionSpec = {
 const summit: RegionSpec = {
   id: 'summit', chapter: 3, title: 'Starfall Summit', subtitle: 'The Hollow Star', name: 'The Silver Heights', seed: 131,
   palette: { ground: '#3e4a6b', alternate: '#46527a', path: '#8f93b8', pathEdge: '#62678c', accent: '#c9b6ff', water: '#5a6fc0', waterDeep: '#34408a', foliage: ['#1c2b45', '#2e4a63', '#6a93a8'], trunk: '#3c3346', rock: '#6f7493', pod: '#c9b6ff', roof: ['#5a5f8a', '#6e5a8a', '#4a6a8a', '#7a6a9a'], wall: '#c8cce0' },
-  darkness: .6, ambient: 'stars', ground: 'snow', levels: [13, 18], xpScale: 3,
+  darkness: .6, ambient: 'stars', ground: 'snow', levels: [13, 18], xpScale: 2.4,
   pois: [
     { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
     { id: 'lookout', name: 'Warden’s Lookout', kind: 'start', x: 1000, y: 3000, r: 380 },

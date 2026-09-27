@@ -1,19 +1,20 @@
 import type { EngineSave } from './engine';
+import type { HeroId } from './types';
 
-// The whole valley is one world, so there is a single save for the adventure in progress.
-const SESSION_KEY = 'starfall-grove-valley-v1';
+// The whole valley is one world, so each hero has a single save for the adventure in progress.
+const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-valley-v1' : `starfall-grove-valley-${hero}-v1`;
 const OLD_PREFIX = 'starfall-grove-session-v3-';
-export function loadSession(): EngineSave | null {
+export function loadSession(hero: HeroId): EngineSave | null {
   try {
-    const raw = localStorage.getItem(SESSION_KEY); if (!raw) return null;
+    const raw = localStorage.getItem(keyOf(hero)); if (!raw) return null;
     const value = JSON.parse(raw) as EngineSave;
     return value?.version === 4 && value.hero && value.main ? value : null;
   } catch { return null; }
 }
-export function saveSession(value: EngineSave) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(value)); } catch { /* game continues if storage is full */ } }
-export function clearSession() {
+export function saveSession(hero: HeroId, value: EngineSave) { try { localStorage.setItem(keyOf(hero), JSON.stringify(value)); } catch { /* game continues if storage is full */ } }
+export function clearSession(hero: HeroId) {
   try {
-    localStorage.removeItem(SESSION_KEY);
-    for (const id of ['meadow', 'woods', 'summit']) localStorage.removeItem(OLD_PREFIX + id);
+    localStorage.removeItem(keyOf(hero));
+    if (hero === 'mira') for (const id of ['meadow', 'woods', 'summit']) localStorage.removeItem(OLD_PREFIX + id);
   } catch { /* ignore storage errors */ }
 }

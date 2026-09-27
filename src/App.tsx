@@ -3,7 +3,7 @@ import GameCanvas from './game/GameCanvas';
 import TitleBackdrop from './TitleBackdrop';
 import { GameEngine } from './game/engine';
 import { LEVEL_ORDER, WORLDS } from './game/worlds';
-import { SPELLS, SPELL_ORDER } from './game/spells';
+import { HEROES, HERO_ORDER, SPELLS } from './game/spells';
 import { ITEMS, ITEM_ORDER } from './game/items';
 import { DECOR_LEVELS, QUALITIES, isTouch, loadGraphics, saveGraphics, type GraphicsSettings } from './game/graphics';
 import { clearSession, loadSession, saveSession } from './game/storage';
@@ -11,7 +11,7 @@ import { MAX_RANK, UPGRADES, UPGRADE_ORDER, loadProfile, resetProfile, upgradeCo
 import { MAIN_COLOR, SIDE_COLOR, drawWorldMap } from './game/render';
 import { sfx } from './game/audio';
 import { music } from './game/music';
-import type { EngineEvent, GameSnapshot, ItemId, LevelStats, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
+import type { EngineEvent, GameSnapshot, HeroId, ItemId, LevelStats, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
 
 type Mode = 'title' | 'play' | 'ending';
 type Save = { version: 2; done: Record<RegionId, boolean>; stars: Record<RegionId, number>; bestTime: Record<RegionId, number> };
@@ -20,17 +20,21 @@ type Toast = { id: number; text: string; tone: NoticeTone };
 type Panel = 'bag' | 'hero' | 'shop' | null;
 type Shop = { kind: ShopKind; name: string; portrait: string };
 type Victory = { region: RegionId; stats: LevelStats };
-const SAVE_KEY = 'starfall-grove-save-v2';
+/** Chapter stars per hero; Mira keeps the original key so older saves carry over. */
+const saveKey = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-save-v2' : `starfall-grove-save-${hero}-v2`;
+const CHOICE_KEY = 'starfall-grove-hero-choice';
+const loadChoice = (): HeroId => { try { const v = localStorage.getItem(CHOICE_KEY); return v === 'kael' ? 'kael' : 'mira'; } catch { return 'mira'; } };
+const heroStarted = (hero: HeroId) => { const p = loadProfile(hero), sv = getSave(hero); return !!loadSession(hero) || LEVEL_ORDER.some(id => sv.done[id]) || p.level > 1 || p.xp > 0; };
 const ROMAN = ['', 'I', 'II', 'III'];
 const blankSave = (): Save => ({ version: 2, done: { meadow: false, woods: false, summit: false }, stars: { meadow: 0, woods: 0, summit: 0 }, bestTime: { meadow: 0, woods: 0, summit: 0 } });
-function getSave(): Save {
+function getSave(hero: HeroId): Save {
   try {
-    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null') as Partial<Save> | null;
+    const d = JSON.parse(localStorage.getItem(saveKey(hero)) || 'null') as Partial<Save> | null;
     if (d?.version === 2) { const b = blankSave(); return { ...b, done: { ...b.done, ...d.done }, stars: { ...b.stars, ...d.stars }, bestTime: { ...b.bestTime, ...d.bestTime } }; }
     return blankSave();
   } catch { return blankSave(); }
 }
-function saveNow(data: Save) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* local play remains available */ } }
+function saveNow(hero: HeroId, data: Save) { try { localStorage.setItem(saveKey(hero), JSON.stringify(data)); } catch { /* local play remains available */ } }
 const unlocked = (save: Save, id: RegionId) => { const i = LEVEL_ORDER.indexOf(id); return i === 0 || save.done[LEVEL_ORDER[i - 1]]; };
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const levels = (id: RegionId) => `Lv ${WORLDS[id].levels[0]}–${WORLDS[id].levels[1]}`;
@@ -38,7 +42,6 @@ const levels = (id: RegionId) => `Lv ${WORLDS[id].levels[0]}–${WORLDS[id].leve
 // Keyboard: the left hand moves (WASD) and dashes (E). The right hand attacks on L and casts the other spells leftward
 // along the home row in the order they are learned (K J H G); the row above opens menus: U spellbook, I inventory,
 // O quest log, P character. F still fires Spark for players used to it.
-const KEYMAP: Record<string, SpellId> = { l: 'spark', f: 'spark', e: 'dash', k: 'chain', j: 'sunfire', h: 'shield', g: 'starfall' };
 type JournalTab = 'quests' | 'spells' | 'world';
 const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.map(id => [ITEMS[id].key, id]));
 const LABEL: Record<string, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low', lowest: 'Lowest', full: 'Full', less: 'Less', off: 'Off' };
@@ -56,7 +59,10 @@ function useTouch() {
 function App() {
   const [mode, setMode] = useState<Mode>('title');
   const [runKey, setRunKey] = useState(0);
-  const [save, setSave] = useState<Save>(() => getSave());
+  const [hero, setHero] = useState<HeroId>(loadChoice);
+  const heroRef = useRef(hero); heroRef.current = hero;
+  const [save, setSave] = useState<Save>(() => getSave(loadChoice()));
+  const chooseHero = (h: HeroId) => { setHero(h); setSave(getSave(h)); try { localStorage.setItem(CHOICE_KEY, h); } catch { /* ignore */ } };
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [dialogue, setDialogue] = useState<Dialogue | null>(null);
   const [typed, setTyped] = useState(0);
@@ -131,9 +137,9 @@ function App() {
         const r = event.region;
         setSave(prev => {
           const next: Save = { ...prev, done: { ...prev.done, [r]: true }, stars: { ...prev.stars, [r]: Math.max(prev.stars[r], event.stats.stars) }, bestTime: { ...prev.bestTime, [r]: prev.bestTime[r] ? Math.min(prev.bestTime[r], event.stats.time) : event.stats.time } };
-          saveNow(next); return next;
+          saveNow(heroRef.current, next); return next;
         });
-        const e = engineRef.current; if (e) saveSession(e.exportSave());
+        const e = engineRef.current; if (e) saveSession(heroRef.current, e.exportSave());
         setDialogue(null); setPaused(false); setMapOpen(false); setPanel(null); setJournal(false); setVictory({ region: r, stats: event.stats });
       }
     }
@@ -141,20 +147,21 @@ function App() {
 
   const startGame = (fresh = false) => {
     sfx.unlock();
-    if (fresh) clearSession();
+    if (fresh) clearSession(hero);
     setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setVictory(null); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('play');
   };
   /** Erases the adventure, the hero's level, gold, bag and quest progress. Sound and graphics settings are kept. */
-  const wipeProgress = () => { clearSession(); resetProfile(); const s = blankSave(); setSave(s); saveNow(s); };
-  const newGame = () => { wipeProgress(); startGame(true); };
-  const resetGame = () => { engineRef.current = null; wipeProgress(); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setVictory(null); setMode('title'); };
-  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(e.exportSave()); setPaused(false); setVictory(null); setMode('title'); };
+  /** Erases one hero's adventure, level, gold, bag and quest progress. Sound and graphics settings are kept. */
+  const wipeHero = (h: HeroId) => { clearSession(h); resetProfile(h); const s = blankSave(); saveNow(h, s); if (h === hero) setSave(s); };
+  const startOver = () => { engineRef.current = null; wipeHero(hero); setSettingsOpen(false); startGame(true); };
+  const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setVictory(null); setMode('title'); };
+  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setVictory(null); setMode('title'); };
   /** From the chapter-complete screen: the adventure continues in the same world, or the ending plays after the last chapter. */
   const nextChapter = () => {
     const e = engineRef.current, v = victory;
     setVictory(null); sfx.play('ui');
-    if (v?.region === 'summit') { if (e) { e.nextChapter(); saveSession(e.exportSave()); } setMode('ending'); return; }
+    if (v?.region === 'summit') { if (e) { e.nextChapter(); saveSession(hero, e.exportSave()); } setMode('ending'); return; }
     e?.nextChapter();
     if (e) setChapterBanner(b => ({ chapter: e.chapter, key: (b?.key || 0) + 1 }));
   };
@@ -241,7 +248,8 @@ function App() {
     if (k === 'u') { toggleJournal('spells'); return; }
     if (k === 'i' || k === 'p') { keys.current.clear(); openPanel(k === 'i' ? 'bag' : 'hero'); return; }
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) { keys.current.add(k); syncKeys(); e.preventDefault(); }
-    if (KEYMAP[k]) { if (!e.repeat || KEYMAP[k] === 'spark') cast(KEYMAP[k]); }
+    const ids = HEROES[heroRef.current].spells, spell = k === 'f' ? ids[0] : ids.find(id => SPELLS[id].key.toLowerCase() === k);
+    if (spell) { if (!e.repeat || spell === ids[0]) cast(spell); }
     if (e.repeat) return;
     if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
     if (k === ' ' || k === 'enter') { engineRef.current?.interact(); e.preventDefault(); }
@@ -280,11 +288,11 @@ function App() {
   const bannerWorld = chapterBanner ? WORLDS[LEVEL_ORDER[Math.min(2, chapterBanner.chapter - 1)]] : null;
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
-    {mode === 'title' && <TitleScreen save={save} muted={muted} touch={touch} onToggleMute={toggleMute} onStart={() => startGame()} onNewGame={newGame} onReset={wipeProgress} />}
+    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} onGraphics={changeGraphics} onHero={chooseHero} onToggleMute={toggleMute} onStart={() => startGame()} onStartOver={() => { wipeHero(hero); startGame(true); }} onDeleteAll={deleteAll} />}
 
-    {mode === 'play' && <main className={`play-page theme-${region}`}>
+    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero}`}>
       <section className="game-stage">
-        <GameCanvas runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
+        <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
         <div className="hud-top">
           <Vitals snapshot={snapshot} onProfile={() => openPanel('hero')} />
@@ -372,23 +380,14 @@ function App() {
         {victory && <VictoryOverlay victory={victory} save={save} onNext={nextChapter} onMenu={leaveToTitle} />}
 
         {paused && settingsOpen && <div className="overlay"><div className="panel pause-panel settings-panel">
-          <small className="eyebrow">Settings</small><h2>Graphics &amp; sound</h2>
-          <p>Lower these if the game feels slow or the device gets warm. Changes apply right away.</p>
-          <SettingRow label="Quality" hint="Auto adjusts to your device">{QUALITIES.map(q => <button key={q} className={graphics.quality === q ? 'on' : ''} onClick={() => changeGraphics({ quality: q })}>{LABEL[q]}</button>)}</SettingRow>
-          <SettingRow label="Grass & flowers" hint="Swaying plants on the ground">{DECOR_LEVELS.map(d => <button key={d} className={graphics.decor === d ? 'on' : ''} onClick={() => changeGraphics({ decor: d })}>{LABEL[d]}</button>)}</SettingRow>
-          <SettingRow label="Weather effects" hint="Petals, leaves, snow, fireflies, light rays">{[true, false].map(v => <button key={String(v)} className={graphics.weather === v ? 'on' : ''} onClick={() => changeGraphics({ weather: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
-          <SettingRow label="Frame rate" hint="30 is steadier on weak tablets">{([60, 30] as const).map(v => <button key={v} className={graphics.fps === v ? 'on' : ''} onClick={() => changeGraphics({ fps: v })}>{v} fps</button>)}</SettingRow>
-          <SettingRow label="Screen shake">{[true, false].map(v => <button key={String(v)} className={graphics.shake === v ? 'on' : ''} onClick={() => changeGraphics({ shake: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
-          <SettingRow label="Show FPS">{[true, false].map(v => <button key={String(v)} className={graphics.showFps === v ? 'on' : ''} onClick={() => changeGraphics({ showFps: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
-          <VolumeControls />
+          <SettingsBody graphics={graphics} onGraphics={changeGraphics} />
           <button className="btn primary" onClick={() => setSettingsOpen(false)}>Back <b>←</b></button>
-          <div className="danger-zone"><span><b>Reset entire game</b><em>Deletes the adventure, levels, gold, potions and quests. Cannot be undone.</em></span><ConfirmButton label="Reset game" onConfirm={resetGame} /></div>
+          <DangerZone hero={hero} onStartOver={startOver} onDeleteAll={deleteAll} />
         </div></div>}
         {paused && !settingsOpen && <div className="overlay"><div className="panel pause-panel">
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The valley can wait.</p>
           <div className="controls-grid">
-            <span><kbd>WASD</kbd> Move</span><span><kbd>L</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>K</kbd> Chain Lightning</span>
-            <span><kbd>J</kbd> Sunfire</span><span><kbd>H</kbd> Moss Shield</span><span><kbd>G</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
+            <span><kbd>WASD</kbd> Move</span>{HEROES[hero].spells.map(id => <span key={id}><kbd>{SPELLS[id].key}</kbd> {SPELLS[id].name}</span>)}<span><kbd>Space</kbd> Talk / use</span>
             <span><kbd>1</kbd>–<kbd>5</kbd> Potions</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Inventory</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>M</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
@@ -407,11 +406,10 @@ function App() {
       <div className="panel victory-panel">
         <small className="eyebrow">The valley remembers</small>
         <h1>Every light <em>is shining.</em></h1>
-        <p>You relit the Beacon, rang the Ancient Bell, broke the Hollow Star and cast out Umbra, the Eclipse. Orrin and Sable are home, and Mira and Tuft have become the valley’s newest legend.</p>
+        <p>You relit the Beacon, rang the Ancient Bell, broke the Hollow Star and cast out Umbra, the Eclipse. Orrin and Sable are home, and {HEROES[hero].name} and Tuft have become the valley’s newest legend.</p>
         <div className="star-row">{LEVEL_ORDER.map(id => <span key={id} className="on" title={WORLDS[id].title}>{'★'.repeat(save.stars[id] || 1)}</span>)}</div>
         <div className="menu-actions">
           <button className="btn primary" onClick={() => startGame()}>Keep exploring <b>→</b></button>
-          <ConfirmButton label="New game" confirm="Erase progress & start?" onConfirm={newGame} />
           <button className="btn ghost" onClick={() => setMode('title')}>Title</button>
         </div>
       </div>
@@ -419,30 +417,40 @@ function App() {
   </div>;
 }
 
-function TitleScreen({ save, muted, touch, onToggleMute, onStart, onNewGame, onReset }: { save: Save; muted: boolean; touch: boolean; onToggleMute: () => void; onStart: () => void; onNewGame: () => void; onReset: () => void }) {
+function TitleScreen({ hero, muted, touch, graphics, onGraphics, onHero, onToggleMute, onStart, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; onGraphics: (g: Partial<GraphicsSettings>) => void; onHero: (h: HeroId) => void; onToggleMute: () => void; onStart: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
+  const [settings, setSettings] = useState(false);
+  const save = getSave(hero), info = HEROES[hero];
   const next = LEVEL_ORDER.find(id => !save.done[id]) || 'summit';
-  const profile = loadProfile();
-  const started = !!loadSession() || LEVEL_ORDER.some(id => save.done[id]) || profile.level > 1 || profile.xp > 0;
+  const started = heroStarted(hero);
   return <main className="menu-page title-page">
     <TitleBackdrop level={next} />
     <header className="title-top">
       <div className="brand"><span className="brand-gem">✦</span><span><strong>Starfall Grove</strong><small>A storybook action RPG</small></span></div>
-      <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
+      <div className="title-tools">
+        <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
+        <button className="icon-button" onClick={() => { setSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>
+      </div>
     </header>
     <section className="title-hero">
       <small className="eyebrow">One vast valley · three lands · forty-five story quests</small>
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
-      <p>A fallen star has dimmed the valley, and Master Orrin has vanished. Guide Mira and her fox Tuft on foot from sunlit meadows through whispering woods to the silver summit. Help the valley folk, rescue the lost, grow stronger — and learn what hides inside the Hollow Star.</p>
-      <div className="menu-actions">
-        <button className="btn primary big" onClick={onStart}>{started ? `Continue · ${WORLDS[next].title}` : 'Begin the adventure'} <b>→</b></button>
-        {started && <ConfirmButton label="New game" confirm="Erase progress & start?" onConfirm={onNewGame} />}
-        {started && <ConfirmButton label="Reset game" onConfirm={onReset} />}
+      <p>A fallen star has dimmed the valley, and Master Orrin has vanished. Walk with Tuft the fox from sunlit meadows through whispering woods to the silver summit. Help the valley folk, rescue the lost, grow stronger — and learn what hides inside the Hollow Star.</p>
+      <div className="hero-pick">
+        {HERO_ORDER.map(id => {
+          const h = HEROES[id], p = loadProfile(id), began = heroStarted(id);
+          return <button key={id} className={`hero-choice ${id === hero ? 'on' : ''}`} onClick={() => { onHero(id); sfx.play('ui'); }}>
+            <span className="hc-portrait">{h.portrait}</span>
+            <span className="hc-text"><b>{h.name}</b><em>{h.title}</em><small>{began ? `Level ${p.level} · ${p.gold} gold` : h.description}</small></span>
+          </button>;
+        })}
       </div>
-      {started && <p className="title-level">Mira · Level {profile.level} · {profile.gold} gold</p>}
+      <div className="menu-actions">
+        <button className="btn primary big" onClick={onStart}>{started ? `Continue as ${info.name} · ${WORLDS[next].title}` : `Begin as ${info.name}`} <b>→</b></button>
+      </div>
     </section>
     <section className="chapter-cards">
       {LEVEL_ORDER.map(id => {
-        const w = WORLDS[id], open = unlocked(save, id), sp = SPELLS[SPELL_ORDER.find(s => SPELLS[s].level >= w.levels[0] && SPELLS[s].level <= w.levels[1]) || 'spark'];
+        const w = WORLDS[id], open = unlocked(save, id), sp = SPELLS[info.spells.find(s => SPELLS[s].level >= w.levels[0] && SPELLS[s].level <= w.levels[1]) || info.spells[0]];
         return <button key={id} className={`chapter-card theme-${id} ${open ? '' : 'locked'} ${save.done[id] ? 'done' : ''}`} disabled={!open} onClick={onStart} style={{ '--spell': sp.color } as CSSProperties}>
           <span className="card-art"><i /><i /><i /></span>
           <small>Chapter {ROMAN[w.chapter]}</small>
@@ -456,9 +464,38 @@ function TitleScreen({ save, muted, touch, onToggleMute, onStart, onNewGame, onR
       })}
     </section>
     {touch
-      ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to cast</span><span>Tap people and chests to interact</span></footer>
-      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>K J H G</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>I</kbd> inventory</span><span><kbd>O</kbd> quests</span><span><kbd>M</kbd> map</span></footer>}
+      ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to fight</span><span>Tap the prompt to talk</span></footer>
+      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> attack</span><span><kbd>E</kbd> dash / charge</span><span><kbd>K J H</kbd> abilities</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>M</kbd> map</span></footer>}
+    {settings && <div className="overlay" onClick={() => setSettings(false)}><div onClick={e => e.stopPropagation()} className="panel pause-panel settings-panel">
+      <SettingsBody graphics={graphics} onGraphics={onGraphics} />
+      <button className="btn primary" onClick={() => setSettings(false)}>Done <b>←</b></button>
+      <DangerZone hero={hero} onStartOver={onStartOver} onDeleteAll={onDeleteAll} />
+    </div></div>}
   </main>;
+}
+
+/** Graphics and sound, shared by the title screen and the pause menu. */
+function SettingsBody({ graphics, onGraphics }: { graphics: GraphicsSettings; onGraphics: (g: Partial<GraphicsSettings>) => void }) {
+  return <>
+    <small className="eyebrow">Settings</small><h2>Graphics &amp; sound</h2>
+    <p>Lower these if the game feels slow or the device gets warm. Changes apply right away.</p>
+    <SettingRow label="Quality" hint="Auto adjusts to your device">{QUALITIES.map(q => <button key={q} className={graphics.quality === q ? 'on' : ''} onClick={() => onGraphics({ quality: q })}>{LABEL[q]}</button>)}</SettingRow>
+    <SettingRow label="Grass & flowers" hint="Swaying plants on the ground">{DECOR_LEVELS.map(d => <button key={d} className={graphics.decor === d ? 'on' : ''} onClick={() => onGraphics({ decor: d })}>{LABEL[d]}</button>)}</SettingRow>
+    <SettingRow label="Weather effects" hint="Petals, leaves, snow, fireflies, light rays">{[true, false].map(v => <button key={String(v)} className={graphics.weather === v ? 'on' : ''} onClick={() => onGraphics({ weather: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
+    <SettingRow label="Frame rate" hint="30 is steadier on weak tablets">{([60, 30] as const).map(v => <button key={v} className={graphics.fps === v ? 'on' : ''} onClick={() => onGraphics({ fps: v })}>{v} fps</button>)}</SettingRow>
+    <SettingRow label="Screen shake">{[true, false].map(v => <button key={String(v)} className={graphics.shake === v ? 'on' : ''} onClick={() => onGraphics({ shake: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
+    <SettingRow label="Show FPS">{[true, false].map(v => <button key={String(v)} className={graphics.showFps === v ? 'on' : ''} onClick={() => onGraphics({ showFps: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
+    <VolumeControls />
+  </>;
+}
+
+/** "Start over" wipes only the chosen hero; "Delete all saves" wipes every hero. Both ask twice. */
+function DangerZone({ hero, onStartOver, onDeleteAll }: { hero: HeroId; onStartOver: () => void; onDeleteAll: () => void }) {
+  const name = HEROES[hero].name;
+  return <div className="danger-zone">
+    <div className="dz-row"><span><b>Start over as {name}</b><em>Erases {name}’s level, gold, bag and quests, then starts a new adventure. Other heroes are kept.</em></span><ConfirmButton label="Start over" onConfirm={onStartOver} /></div>
+    <div className="dz-row"><span><b>Delete all saves</b><em>Erases every hero’s progress and returns to the title. Settings are kept.</em></span><ConfirmButton label="Delete all" onConfirm={onDeleteAll} /></div>
+  </div>;
 }
 
 /** The chapter-complete screen. On phones in landscape it is laid out side by side so "Next chapter" is always in view. */
@@ -516,10 +553,10 @@ function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProf
   const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1, pct = Math.max(0, hp / max) * 100;
   return <div className="vitals-wrap">
     <div className={`vitals ${hp <= max * .25 ? 'critical' : ''}`}>
-      <button className="portrait" onClick={onProfile} aria-label="Character details" title="Character (P)"><span>🧙‍♀️</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></button>
+      <button className="portrait" onClick={onProfile} aria-label="Character details" title="Character (P)"><span>{HEROES[snapshot?.hero ?? 'mira'].portrait}</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></button>
       <div className="bars">
         <div className="health" title="Health"><i className="lag" style={{ width: `${pct}%` }} /><i className="fill" style={{ width: `${pct}%` }} /><b>{Math.max(0, Math.ceil(hp))} / {max}</b></div>
-        <div className="mana" title="Magic"><i style={{ width: `${(mana / maxMana) * 100}%` }} /><b>{mana}</b></div>
+        <div className="mana" title={HEROES[snapshot?.hero ?? 'mira'].resource}><i style={{ width: `${(mana / maxMana) * 100}%` }} /><b>{mana}</b></div>
         <div className="xp" title={`${xp} / ${next} XP`}><i style={{ width: next ? `${(xp / next) * 100}%` : '100%' }} /><b>{next ? `${xp} / ${next} XP` : 'MAX'}</b></div>
       </div>
     </div>
@@ -551,7 +588,7 @@ function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
 function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id: SpellId) => void; touch?: boolean }) {
   const ready = spell.unlocked && spell.cooldown <= 0 && spell.affordable;
   const style = { '--cd': `${spell.cooldown * 360}deg`, '--spell': SPELLS[spell.id].color } as CSSProperties;
-  return <button className={`spell spell-${spell.id} ${ready ? 'ready' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
+  return <button className={`spell spell-${spell.id} slot-${SPELLS[spell.id].slot} ${ready ? 'ready' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
     style={style} onPointerDown={e => { e.preventDefault(); onCast(spell.id); }} aria-label={spell.name} title={spell.unlocked ? `${spell.name} (${spell.key})${spell.cost ? ` · ${spell.cost} mana` : ''}` : `${spell.name} · learned at level ${spell.level}`}>
     <span className="spell-icon-wrap"><b>{spell.unlocked ? spell.icon : '🔒'}</b>{spell.cooldown > 0 && <i className="cd" />}</span>
     {!touch && spell.unlocked && <kbd>{spell.key}</kbd>}
@@ -617,9 +654,9 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
 function HeroPanel({ snapshot: s, engine, onClose }: { snapshot: GameSnapshot; engine: GameEngine; onClose: () => void }) {
   const w = WORLDS[LEVEL_ORDER[Math.min(2, s.chapter - 1)]], here = WORLDS[s.region], st = s.stats, spells = s.spells.filter(x => x.unlocked).length;
   const rows: Array<[string, string]> = [
-    ['Health', `${Math.ceil(s.hp)} / ${s.maxHp}`], ['Magic', `${s.mana} / ${s.maxMana}`], ['Magic regeneration', `${st.regen.toFixed(1)} / s`],
-    ['Spell power', `+${Math.round((st.power - 1) * 100)}%`], ['Spark damage', `${st.spark}`], ['Move speed', `${Math.round(st.speed * 100)}%`],
-    ['Damage taken', `${Math.round((1 - st.guard) * 100)}%`], ['Spells known', `${spells} / ${s.spells.length}`], ['Gold', `${s.gold}`],
+    ['Health', `${Math.ceil(s.hp)} / ${s.maxHp}`], [HEROES[s.hero].resource, `${s.mana} / ${s.maxMana}`], [`${HEROES[s.hero].resource} regeneration`, `${st.regen.toFixed(1)} / s`],
+    ['Power', `+${Math.round((st.power - 1) * 100)}%`], [`${SPELLS[HEROES[s.hero].spells[0]].name} damage`, `${st.spark}`], ['Move speed', `${Math.round(st.speed * 100)}%`],
+    ['Damage taken', `${Math.round((1 - st.guard) * 100)}%`], ['Abilities known', `${spells} / ${s.spells.length}`], ['Gold', `${s.gold}`],
   ];
   const trip: Array<[string, string]> = [
     ['Chapter', `${ROMAN[w.chapter]} · ${w.title}`], ['You are in', `${here.title} (${levels(s.region)})`], ['Time played', fmtTime(st.elapsed)], ['Side quests done', `${st.questsDone} / ${st.totalQuests}`],
@@ -628,8 +665,8 @@ function HeroPanel({ snapshot: s, engine, onClose }: { snapshot: GameSnapshot; e
   return <aside className="side-panel hero-panel">
     <div className="journal-head"><strong>Character</strong><button className="icon-button" onClick={onClose} aria-label="Close character sheet">✕</button></div>
     <div className="hero-card">
-      <span className="portrait big"><span>🧙‍♀️</span><b className="level-badge">{s.level}</b></span>
-      <div><b>Mira</b><em>Star apprentice · Level {s.level}</em>
+      <span className="portrait big"><span>{HEROES[s.hero].portrait}</span><b className="level-badge">{s.level}</b></span>
+      <div><b>{HEROES[s.hero].name}</b><em>{HEROES[s.hero].title} · Level {s.level}</em>
         <div className="xp wide"><i style={{ width: s.xpNext ? `${(s.xp / s.xpNext) * 100}%` : '100%' }} /><b>{s.xpNext ? `${s.xp} / ${s.xpNext} XP` : 'MAX LEVEL'}</b></div>
       </div>
     </div>
@@ -658,7 +695,10 @@ function Journal({ snapshot, touch, initial, onClose, onTrack }: { snapshot: Gam
         </button>)}
       </section>
     </>}
-    {snapshot && tab === 'spells' && <section><small>Spellbook · new spells come with levels</small><div className="spellbook">{SPELL_ORDER.map(id => { const s = snapshot.spells.find(x => x.id === id)!; return <div key={id} className={`book-spell ${s.unlocked ? '' : 'locked'}`} style={{ '--spell': SPELLS[id].color } as CSSProperties}><b>{s.unlocked ? SPELLS[id].icon : '?'}</b><div><strong>{s.unlocked ? SPELLS[id].name : 'Unknown spell'} {(!touch || !s.unlocked) && <kbd>{s.unlocked ? SPELLS[id].key : `Lv ${SPELLS[id].level}`}</kbd>}</strong><em>{s.unlocked ? SPELLS[id].description : `Learned at level ${SPELLS[id].level}.`}</em></div></div>; })}</div></section>}
+    {snapshot && tab === 'spells' && <>
+      <section><small>{HEROES[snapshot.hero].name}’s abilities · new ones come with levels</small><div className="spellbook">{snapshot.spells.map(s => { const info = SPELLS[s.id]; return <div key={s.id} className={`book-spell ${s.unlocked ? '' : 'locked'}`} style={{ '--spell': info.color } as CSSProperties}><b>{s.unlocked ? info.icon : '?'}</b><div><strong>{s.unlocked ? info.name : 'Unknown ability'} {(!touch || !s.unlocked) && <kbd>{s.unlocked ? info.key : `Lv ${info.level}`}</kbd>}</strong><em>{s.unlocked ? info.description : `Learned at level ${info.level}.`}</em>{s.unlocked && <em className="book-stats">{s.damage > 0 && <span>Damage {s.damage}</span>}{s.cost > 0 && <span>{s.cost} {HEROES[snapshot.hero].resource.toLowerCase()}</span>}<span>{info.cooldown}s cooldown</span></em>}</div></div>; })}</div></section>
+      <section className="book-upgrades"><small>Smith upgrades · buy ranks from a city smith</small>{upgradeRows(snapshot)}</section>
+    </>}
     {snapshot && tab === 'world' && <>
       <section className="journal-stats"><span>Places discovered</span><b>{snapshot.discovered} / {snapshot.totalPlaces}</b></section>
       <section className="journal-stats"><span>Chests opened</span><b>{snapshot.chests} / {snapshot.totalChests}</b></section>
@@ -703,3 +743,9 @@ function Confetti() {
 }
 
 export default App;
+
+/** The smith upgrades as they stand, for the spellbook. */
+function upgradeRows(s: GameSnapshot) {
+  const ranks = s.upgrades;
+  return <dl className="stat-list">{UPGRADE_ORDER.map(id => { const r = ranks[id] || 0, u = UPGRADES[id]; return <div key={id}><dt>{u.icon} {u.name}</dt><dd>{r ? `Rank ${r}/${MAX_RANK} · ${id === 'staff' ? `+${r * 8}% power` : id === 'mantle' ? `−${r * 6}% damage` : `+${r * 30} health`}` : 'Not bought'}</dd></div>; })}</dl>;
+}

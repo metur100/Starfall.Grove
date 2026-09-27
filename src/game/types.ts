@@ -2,7 +2,8 @@ export type Point = { x: number; y: number };
 /** The valley is one continuous world made of three regions, one per story chapter. */
 export type RegionId = 'meadow' | 'woods' | 'summit';
 export type LevelId = RegionId;
-export type SpellId = 'spark' | 'dash' | 'chain' | 'sunfire' | 'shield' | 'starfall';
+export type HeroId = 'mira' | 'kael';
+export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm';
 export type ItemId = 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin';
 export type UpgradeId = 'staff' | 'mantle' | 'amulet';
 
@@ -94,7 +95,7 @@ export type WorldDefinition = {
 
 export type MainQuest = { keys: string[]; bosses: string[]; finales: RegionId[] };
 
-export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean };
+export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number };
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number; level: number };
 export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number };
 export type ItemStack = { id: ItemId; count: number };
@@ -102,8 +103,8 @@ export type BuffState = { id: ItemId; time: number; max: number };
 export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; elapsed: number; questsDone: number; totalQuests: number };
 
 export type GameSnapshot = {
-  region: RegionId; chapter: number; hp: number; maxHp: number; mana: number; maxMana: number; shield: boolean;
-  level: number; xp: number; xpNext: number; gold: number;
+  hero: HeroId; region: RegionId; chapter: number; hp: number; maxHp: number; mana: number; maxMana: number; shield: boolean;
+  level: number; xp: number; xpNext: number; gold: number; upgrades: Partial<Record<UpgradeId, number>>;
   spells: SpellState[]; nearName: string | null; nearAction: string | null;
   main: { title: string; step: string; progress: number; count: number; index: number; total: number }; mainQuests: QuestRow[]; quests: QuestRow[];
   items: ItemStack[]; buffs: BuffState[]; stats: HeroStats;

@@ -50,7 +50,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 /* ─────────── menus */
 .menu-page { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; }
 .title-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
-.menu-page > *:not(.title-backdrop):not(.confetti) { position: relative; z-index: 1; }
+.menu-page > *:not(.title-backdrop):not(.confetti):not(.overlay) { position: relative; z-index: 1; }
 .title-top { width: min(1180px, calc(100% - 32px)); display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-gem { width: 40px; height: 40px; display: grid; place-items: center; font-size: 20px; color: #2a1a08; background: linear-gradient(135deg, #ffe49a, #e0843a); clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%); animation: gem-spin 6s ease-in-out infinite; }
@@ -172,7 +172,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .spell .cd { position: absolute; inset: 0; background: conic-gradient(rgba(4, 6, 14, .78) var(--cd), transparent 0); }
 .spell kbd { position: absolute; top: -8px; right: -6px; font-size: 10px; padding: 1px 5px; background: #141b33; }
 .spell small { position: absolute; bottom: 3px; left: 0; right: 0; text-align: center; font: 900 10px var(--ui); color: var(--mana); text-shadow: 0 1px 2px #000; }
-.spell-spark { width: 70px; height: 70px; margin-top: -10px; }
+.spell.slot-main { width: 70px; height: 70px; margin-top: -10px; }
 .touch-controls { display: none; }
 /* Floating joystick: the whole lower-left area is the touch zone and the stick appears under the thumb. */
 .stick-zone { position: absolute; left: 0; bottom: 0; width: 55%; height: 62%; touch-action: none; pointer-events: auto; }
@@ -182,13 +182,12 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .stick-thumb { position: absolute; left: 50%; top: 50%; width: 80px; height: 80px; margin: -40px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff6d8, #f5b54a); box-shadow: 0 0 24px rgba(245, 180, 74, .65), inset 0 -4px 8px rgba(120, 60, 10, .35); pointer-events: none; }
 .touch-actions { position: absolute; right: 18px; bottom: 18px; width: 250px; height: 250px; pointer-events: none; }
 .spell.touch { position: absolute; width: 58px; height: 58px; border-radius: 50%; pointer-events: auto; margin: 0; }
-.spell.touch.spell-spark { right: 0; bottom: 0; width: 96px; height: 96px; }
-.spell.touch.spell-spark .spell-icon-wrap b { font-size: 40px; }
-.spell.touch.spell-dash { right: 117px; bottom: 19px; }
-.spell.touch.spell-chain { right: 86px; bottom: 86px; }
-.spell.touch.spell-sunfire { right: 19px; bottom: 117px; }
-.spell.touch.spell-shield { right: 176px; bottom: 82px; }
-.spell.touch.spell-starfall { right: 82px; bottom: 176px; }
+.spell.touch.slot-main { right: 0; bottom: 0; width: 96px; height: 96px; margin-top: 0; }
+.spell.touch.slot-main .spell-icon-wrap b { font-size: 40px; }
+.spell.touch.slot-dash { right: 117px; bottom: 19px; }
+.spell.touch.slot-inner { right: 86px; bottom: 86px; }
+.spell.touch.slot-side { right: 19px; bottom: 117px; }
+.spell.touch.slot-top { right: 82px; bottom: 176px; }
 .spell.touch.potion { right: 186px; bottom: 6px; width: 52px; height: 52px; }
 @media (pointer: coarse) {
   .spellbar { display: none; }
@@ -593,3 +592,29 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .map-legend { font-size: 11px; gap: 4px 12px; }
   .side-panel, .journal { padding: 12px 14px; }
 }
+
+/* ─────────── heroes, title settings, spellbook */
+.title-tools { display: flex; gap: 8px; }
+.hero-pick { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 0 0 18px; }
+.hero-choice { display: flex; align-items: center; gap: 12px; width: min(300px, 44vw); padding: 10px 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--glass); cursor: pointer; text-align: left; transition: transform .15s, border-color .15s, background .15s; }
+.hero-choice:hover { transform: translateY(-2px); }
+.hero-choice.on { border-color: var(--gold); background: rgba(245, 210, 122, .14); box-shadow: 0 0 24px rgba(245, 210, 122, .25); }
+.hc-portrait { width: 48px; height: 48px; flex: none; display: grid; place-items: center; font-size: 28px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe8b8, #d9864a 60%, #7a3a52); border: 2px solid var(--line); }
+.hero-choice.on .hc-portrait { border-color: var(--gold); }
+.hc-text { display: flex; flex-direction: column; min-width: 0; }
+.hc-text b { font: 700 17px var(--display); color: var(--cream); }
+.hc-text em { font-style: normal; font: 800 10px var(--ui); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+.hc-text small { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.danger-zone { flex-direction: column; align-items: stretch; }
+.dz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.dz-row > span { display: flex; flex-direction: column; gap: 2px; flex: 1 1 200px; }
+.book-stats { display: flex !important; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; color: #ffe38a !important; font-weight: 800; }
+.book-upgrades dd { color: var(--gold); }
+.hero-kael .mana i { background: linear-gradient(90deg, #d9642a, #ffb35c, #ffe0a0); box-shadow: 0 0 12px rgba(255, 170, 90, .7); }
+@media (max-height: 520px) and (orientation: landscape) {
+  .hero-pick { margin-bottom: 8px; gap: 8px; }
+  .hero-choice { padding: 6px 10px; gap: 8px; width: min(250px, 40vw); }
+  .hc-portrait { width: 36px; height: 36px; font-size: 20px; }
+  .hc-text b { font-size: 14px; } .hc-text small { display: none; }
+}
+.menu-page > .overlay { position: fixed; inset: 0; z-index: 10; }

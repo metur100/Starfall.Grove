@@ -39,17 +39,20 @@ The main story (in `story.ts`) has **10 quests in Chapter I, 15 in Chapter II an
 
 ## Levels, spells and quests
 
-Mira starts with Spark and Dash. Levels go up to 20.
+There are two heroes, each with their own level, gold, bag, quests and chapter stars. Pick one on the title screen. Levels go up to 20.
 
-| Level | Spell learned |
-| --- | --- |
-| 1 | Spark (L), Dash (E) |
-| 2 | Chain Lightning (K): leaps between up to five creatures and stuns them |
-| 4 | Sunfire (J) |
-| 7 | Moss Shield (H) |
-| 10 | Starfall (G) |
+| Level | Mira, star warlock | Kael, warrior |
+| --- | --- | --- |
+| 1 | Spark (L), Dash (E) | Slash (L), Charge (E) |
+| 3 | Sunfire (K) | Shield Wall (K) |
+| 6 | Moss Shield (J) | Earthsplitter (J): stunning shockwave |
+| 10 | Starfall (H) | Bladestorm (H): 3 s whirlwind, half damage taken |
 
-**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions. Smiths sell three upgrades with five ranks each: Starsteel Staff (+8% spell power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
+Mira fights from range and is fragile. Kael fights up close, has more health and takes about 35% less damage. On touch screens the shield sits right next to the attack button. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
+
+Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.
+
+**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
 
 **Quests:** gold main quests and blue side quests (38 side quests in total). Quest kinds are collect, slay, deliver, visit, talk, relic and boss, plus **rescue**: defeat the guards around a cage, then open it to free the captive. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident.
 
@@ -83,11 +86,11 @@ Mira starts with Spark and Dash. Levels go up to 20.
 
 - Move: WASD / arrows
 - Left hand: WASD move · E Dash
-- Right hand, home row: L Spark (F also works), then leftward in learning order: K Chain Lightning · J Sunfire · H Moss Shield · G Starfall
+- Right hand, home row: L attack (F also works), then leftward in learning order: K · J · H (see the table above)
 - Right hand, menus (row above): U spellbook · I inventory · O quest log · P character
 - Space / Enter talk, open or use · 1–5 potions · M map · Tab quest log · N mute · Esc pause
 
-**Reset:** ⚙ Settings → **Reset entire game** (or **Reset game** on the title screen) erases all chapters, levels, potions and quests after a second tap to confirm. Sound and graphics settings are kept.
+**Settings:** the ⚙ button on the title screen (and ⚙ Settings in the pause menu) has all graphics and sound settings, plus **Start over** (erases only the chosen hero and starts a new adventure) and **Delete all saves** (erases every hero). Both ask for a second tap. Sound and graphics settings are kept.
 
 **Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices, and prompts say "Tap" instead of showing keyboard keys.
 
@@ -100,7 +103,7 @@ src/
   styles.css           Visual system and animation library
   game/
     types.ts           Shared game types
-    spells.ts          Spell table and unlock levels
+    spells.ts          Heroes, their abilities and unlock levels
     progression.ts     Levels, XP curve and the hero profile that carries between chapters
     story.ts           The main story: 45 quests across three chapters
     worlds.ts          Region layouts: places, people, side quests, lore and scripts
@@ -118,8 +121,8 @@ src/
 
 Progress is stored in browser storage on the current device:
 
-- `starfall-grove-save-v2`: chapters completed and stars.
-- `starfall-grove-hero-v1`: level, XP, gold, upgrades, bag and quest rewards.
-- `starfall-grove-valley-v1`: the adventure in progress (position, quests, chests, explored map).
+- `starfall-grove-save-v2`, `starfall-grove-hero-v1`, `starfall-grove-valley-v1`: Mira's chapter stars, profile (level, XP, gold, upgrades, bag) and adventure in progress.
+- The same keys with `-kael` in the name hold Kael's progress.
+- `starfall-grove-hero-choice`: the hero picked on the title screen.
 
 Saves from the older three-map version start a fresh adventure. The hero's level and bag are kept.
