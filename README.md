@@ -44,11 +44,11 @@ Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing que
 
 | Level | Spell learned |
 | --- | --- |
-| 1 | Spark (F), Dash (E) |
-| 2 | Leaf Burst (H) |
+| 1 | Spark (L), Dash (E) |
+| 2 | Leaf Burst (K) |
 | 4 | Sunfire (J) |
-| 7 | Moss Shield (K) |
-| 10 | Starfall (L) |
+| 7 | Moss Shield (H) |
+| 10 | Starfall (G) |
 
 Level, XP, quest rewards and the bag carry over between chapters.
 
@@ -110,8 +110,8 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 **Keyboard:**
 
 - Move: WASD / arrows
-- Left hand: WASD move · F Spark · E Dash
-- Right hand, spells (home row): H Leaf Burst · J Sunfire · K Moss Shield · L Starfall
+- Left hand: WASD move · E Dash
+- Right hand, home row: L Spark (F also works), then leftward in learning order: K Leaf Burst · J Sunfire · H Moss Shield · G Starfall
 - Right hand, menus (row above): U spellbook · I inventory · O quest log · P character
 - Space / Enter talk, open or use · 1–5 potions · M map · Tab quest log · N mute · Esc pause
 

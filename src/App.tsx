@@ -32,9 +32,10 @@ function saveNow(data: Save) { try { localStorage.setItem(SAVE_KEY, JSON.stringi
 const unlocked = (save: Save, id: LevelId) => { const i = LEVEL_ORDER.indexOf(id); return i === 0 || save.done[LEVEL_ORDER[i - 1]]; };
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-// Keyboard: the left hand moves (WASD) with attack on F and dash on E. The right hand casts spells on the home row
-// (H J K L) and opens menus on the row above: U spellbook, I inventory, O quest log, P character.
-const KEYMAP: Record<string, SpellId> = { f: 'spark', e: 'dash', h: 'leaf', j: 'sunfire', k: 'shield', l: 'starfall' };
+// Keyboard: the left hand moves (WASD) and dashes (E). The right hand attacks on L and casts the other spells leftward
+// along the home row in the order they are learned (K J H G); the row above opens menus: U spellbook, I inventory,
+// O quest log, P character. F still fires Spark for players used to it.
+const KEYMAP: Record<string, SpellId> = { l: 'spark', f: 'spark', e: 'dash', k: 'leaf', j: 'sunfire', h: 'shield', g: 'starfall' };
 type JournalTab = 'quests' | 'spells' | 'world';
 const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.map(id => [ITEMS[id].key, id]));
 const LABEL: Record<string, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low', lowest: 'Lowest', full: 'Full', less: 'Less', off: 'Off' };
@@ -352,8 +353,8 @@ function App() {
         {paused && !settingsOpen && <div className="overlay"><div className="panel pause-panel">
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The forest can wait.</p>
           <div className="controls-grid">
-            <span><kbd>WASD</kbd> Move</span><span><kbd>F</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>H</kbd> Leaf Burst</span>
-            <span><kbd>J</kbd> Sunfire</span><span><kbd>K</kbd> Moss Shield</span><span><kbd>L</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
+            <span><kbd>WASD</kbd> Move</span><span><kbd>L</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>K</kbd> Leaf Burst</span>
+            <span><kbd>J</kbd> Sunfire</span><span><kbd>H</kbd> Moss Shield</span><span><kbd>G</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
             <span><kbd>1</kbd>–<kbd>5</kbd> Potions</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Inventory</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>M</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
@@ -443,7 +444,7 @@ function TitleScreen({ save, muted, touch, onToggleMute, onStart, onNewGame, onR
     </section>
     {touch
       ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to cast</span><span>Tap people and chests to interact</span></footer>
-      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>F</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>H J K L</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>I</kbd> inventory</span><span><kbd>O</kbd> quests</span><span><kbd>M</kbd> map</span></footer>}
+      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>K J H G</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>I</kbd> inventory</span><span><kbd>O</kbd> quests</span><span><kbd>M</kbd> map</span></footer>}
   </main>;
 }
 
