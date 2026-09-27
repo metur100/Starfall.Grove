@@ -32,8 +32,8 @@ function saveNow(data: Save) { try { localStorage.setItem(SAVE_KEY, JSON.stringi
 const unlocked = (save: Save, id: LevelId) => { const i = LEVEL_ORDER.indexOf(id); return i === 0 || save.done[LEVEL_ORDER[i - 1]]; };
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-// Keyboard: attacks sit around WASD so the left hand never has to leave it.
-const KEYMAP: Record<string, SpellId> = { f: 'spark', e: 'dash', q: 'leaf', r: 'sunfire', c: 'shield', t: 'starfall' };
+// Keyboard: the left hand moves (WASD) with attack on F and dash on E; the right hand casts spells on U I O P.
+const KEYMAP: Record<string, SpellId> = { f: 'spark', e: 'dash', u: 'leaf', i: 'sunfire', o: 'shield', p: 'starfall' };
 const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.map(id => [ITEMS[id].key, id]));
 const LABEL: Record<string, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low', lowest: 'Lowest', full: 'Full', less: 'Less', off: 'Off' };
 
@@ -198,14 +198,14 @@ function App() {
     if (mapOpen) { if (k === 'm' || k === 'escape') setMapOpen(false); return; }
     if (paused) { if (k === 'escape') { if (settingsOpen) setSettingsOpen(false); else setPaused(false); } return; }
     if (panel) {
-      if (k === 'escape' || (k === 'i' && panel === 'bag') || (k === 'p' && panel === 'hero')) { setPanel(null); e.preventDefault(); return; }
-      if (k === 'i') { setPanel('bag'); return; } if (k === 'p') { setPanel('hero'); return; }
+      if (k === 'escape' || (k === 'b' && panel === 'bag') || (k === 'c' && panel === 'hero')) { setPanel(null); e.preventDefault(); return; }
+      if (k === 'b') { setPanel('bag'); return; } if (k === 'c') { setPanel('hero'); return; }
       if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
       return;
     }
     if (k === 'm') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); return; }
     if (k === 'tab' || k === 'l') { setJournal(v => !v); sfx.play('page'); e.preventDefault(); return; }
-    if (k === 'i' || k === 'p') { keys.current.clear(); openPanel(k === 'i' ? 'bag' : 'hero'); return; }
+    if (k === 'b' || k === 'c') { keys.current.clear(); openPanel(k === 'b' ? 'bag' : 'hero'); return; }
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) { keys.current.add(k); syncKeys(); e.preventDefault(); }
     if (KEYMAP[k]) { if (!e.repeat || KEYMAP[k] === 'spark') cast(KEYMAP[k]); }
     if (e.repeat) return;
@@ -258,7 +258,7 @@ function App() {
             {zone && <div className="zone-banner" key={zone.key}><span>✦</span>{zone.name}<span>✦</span>{zone.discovered && <em>Discovered</em>}</div>}
           </div>
           <div className="hud-buttons">
-            <button className="icon-button" onClick={() => openPanel('bag')} aria-label="Bag" title="Bag (I)">🎒</button>
+            <button className="icon-button" onClick={() => openPanel('bag')} aria-label="Bag" title="Bag (B)">🎒</button>
             <button className="icon-button" onClick={() => { setMapOpen(true); sfx.play('page'); }} aria-label="World map" title="Map (M)">🗺️</button>
             <button className="icon-button" onClick={() => { setPanel(null); setJournal(v => !v); sfx.play('page'); }} aria-label="Quest log" title="Quest log (Tab)">📜</button>
             <button className="icon-button" onClick={() => { engineRef.current?.setMovement(0, 0); setPaused(true); }} aria-label="Pause" title="Pause (Esc)">❚❚</button>
@@ -345,9 +345,9 @@ function App() {
         {paused && !settingsOpen && <div className="overlay"><div className="panel pause-panel">
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The forest can wait.</p>
           <div className="controls-grid">
-            <span><kbd>WASD</kbd> Move</span><span><kbd>F</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>Q</kbd> Leaf Burst</span>
-            <span><kbd>R</kbd> Sunfire</span><span><kbd>C</kbd> Moss Shield</span><span><kbd>T</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
-            <span><kbd>1</kbd>–<kbd>5</kbd> Potions</span><span><kbd>I</kbd> Bag</span><span><kbd>P</kbd> Character</span><span><kbd>M</kbd> Map</span><span><kbd>Tab</kbd> Quest log</span>
+            <span><kbd>WASD</kbd> Move</span><span><kbd>F</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>U</kbd> Leaf Burst</span>
+            <span><kbd>I</kbd> Sunfire</span><span><kbd>O</kbd> Moss Shield</span><span><kbd>P</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
+            <span><kbd>1</kbd>–<kbd>5</kbd> Potions</span><span><kbd>B</kbd> Bag</span><span><kbd>C</kbd> Character</span><span><kbd>M</kbd> Map</span><span><kbd>Tab</kbd> Quest log</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
           <div className="pause-row">
@@ -436,7 +436,7 @@ function TitleScreen({ save, muted, touch, onToggleMute, onStart, onNewGame, onR
     </section>
     {touch
       ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to cast</span><span>Tap people and chests to interact</span></footer>
-      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>F</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>Q R C T</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
+      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>F</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>U I O P</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>B</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
   </main>;
 }
 
@@ -465,7 +465,7 @@ function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProf
   const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1, pct = Math.max(0, hp / max) * 100;
   return <div className="vitals-wrap">
     <div className={`vitals ${hp <= max * .25 ? 'critical' : ''}`}>
-      <button className="portrait" onClick={onProfile} aria-label="Character details" title="Character (P)"><span>🧙‍♀️</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></button>
+      <button className="portrait" onClick={onProfile} aria-label="Character details" title="Character (C)"><span>🧙‍♀️</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></button>
       <div className="bars">
         <div className="health" title="Health"><i className="lag" style={{ width: `${pct}%` }} /><i className="fill" style={{ width: `${pct}%` }} /><b>{Math.max(0, Math.ceil(hp))} / {max}</b></div>
         <div className="mana" title="Magic"><i style={{ width: `${(mana / maxMana) * 100}%` }} /><b>{mana}</b></div>

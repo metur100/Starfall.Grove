@@ -88,7 +88,7 @@ const meadow: ChapterSpec = {
     shrine: { bless: ['Warm light pours from the shrine and fills you.', 'The Sun blesses you. (+Experience, full health and magic)'], again: ['The shrine glows warmly. Rest here a while.'] },
     finale: { locked: ['The beacon is dim. Three sun-crystals are needed before its guardian stirs.'], guarded: ['Mossback is here. Defeat the guardian to restore the beacon.'], done: ['The beacon blazes gold! Across the valley, a second light answers from Whisperroot Woods.'] },
     pickupKey: 'Sun-crystal found! {n}/3',
-    sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! Dash (Shift) makes you untouchable for a heartbeat. Level up to learn new spells.',
+    sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! Dash makes you untouchable for a heartbeat. Level up to learn new spells.',
     victory: { title: 'The beacon shines again.', text: 'Mossback returns to its quiet grove, and a second light glimmers beyond the hills. Whisperroot Woods is calling.' },
   },
 };
@@ -257,7 +257,7 @@ const summit: ChapterSpec = {
     shrine: { bless: ['The altar opens to the sky. A star answers your call.', 'The stars bless you. (+Experience, full health and magic)'], again: ['The altar glitters like a tiny night sky.'] },
     finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['The Hollow Star circles the Cradle. Defeat it!'], done: ['You lay the shards into the Cradle. The star remembers its light and rises home.', 'Every beacon in the valley blazes at once.'] },
     pickupKey: 'Star shard gathered. {n}/3',
-    sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall (T) turns the sky on your enemies.',
+    sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall turns the sky on your enemies.',
     victory: { title: 'The star rises home.', text: 'The Hollow Star shines whole again and returns to the sky. Mira and the fox watch every light in the valley wake at once.' },
   },
 };
