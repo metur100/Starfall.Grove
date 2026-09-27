@@ -274,7 +274,7 @@ function App() {
           <div className="pause-row">
             <button className="btn ghost" onClick={toggleMute}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
             <button className="btn ghost" onClick={() => startGame(levelId, true)}>↻ Restart chapter</button>
-            <button className="btn ghost" onClick={leaveToTitle}>⌂ Title</button>
+            <button className="btn ghost" onClick={leaveToTitle}>⌂ Menu</button>
           </div>
         </div></div>}
       </section>
