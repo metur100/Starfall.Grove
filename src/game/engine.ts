@@ -90,6 +90,8 @@ export class GameEngine {
   moveX = 0; moveY = 0; elapsed = 0; defeated = 0;
   shake = 0; hitStop = 0; slowMo = 0; damageFlash = 0; respawnFade = 0; flash = 0;
   combo = 0; comboTime = 0; combat = 0; tracked: string | null = null;
+  /** 0…1, rises quickly while a hostile creature is close: drives the red screen edge. */
+  danger = 0;
   /** Seconds left on each potion effect. */
   readonly buffs: Partial<Record<ItemId, number>> = {};
   /** Effect density set by the graphics quality (1 = full). */
@@ -172,7 +174,8 @@ export class GameEngine {
   private say(speaker: string, portrait: string, lines: string[], then?: 'complete') { if (!lines.length) return; sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker, portrait, lines, then }); }
   private play(s: Sfx, pos?: Point) { sfx.play(s, pos); }
   private boss() { return this.enemies.find(e => e.boss) || null; }
-  bossUnlocked() { return this.main.keys.length >= 3; }
+  /** The guardian can be fought once its main quest has been accepted. */
+  bossUnlocked() { const b = this.world.quests.find(q => q.kind === 'boss'); if (!b) return this.main.keys.length >= 3; const st = this.qs(b.id).status; return st === 'active' || st === 'done'; }
   private canHurt(e: Enemy) { return !e.boss || this.bossUnlocked(); }
   spellUnlocked(id: SpellId) { return this.profile.level >= SPELLS[id].level; }
   get power() { return powerAt(this.profile.level) * (this.buffs.powerElixir ? 1.35 : 1); }
@@ -312,15 +315,22 @@ export class GameEngine {
   quest(id: string) { return this.questById.get(id); }
   private qs(id: string) { return this.quests.get(id)!; }
   questsFor(npcId: string) { return this.world.quests.filter(q => q.giver === npcId); }
-  npcMarker(n: Npc): '!' | '?' | null {
-    if (n.role === 'guide') return !this.main.talkedGuide || (this.bossUnlocked() && !this.main.readySeen && !this.main.bossDefeated) ? '!' : null;
+  /** Who a finished quest is handed in to. */
+  private reportTo(q: QuestDef) { return q.turnIn || q.giver; }
+  /** Quests that finish by speaking with `to`. */
+  private isTalk(q: QuestDef) { return q.kind === 'deliver' || q.kind === 'talk'; }
+  /** The main story quest being worked on: the first one not yet done. */
+  currentMain(): QuestDef | null { return this.world.quests.find(q => q.main && this.qs(q.id).status !== 'done') || null; }
+  /** Marker over a villager's head. Main quests (gold) win over side quests (blue), hand-ins over offers. */
+  npcMarker(n: Npc): { mark: '!' | '?'; main: boolean } | null {
+    let found: { mark: '!' | '?'; main: boolean } | null = null;
     for (const q of this.world.quests) {
-      const st = this.qs(q.id);
-      if (q.giver === n.id && st.status === 'ready') return '?';
-      if (q.kind === 'deliver' && q.to === n.id && st.status === 'active') return '?';
+      const st = this.qs(q.id).status, main = !!q.main;
+      const mark = (st === 'ready' && this.reportTo(q) === n.id) || (st === 'active' && this.isTalk(q) && q.to === n.id) ? '?' : st === 'available' && q.giver === n.id ? '!' : null;
+      if (!mark) continue;
+      if (!found || (main && !found.main) || (main === found.main && mark === '?')) found = { mark, main };
     }
-    for (const q of this.questsFor(n.id)) if (this.qs(q.id).status === 'available') return '!';
-    return null;
+    return found;
   }
   /** Every quest also pays out one item; quests without a set one get a fixed pick so the offer can name it. */
   rewardItem(q: QuestDef): ItemId { return q.reward.item ?? ITEM_ORDER[[...q.id].reduce((a, c) => a + c.charCodeAt(0), 0) % ITEM_ORDER.length]; }
@@ -332,32 +342,37 @@ export class GameEngine {
     parts.push(ITEMS[this.rewardItem(q)].name);
     return parts.join(' · ');
   }
-  private offerQuest(q: QuestDef, n: Npc) {
-    const offer: QuestOffer = { id: q.id, title: q.title, summary: q.summary, reward: this.rewardText(q) };
-    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: q.text.offer, offer });
+  private offerQuest(q: QuestDef, n: Npc, before: string[] = []) {
+    const offer: QuestOffer = { id: q.id, title: q.title, summary: q.summary, reward: this.rewardText(q), main: !!q.main };
+    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: [...before, ...q.text.offer], offer });
   }
   /** Called by the UI when the player presses Accept on an offer. */
   acceptQuest(id: string) {
     const q = this.quest(id); if (!q) return;
     const st = this.qs(q.id); if (st.status !== 'available') return;
     st.status = 'active'; st.progress = 0;
-    if (q.kind === 'collect') st.progress = this.world.objects.filter(o => o.questId === q.id && this.got.has(o.id)).length;
-    this.tracked = q.id;
+    if (!q.main) this.tracked = q.id;
+    if (q.main) this.main.talkedGuide = true;
     this.eventHandler({ type: 'quest', title: q.title, state: 'accepted' }); this.play('quest');
-    if (q.kind === 'visit' && this.discovered.has(q.place!)) this.advance(q, 1);
-    else if (q.kind === 'collect' && st.progress >= q.count) { st.status = 'ready'; }
+    // Anything already done before accepting still counts.
+    const already = q.kind === 'collect' ? this.world.objects.filter(o => o.questId === q.id && this.got.has(o.id)).length
+      : q.kind === 'key' ? q.keys!.filter(i => this.main.keys.includes(`key-${i}`)).length
+        : q.kind === 'visit' ? Number(this.discovered.has(q.place!)) : q.kind === 'boss' ? Number(this.main.bossDefeated) : 0;
+    if (already) this.advance(q, already);
+    if (q.kind === 'boss' && !this.main.bossDefeated) { this.notice(`The seal on ${this.world.script.bossName} is breaking…`, 'epic'); this.addShake(6); }
   }
   private advance(q: QuestDef, by: number) {
     const st = this.qs(q.id); if (st.status !== 'active') return;
     st.progress = Math.min(q.count, st.progress + by);
+    if (q.kind === 'boss') { if (st.progress >= q.count) this.notice(`${q.title}: restore the ${this.world.script.finaleName}.`, 'good'); return; }
     if (st.progress >= q.count) {
       st.status = 'ready';
       this.eventHandler({ type: 'quest', title: q.title, state: 'ready' }); this.play('quest');
-      const giver = this.npcs.find(n => n.id === q.giver);
-      this.notice(`${q.title}: return to ${giver?.name || 'the quest giver'}.`, 'good');
+      const to = this.npcs.find(n => n.id === this.reportTo(q));
+      this.notice(`${q.title}: report to ${to?.name || 'the quest giver'}.`, 'good');
     } else if (q.kind !== 'collect') this.notice(`${q.title} ${st.progress}/${q.count}`);
   }
-  private complete(q: QuestDef, speaker: Npc, lines: string[]) {
+  private complete(q: QuestDef, speaker: Npc | null, lines: string[], silent = false) {
     const st = this.qs(q.id); st.status = 'done';
     const r = q.reward, key = `${this.world.id}:${q.id}`, first = !this.profile.claimed.includes(key);
     if (first) {
@@ -372,11 +387,11 @@ export class GameEngine {
     const h = this.hero;
     this.emit(h.x, h.y, 34, ['#fff1b8', '#b9f29d', '#ffffff'], { speed: 180, life: 1, kind: 'star', glow: true }); this.play('questDone');
     const xp = r.xp * this.world.xpScale;
-    this.say(speaker.name, speaker.portrait, lines);
+    if (speaker && !silent) this.say(speaker.name, speaker.portrait, lines);
     this.eventHandler({ type: 'quest', title: q.title, state: 'completed', xp: Math.round(xp) });
     this.gainXp(xp);
     this.addItem(this.rewardItem(q));
-    if (this.tracked === q.id) this.tracked = this.world.quests.find(x => this.qs(x.id).status === 'active' || this.qs(x.id).status === 'ready')?.id || null;
+    if (this.tracked === q.id) this.tracked = this.world.quests.find(x => !x.main && (this.qs(x.id).status === 'active' || this.qs(x.id).status === 'ready'))?.id || null;
     for (const other of this.world.quests) if (other.requires === q.id && this.qs(other.id).status === 'locked') this.qs(other.id).status = 'available';
   }
   track(id: string) { if (this.quests.has(id)) this.tracked = id; }
@@ -405,7 +420,8 @@ export class GameEngine {
   // ───────────────────────────── world interaction
   isVisible(o: WorldObject) { return this.visibleObject(o); }
   private visibleObject(o: WorldObject) {
-    if (o.kind === 'key') return !this.main.keys.includes(o.id);
+    // Key items appear once the main quest that asks for them is accepted.
+    if (o.kind === 'key') return !this.main.keys.includes(o.id) && this.world.quests.some(q => q.kind === 'key' && this.qs(q.id).status === 'active' && q.keys!.some(i => `key-${i}` === o.id));
     if (o.kind === 'questItem') return !this.got.has(o.id) && this.qs(o.questId!)?.status === 'active';
     return true;
   }
@@ -413,7 +429,8 @@ export class GameEngine {
   nearest(maxRange = 105): Near | null {
     let best: Near | null = null, bd = maxRange;
     const h = this.hero;
-    for (const o of this.world.objects) { if (Math.abs(o.x - h.x) > maxRange || Math.abs(o.y - h.y) > maxRange || !this.interactable(o)) continue; const d = dist(h, o); if (d < bd) { bd = d; best = { kind: 'object', o }; } }
+    // Quest pickups win over a villager standing right next to them.
+    for (const o of this.world.objects) { if (Math.abs(o.x - h.x) > maxRange || Math.abs(o.y - h.y) > maxRange || !this.interactable(o)) continue; const d = dist(h, o) - (o.kind === 'questItem' || o.kind === 'key' ? 30 : 0); if (d < bd) { bd = d; best = { kind: 'object', o }; } }
     for (const n of this.npcs) { if (Math.abs(n.x - h.x) > maxRange || Math.abs(n.y - h.y) > maxRange) continue; const d = dist(h, n) - 12; if (d < bd) { bd = d; best = { kind: 'npc', n }; } }
     return best;
   }
@@ -429,7 +446,7 @@ export class GameEngine {
         this.emit(o.x, o.y, 40, [acc, '#ffffff', '#fff1b8'], { speed: 260, life: 1, kind: 'star', glow: true, size: 5 });
         this.ring(o.x, o.y, 90, acc, .6); this.flash = .2;
         this.notice(s.pickupKey.replace('{n}', String(m.keys.length)), 'good'); this.play('key'); this.gainXp(40 * this.world.xpScale);
-        if (m.keys.length === 3) window.setTimeout(() => this.notice(`The seal on ${s.bossName} is breaking…`, 'epic'), 1400);
+        for (const q of this.world.quests) if (q.kind === 'key' && this.qs(q.id).status === 'active' && q.keys!.some(i => `key-${i}` === o.id)) this.advance(q, 1);
         return;
       }
       case 'questItem': {
@@ -480,28 +497,36 @@ export class GameEngine {
       case 'finale': {
         if (!m.bossDefeated) { this.say(o.name, '✦', this.bossUnlocked() ? s.finale.guarded : s.finale.locked); return; }
         if (m.finaleDone) { this.celebrate(); return; }
-        m.finaleDone = true; this.say(o.name, '✦', s.finale.done, 'complete'); return;
+        m.finaleDone = true;
+        const last = this.world.quests.find(q => q.kind === 'boss' && this.qs(q.id).status === 'active');
+        if (last) this.complete(last, null, [], true);
+        this.say(o.name, '✦', s.finale.done, 'complete'); return;
       }
     }
   }
   private talk(n: Npc) {
     const s = this.world.script, m = this.main;
     n.faceX = this.hero.x > n.x ? 1 : -1; n.waitT = Math.max(n.waitT, 3);
-    if (n.role === 'guide') {
-      this.setCheckpoint(); m.talkedGuide = true;
-      if (m.bossDefeated) return this.say(n.name, n.portrait, s.guide.done);
-      if (this.bossUnlocked()) { m.readySeen = true; return this.say(n.name, n.portrait, s.guide.ready); }
-      return this.say(n.name, n.portrait, s.guide.intro(m.keys.length));
-    }
-    // A delivery addressed to this person comes first.
-    for (const q of this.world.quests) if (q.kind === 'deliver' && q.to === n.id && this.qs(q.id).status === 'active') return this.complete(q, n, q.text.deliver || ['Thank you!']);
+    if (n.role === 'guide') this.setCheckpoint();
+    // Someone you were sent to speak with, or bring something to, comes first; then hand-ins, then new quests.
+    for (const q of this.world.quests) if (this.isTalk(q) && q.to === n.id && this.qs(q.id).status === 'active') return this.finish(q, n, q.text.deliver || ['Thank you!']);
+    const ready = this.world.quests.find(q => this.qs(q.id).status === 'ready' && this.reportTo(q) === n.id);
+    if (ready) return this.finish(ready, n, ready.text.complete);
+    const offer = this.offerFrom(n); if (offer) return this.offerQuest(offer, n);
     const mine = this.questsFor(n.id);
-    const ready = mine.find(q => this.qs(q.id).status === 'ready'); if (ready) return this.complete(ready, n, ready.text.complete);
-    const offer = mine.find(q => this.qs(q.id).status === 'available'); if (offer) return this.offerQuest(offer, n);
-    const active = mine.find(q => this.qs(q.id).status === 'active');
-    if (active) { const st = this.qs(active.id); return this.say(n.name, n.portrait, [...active.text.progress, active.kind === 'deliver' ? '' : `(${st.progress}/${active.count})`].filter(Boolean)); }
+    const active = mine.find(q => q.main && this.qs(q.id).status === 'active') || mine.find(q => this.qs(q.id).status === 'active');
+    if (active) { const st = this.qs(active.id), counted = active.count > 1 && (active.kind === 'collect' || active.kind === 'slay' || active.kind === 'key'); return this.say(n.name, n.portrait, [...active.text.progress, counted ? `(${st.progress}/${active.count})` : ''].filter(Boolean)); }
+    if (n.role === 'guide') { const cur = this.currentMain(); return this.say(n.name, n.portrait, m.bossDefeated || !cur ? s.guide.done : [`${cur.title}: ${cur.summary}`, 'Follow the gold markers, Mira. The valley is counting on you.']); }
     const done = mine.find(q => this.qs(q.id).status === 'done');
     this.say(n.name, n.portrait, done && Math.random() < .5 ? done.text.after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
+  }
+  /** Main story offers come before side quests. */
+  private offerFrom(n: Npc) { const open = this.questsFor(n.id).filter(q => this.qs(q.id).status === 'available'); return open.find(q => q.main) || open[0] || null; }
+  /** Hands a quest in; if the same person has the next step, it is offered right after their thanks. */
+  private finish(q: QuestDef, n: Npc, lines: string[]) {
+    this.complete(q, n, lines, true);
+    const next = this.offerFrom(n);
+    if (next) this.offerQuest(next, n, lines); else this.say(n.name, n.portrait, lines);
   }
   /** Called by the UI once the finale dialogue closes: fireworks, then the chapter ends. */
   celebrate() {
@@ -548,7 +573,8 @@ export class GameEngine {
     if (e.boss) { this.addItem(rollItem()); this.addItem('healthPotion'); }
     else if (e.elite ? Math.random() < .45 : !e.summoned && Math.random() < .04) this.addItem(e.elite ? rollItem() : 'healthPotion');
     if (e.boss) {
-      this.main.bossDefeated = true; this.slowMo = 1.4; this.flash = 1; this.addShake(22); this.play('bossDie');
+      this.main.bossDefeated = true; this.slowMo = 1.4;
+      for (const q of this.world.quests) if (q.kind === 'boss' && this.qs(q.id).status === 'active') this.advance(q, 1); this.flash = 1; this.addShake(22); this.play('bossDie');
       for (const other of this.enemies) if (other.summoned && !other.dead) this.killEnemy(other);
       this.clearThreats = true;
       this.notice(`${this.world.script.bossName} is defeated! Go to the ${this.world.script.finaleName}.`, 'epic');
@@ -693,7 +719,7 @@ export class GameEngine {
 
   private updateEnemies(dt: number) {
     const h = this.hero;
-    let threats = 0;
+    let threats = 0, near = false;
     for (const e of this.enemies) {
       if (e.dead) { e.deadT += dt; continue; }
       const far = Math.abs(e.x - h.x) > ACTIVE_RANGE || Math.abs(e.y - h.y) > ACTIVE_RANGE;
@@ -707,6 +733,7 @@ export class GameEngine {
       if (!e.boss) this.collide(e, e.r * .8);
       const d = dist(h, e);
       if (e.aggro && d < 650) threats += e.boss ? 3 : 1;
+      if (e.aggro && d < 480 && this.canHurt(e)) near = true;
       if (e.boss) { this.updateBoss(e, dt, d); continue; }
       if (!e.aggro && d < 380) { e.aggro = true; this.text(e.x, e.y - e.r - 26, '!', '#ffd35c', 22); this.play('squeak', e); }
       if (e.aggro && (d > 780 || dist(e, { x: e.homeX, y: e.homeY }) > 900)) e.aggro = false;
@@ -740,6 +767,7 @@ export class GameEngine {
       if (d < e.r + 16 && e.kind !== 'thornling') this.hurt(this.enemyDamage, e);
     }
     this.combat += (clamp(threats / 4, 0, 1) - this.combat) * Math.min(1, dt * 1.5);
+    this.danger += (Number(near) - this.danger) * Math.min(1, dt * (near ? 5 : 2));
   }
   private respawnEnemies() {
     const h = this.hero;
@@ -772,7 +800,7 @@ export class GameEngine {
       const dh = Math.abs(n.x - h.x) + Math.abs(n.y - h.y);
       if (dh > ACTIVE_RANGE * 1.4 && n.activity !== 'travel') continue;
       const close = dh < 150;
-      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { n.bark = this.npcMarker(n) === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
+      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { n.bark = this.npcMarker(n)?.mark === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
       n.workT += dt; n.waitT -= dt;
       if (close) { n.moving = false; n.faceX = h.x > n.x ? 1 : -1; continue; }
       let speed = 0;
@@ -1118,62 +1146,64 @@ export class GameEngine {
     }
     if (this.completeTimer <= 0) {
       this.completeTimer = 0;
-      const done = this.world.quests.filter(q => this.qs(q.id).status === 'done').length;
-      this.eventHandler({ type: 'levelComplete', levelId: this.world.id, stats: { stars: this.earnedStars(), time: this.elapsed, defeated: this.defeated, quests: done, totalQuests: this.world.quests.length, level: this.profile.level } });
+      const side = this.sideQuests(), done = side.filter(q => this.qs(q.id).status === 'done').length;
+      this.eventHandler({ type: 'levelComplete', levelId: this.world.id, stats: { stars: this.earnedStars(), time: this.elapsed, defeated: this.defeated, quests: done, totalQuests: side.length, level: this.profile.level } });
     }
   }
 
   // ───────────────────────────── UI data
-  mainTarget(): Point | null {
-    const m = this.main;
-    if (!m.talkedGuide) return this.npcs.find(n => n.role === 'guide') || null;
-    if (m.keys.length < 3) {
-      let best: WorldObject | null = null, bd = Infinity;
-      for (const o of this.world.objects) if (o.kind === 'key' && !m.keys.includes(o.id)) { const d = dist(this.hero, o); if (d < bd) { bd = d; best = o; } }
-      return best;
-    }
-    if (!m.bossDefeated) { const b = this.boss(); return b && !b.dead ? b : null; }
-    return this.world.objects.find(o => o.kind === 'finale') || null;
-  }
-  questTarget(): Point | null {
-    const q = this.tracked ? this.quest(this.tracked) : null; if (!q) return null;
-    const st = this.qs(q.id);
-    if (st.status === 'ready') return this.npcs.find(n => n.id === q.giver) || null;
-    if (st.status !== 'active') return null;
-    if (q.kind === 'deliver') return this.npcs.find(n => n.id === q.to) || null;
+  private targetOf(q: QuestDef): Point | null {
+    const st = this.qs(q.id).status, npc = (id?: string) => this.npcs.find(n => n.id === id) || null;
+    if (st === 'available') return npc(q.giver);
+    if (st === 'ready') return npc(this.reportTo(q));
+    if (st !== 'active') return null;
+    if (this.isTalk(q)) return npc(q.to);
     if (q.kind === 'visit') return this.world.pois.find(p => p.id === q.place) || null;
-    if (q.kind === 'collect') {
+    if (q.kind === 'boss') { const b = this.boss(); return b && !b.dead ? b : this.world.objects.find(o => o.kind === 'finale') || null; }
+    if (q.kind === 'key' || q.kind === 'collect') {
       let best: WorldObject | null = null, bd = Infinity;
-      for (const o of this.world.objects) if (o.questId === q.id && !this.got.has(o.id)) { const d = dist(this.hero, o); if (d < bd) { bd = d; best = o; } }
-      if (best && bd > 900) return this.world.pois.find(p => p.id === q.near) || best;
+      for (const o of this.world.objects) {
+        const mine = q.kind === 'key' ? o.kind === 'key' && !this.main.keys.includes(o.id) && q.keys!.some(i => `key-${i}` === o.id) : o.questId === q.id && !this.got.has(o.id);
+        if (mine) { const d = dist(this.hero, o); if (d < bd) { bd = d; best = o; } }
+      }
+      if (q.kind === 'collect' && best && bd > 900) return this.world.pois.find(p => p.id === q.near) || best;
       return best;
     }
     return null;
   }
-  private mainRow() {
-    const m = this.main, s = this.world.script;
-    const guide = this.npcs.find(n => n.role === 'guide');
-    const step = m.finaleDone ? 'Chapter complete!' : !m.talkedGuide ? `Talk to ${guide?.name}` : m.bossDefeated ? `Restore the ${s.finaleName}` : m.keys.length < 3 ? `Find ${s.keyLabel}` : `Defeat ${s.bossName}`;
-    const collecting = m.talkedGuide && !m.finaleDone && !m.bossDefeated && m.keys.length < 3;
-    return { title: this.world.subtitle, step, progress: collecting ? m.keys.length : 0, count: collecting ? 3 : 0 };
-  }
-  private questRows(): QuestRow[] {
-    const rows: QuestRow[] = [];
-    for (const q of this.world.quests) {
-      const st = this.qs(q.id); if (st.status === 'locked') continue;
-      const giver = this.npcs.find(n => n.id === q.giver);
-      const to = q.to ? this.npcs.find(n => n.id === q.to) : null;
-      const detail = st.status === 'available' ? `${giver?.name} in ${giver?.poiName} has a request.`
-        : st.status === 'ready' ? `Return to ${giver?.name} in ${giver?.poiName}.`
-          : st.status === 'done' ? 'Complete'
-            : q.kind === 'deliver' ? `Bring the ${q.item?.toLowerCase()} to ${to?.name} in ${to?.poiName}.`
-              : `${q.summary} (${st.progress}/${q.count})`;
-      const target = q.enemy && q.enemy !== 'any' ? `${ENEMY_STATS[q.enemy].name}s defeated` : 'Creatures defeated';
-      const goal = st.status === 'available' ? `Talk to ${giver?.name}` : st.status === 'ready' ? `Return to ${giver?.name}` : st.status === 'done' ? 'Complete'
-        : q.kind === 'collect' ? `${q.item}` : q.kind === 'slay' ? target : q.kind === 'deliver' ? `Bring the ${q.item?.toLowerCase()} to ${to?.name}` : `Visit ${this.world.pois.find(p => p.id === q.place)?.name}`;
-      const counted = st.status === 'active' && (q.kind === 'collect' || q.kind === 'slay');
-      rows.push({ id: q.id, title: q.title, giver: giver?.name || '', status: st.status, detail, goal, progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: Math.round(q.reward.xp * this.world.xpScale), reward: this.rewardText(q), tracked: this.tracked === q.id });
+  mainTarget(): Point | null { const q = this.currentMain(); return q ? this.targetOf(q) : null; }
+  questTarget(): Point | null { const q = this.tracked ? this.quest(this.tracked) : null; return q && !q.main ? this.targetOf(q) : null; }
+  private goalOf(q: QuestDef) {
+    const st = this.qs(q.id), name = (id?: string) => this.npcs.find(n => n.id === id)?.name || '', s = this.world.script;
+    if (st.status === 'available') return `Talk to ${name(q.giver)}`;
+    if (st.status === 'ready') return `Report to ${name(this.reportTo(q))}`;
+    if (st.status === 'done') return 'Complete';
+    switch (q.kind) {
+      case 'collect': return `${q.item}`;
+      case 'slay': return q.enemy && q.enemy !== 'any' ? `${ENEMY_STATS[q.enemy].name}s defeated` : 'Creatures defeated';
+      case 'deliver': return `Bring the ${q.item?.toLowerCase()} to ${name(q.to)}`;
+      case 'talk': return `Speak with ${name(q.to)}`;
+      case 'visit': return `Visit ${this.world.pois.find(p => p.id === q.place)?.name}`;
+      case 'key': { const k = this.world.objects.find(o => o.id === `key-${q.keys![0]}`), at = k ? this.poiAt(k, 400)?.name : ''; return q.count > 1 ? `${s.keyLabel} found` : `Find the ${k?.name.toLowerCase() || 'relic'}${at ? ` · ${at}` : ''}`; }
+      case 'boss': return this.main.bossDefeated ? `Restore the ${s.finaleName}` : `Defeat ${s.bossName}`;
     }
+  }
+  private rowFor(q: QuestDef): QuestRow {
+    const st = this.qs(q.id), giver = this.npcs.find(n => n.id === q.giver), to = this.npcs.find(n => n.id === this.reportTo(q));
+    const detail = st.status === 'available' ? `${giver?.name} in ${giver?.poiName} has a request.`
+      : st.status === 'ready' ? `Report to ${to?.name} in ${to?.poiName}.` : st.status === 'done' ? 'Complete' : q.summary;
+    const counted = st.status === 'active' && q.count > 1 && (q.kind === 'collect' || q.kind === 'slay' || q.kind === 'key');
+    return { id: q.id, title: q.title, giver: giver?.name || '', status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: Math.round(q.reward.xp * this.world.xpScale), reward: this.rewardText(q), tracked: this.tracked === q.id };
+  }
+  private mainRow() {
+    const list = this.world.quests.filter(q => q.main), cur = this.currentMain(), total = list.length;
+    if (!cur) return { title: 'Chapter complete', step: `The ${this.world.script.finaleName} is restored`, progress: 0, count: 0, index: total, total };
+    const row = this.rowFor(cur);
+    return { title: cur.title, step: row.goal, progress: row.progress, count: row.count, index: list.indexOf(cur) + 1, total };
+  }
+  private questRows(main: boolean): QuestRow[] {
+    const rows = this.world.quests.filter(q => !!q.main === main && this.qs(q.id).status !== 'locked').map(q => this.rowFor(q));
+    if (main) return rows;
     const order = { ready: 0, active: 1, available: 2, done: 3, locked: 4 };
     return rows.sort((a, b) => order[a.status] - order[b.status]);
   }
@@ -1191,15 +1221,16 @@ export class GameEngine {
       level: p.level, xp: p.xp, xpNext: xpToNext(p.level),
       spells: SPELL_ORDER.map(id => ({ id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: SPELLS[id].cooldown ? h.cds[id] / SPELLS[id].cooldown : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost })),
       nearName, nearAction,
-      main: this.mainRow(), quests: this.questRows(), defeated: this.defeated, combo: this.combo,
+      main: this.mainRow(), mainQuests: this.questRows(true), quests: this.questRows(false), defeated: this.defeated, combo: this.combo,
       items: ITEM_ORDER.map(id => ({ id, count: p.items[id] || 0 })),
       buffs: ITEM_ORDER.filter(id => this.buffs[id]).map(id => ({ id, time: this.buffs[id]!, max: ITEMS[id].duration })),
-      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round(10 * this.power), guard: this.buffs.barkskin ? .5 : 0, elapsed: this.elapsed, questsDone: this.world.quests.filter(q => this.qs(q.id).status === 'done').length, totalQuests: this.world.quests.length },
+      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round(10 * this.power), guard: this.buffs.barkskin ? .5 : 0, elapsed: this.elapsed, questsDone: this.sideQuests().filter(q => this.qs(q.id).status === 'done').length, totalQuests: this.sideQuests().length },
       boss: b && !b.dead && b.aggro ? { name: this.world.script.bossName, title: this.world.script.bossTitle, hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase } : null,
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: [...this.opened].length, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };
   }
   getObjects() { return this.world.objects.filter(o => this.visibleObject(o)); }
   isOpened(id: string) { return this.opened.has(id); }
-  earnedStars() { const done = this.world.quests.filter(q => this.qs(q.id).status === 'done').length, all = this.world.quests.length; return 1 + Number(done >= all / 2) + Number(done === all); }
+  sideQuests() { return this.world.quests.filter(q => !q.main); }
+  earnedStars() { const side = this.sideQuests(), done = side.filter(q => this.qs(q.id).status === 'done').length, all = side.length; return 1 + Number(done >= all / 2) + Number(done === all); }
 }

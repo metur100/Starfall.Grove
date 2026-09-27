@@ -1,4 +1,5 @@
 import { buildWorld, type ChapterSpec } from './worldgen';
+import { STORY } from './story';
 import type { LevelId, NpcLook, QuestDef, WorldDefinition } from './types';
 
 export const LEVEL_ORDER: LevelId[] = ['meadow', 'woods', 'summit'];
@@ -50,6 +51,7 @@ const meadow: ChapterSpec = {
     { id: 'cart', name: 'Trader Bex', portrait: '🧳', at: 'sunpetal', to: 'willow', activity: 'travel', look: look('#c07850', 'scarf', { hatColor: '#8a3b2f' }), lines: ['Sunpetal to Willowmere and back, every day. Good for the legs.'], barks: ['On the road again!', 'Fine wares, fine prices!'] },
   ],
   quests: [
+    ...STORY.meadow,
     q({ id: 'glowbugs', title: 'Lanterns for the Night', giver: 'rowan', kind: 'collect', count: 5, near: 'mirror', item: 'Glowbug', icon: 'bug', summary: 'Catch glowbugs around Mirror Lake.', reward: { xp: 110, hearts: 1 },
       text: { offer: ['The night paths are hard to see since the star fell.', 'Could you catch five glowbugs by Mirror Lake? They’ll light our lanterns.'], progress: ['The glowbugs gather by Mirror Lake, south of here.'], complete: ['Five little lights! The lanterns will glow again.', 'Take this heartwood charm. You feel sturdier already.'], after: ['The lanterns hum with glowbugs. Thank you, Mira.'] } }),
     q({ id: 'bell', title: 'Pip’s Silver Bell', giver: 'pip', kind: 'collect', count: 1, near: 'faerie', item: 'Silver bell', icon: 'toy', summary: 'Find Pip’s bell near the Faerie Ring.', reward: { xp: 90, regen: .8 },
@@ -134,6 +136,7 @@ const woods: ChapterSpec = {
     { id: 'lou', name: 'Fisher Lou', portrait: '🎣', at: 'pool', dx: -40, activity: 'fish', look: look('#5a8a8a', 'cap', { hatColor: '#3a5a5a', beard: true }), lines: ['Blackwater fish glow. Tasty, too.'], barks: ['Nibble…'] },
   ],
   quests: [
+    ...STORY.woods,
     q({ id: 'moths', title: 'Moths for the Lantern Tree', giver: 'bellkeeper', kind: 'collect', count: 5, near: 'glade', item: 'Moon moth', icon: 'bug', summary: 'Catch moon moths in the Moonlit Glade.', reward: { xp: 120, hearts: 1 },
       text: { offer: ['My moon moths fled to the Moonlit Glade. Without them the lantern tree won’t catch.', 'Five of them, please.'], progress: ['The Moonlit Glade lies east of here.'], complete: ['They’re home! Listen to them hum.', 'Take this bark-woven vest.'], after: ['The lantern tree glows again.'] } }),
     q({ id: 'satchel', title: 'Pip’s Satchel', giver: 'pip', kind: 'collect', count: 1, near: 'pool', item: 'Courier satchel', icon: 'bundle', summary: 'Find Pip’s satchel near Blackwater Pool.', reward: { xp: 100, regen: .8 },
@@ -217,6 +220,7 @@ const summit: ChapterSpec = {
     { id: 'hale', name: 'Woodcutter Hale', portrait: '🪓', at: 'hamlet', dx: -330, dy: -260, activity: 'chop', look: look('#8a5a3a', 'cap', { hatColor: '#6b3f2a', beard: true }), lines: ['Frostpine burns bright. Worth the climb.'], barks: ['Timber!'] },
   ],
   quests: [
+    ...STORY.summit,
     q({ id: 'wisps', title: 'Wisps for the Telescope', giver: 'vale', kind: 'collect', count: 5, near: 'tarn', item: 'Star wisp', icon: 'bug', summary: 'Catch star wisps around Mirrorsky Tarn.', reward: { xp: 140, hearts: 1 },
       text: { offer: ['Five star wisps escaped my telescope. They drift around Mirrorsky Tarn.', 'Without them I cannot chart the way to the Cradle.'], progress: ['Glittering little things, by the tarn.'], complete: ['Wonderful! The constellations make sense again.', 'Wear this starsilver cloak.'], after: ['The stars align nicely tonight.'] } }),
     q({ id: 'lens', title: 'Pip’s Brass Lens', giver: 'pip', kind: 'collect', count: 1, near: 'crystal', item: 'Brass lens', icon: 'gem', summary: 'Find Pip’s lens in Crystal Hollow.', reward: { xp: 110, regen: .8 },

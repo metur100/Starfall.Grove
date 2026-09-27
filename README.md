@@ -64,7 +64,7 @@ Level, XP, quest rewards and the bag carry over between chapters.
 
 **Character sheet:** tap or click the portrait (or press **P**) to see health, magic, regeneration, spell power, speed and adventure stats.
 
-**Main quest:** talk to the guide, find three key items spread across the map, defeat the guardian, then restore the finale.
+**Main quest:** each chapter tells its story as a chain of main quests: 5 in Chapter I, 7 in Chapter II and 10 in Chapter III (in `story.ts`). Every step is offered in dialogue and ends in a gold **Main quest** window with **Accept** / **Decline**. You speak with people, gather things, clear out creatures, visit places and find the three key relics, and usually the person you report to hands you the next step. The last quest is always the guardian fight, followed by restoring the chapter's light.
 
 **Side quests:** each chapter has 9. Talking to a quest giver shows the quest and its reward with **Accept quest** and **Decline** buttons. There are four kinds:
 
@@ -75,7 +75,7 @@ Level, XP, quest rewards and the bag carry over between chapters.
 
 The main quest is always **gold** and side quests are **blue**, on NPC markers, arrows, the map and the quest log. **!** means a quest is available, **?** means one is ready to hand in. A small tracker on the right lists the main quest and your active side quests with their counts; click a quest in the quest log to follow it.
 
-Creatures glow and turn red when they are aggressive, and deepen to full red while winding up an attack.
+Creatures glow and turn red when they are aggressive, and deepen to full red while winding up an attack. While any of them is close and hostile, the edges of the screen glow red.
 
 Creatures respawn after a while so you can keep levelling. Lairs hold packs with a gold-starred elite.
 
@@ -100,7 +100,8 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 - **Trees and buildings:** cached sprites that sway with a cheap skew.
 - **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
 - **Distant entities:** creatures, villagers and animals far from Mira sleep.
-- **Graphics quality:** Auto, High, Balanced or Low in the pause menu. Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn. Auto starts lower on tablets and low-core devices, then steps down within a second if frames run long and back up once they are smooth.
+- **Settings (pause menu → ⚙ Settings):** quality (Auto, High, Balanced, Low, Lowest), grass and flowers (Full, Less, Off), weather effects, a 30 fps cap, screen shake and an FPS counter.
+- **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn. Auto starts lower on tablets and low-core devices, then steps down within a second if frames run long and back up once they are smooth.
 - **No live blur:** the HUD uses solid glass panels. `backdrop-filter` blur over the constantly redrawn canvas was the biggest cost on weak tablets.
 - **Memory:** the ground chunk cache is sized to the view.
 
@@ -111,6 +112,8 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 - Move: WASD / arrows
 - Attacks: F Spark · E Dash · Q Leaf Burst · R Sunfire · C Moss Shield · T Starfall
 - Space / Enter talk, open or use · 1–5 potions · I bag · P character · M map · Tab quest log · N mute · Esc pause
+
+**Reset:** ⚙ Settings → **Reset entire game** (or **Reset game** on the title screen) erases all chapters, levels, potions and quests after a second tap to confirm. Sound and graphics settings are kept.
 
 **Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices, and prompts say "Tap" instead of showing keyboard keys.
 

@@ -1,19 +1,46 @@
-// Graphics quality setting. "auto" starts from a guess about the device and adapts to the measured frame rate.
-export type Graphics = 'auto' | 'high' | 'balanced' | 'low';
-export const GRAPHICS: Graphics[] = ['auto', 'high', 'balanced', 'low'];
-const KEY = 'starfall-grove-graphics';
+// Graphics settings. "auto" quality starts from a guess about the device and adapts to the measured frame rate.
+export type Quality = 'auto' | 'high' | 'balanced' | 'low' | 'lowest';
+export type DecorLevel = 'auto' | 'full' | 'less' | 'off';
+export type GraphicsSettings = {
+  quality: Quality;
+  /** Grass and flowers that sway. "auto" follows the quality level. */
+  decor: DecorLevel;
+  /** Falling petals, leaves and snow, fireflies, light rays, cloud shadows. */
+  weather: boolean;
+  shake: boolean;
+  /** 30 caps the frame rate: steadier and cooler on weak devices. */
+  fps: 60 | 30;
+  showFps: boolean;
+};
+export const QUALITIES: Quality[] = ['auto', 'high', 'balanced', 'low', 'lowest'];
+export const DECOR_LEVELS: DecorLevel[] = ['auto', 'full', 'less', 'off'];
+/** Quality tiers from lowest (0) to high (3). */
+export const TIER_OF: Record<Exclude<Quality, 'auto'>, number> = { lowest: 0, low: 1, balanced: 2, high: 3 };
+export const TIER_NAMES = ['Lowest', 'Low', 'Balanced', 'High'];
 
-export function loadGraphics(): Graphics {
-  try { const v = localStorage.getItem(KEY) as Graphics | null; return v && GRAPHICS.includes(v) ? v : 'auto'; } catch { return 'auto'; }
+const KEY = 'starfall-grove-graphics-v2';
+const DEFAULTS: GraphicsSettings = { quality: 'auto', decor: 'auto', weather: true, shake: true, fps: 60, showFps: false };
+
+export function loadGraphics(): GraphicsSettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<GraphicsSettings> | null;
+    if (!raw) return { ...DEFAULTS };
+    return {
+      quality: QUALITIES.includes(raw.quality as Quality) ? raw.quality as Quality : DEFAULTS.quality,
+      decor: DECOR_LEVELS.includes(raw.decor as DecorLevel) ? raw.decor as DecorLevel : DEFAULTS.decor,
+      weather: raw.weather ?? DEFAULTS.weather, shake: raw.shake ?? DEFAULTS.shake,
+      fps: raw.fps === 30 ? 30 : 60, showFps: !!raw.showFps,
+    };
+  } catch { return { ...DEFAULTS }; }
 }
-export function saveGraphics(v: Graphics) { try { localStorage.setItem(KEY, v); } catch { /* ignore */ } }
+export function saveGraphics(v: GraphicsSettings) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignore */ } }
 
-/** Tier to start "auto" on: 0 low, 1 balanced, 2 high. Tablets and low-core devices start lower. */
+/** Tier "auto" starts on. Tablets and low-core devices start lower. */
 export function startTier() {
   const nav = navigator as Navigator & { deviceMemory?: number };
   const cores = nav.hardwareConcurrency || 4, memory = nav.deviceMemory ?? 8;
   const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
-  if (cores <= 4 || memory <= 3) return 0;
-  return touch ? 1 : 2;
+  if (cores <= 4 || memory <= 3) return 1;
+  return touch ? 2 : 3;
 }
 export const isTouch = () => typeof matchMedia !== 'undefined' && matchMedia('(hover: none) and (pointer: coarse)').matches;

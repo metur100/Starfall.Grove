@@ -35,12 +35,15 @@ export type ItemIcon = 'herb' | 'flower' | 'bottle' | 'bundle' | 'gem' | 'letter
 export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; name: string; text?: string[]; questId?: string; icon?: ItemIcon };
 
 // ───────────────────────────── quests
-export type QuestKind = 'collect' | 'slay' | 'deliver' | 'visit';
+/** talk: speak with `to` · key: find the chapter key items listed in `keys` · boss: defeat the guardian, then restore the finale. */
+export type QuestKind = 'collect' | 'slay' | 'deliver' | 'visit' | 'talk' | 'key' | 'boss';
 /** `hearts` is a permanent max-health bonus (one heart = 20 HP). */
 export type QuestReward = { xp: number; hearts?: number; mana?: number; regen?: number; item?: ItemId };
 export type QuestDef = {
   id: string; title: string; giver: string; kind: QuestKind; count: number; summary: string;
   enemy?: EnemyKind | 'any'; near?: string; item?: string; icon?: ItemIcon; to?: string; place?: string; requires?: string;
+  /** Main story quests are gold and chained with `requires`; `turnIn` is who to report to when it isn't the giver. */
+  main?: boolean; turnIn?: string; keys?: number[];
   reward: QuestReward;
   text: { offer: string[]; progress: string[]; complete: string[]; after: string[]; deliver?: string[] };
 };
@@ -84,7 +87,7 @@ export type GameSnapshot = {
   levelId: LevelId; hp: number; maxHp: number; mana: number; maxMana: number; shield: boolean;
   level: number; xp: number; xpNext: number;
   spells: SpellState[]; nearName: string | null; nearAction: string | null;
-  main: { title: string; step: string; progress: number; count: number }; quests: QuestRow[];
+  main: { title: string; step: string; progress: number; count: number; index: number; total: number }; mainQuests: QuestRow[]; quests: QuestRow[];
   items: ItemStack[]; buffs: BuffState[]; stats: HeroStats;
   defeated: number; combo: number; boss: BossState | null;
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
@@ -93,7 +96,7 @@ export type GameSnapshot = {
 export type LevelStats = { stars: number; time: number; defeated: number; quests: number; totalQuests: number; level: number };
 export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
 /** A quest being offered: the dialogue ends with Accept / Decline instead of closing. */
-export type QuestOffer = { id: string; title: string; summary: string; reward: string };
+export type QuestOffer = { id: string; title: string; summary: string; reward: string; main: boolean };
 export type EngineEvent =
   | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete'; offer?: QuestOffer }
   | { type: 'item'; id: ItemId; count: number }

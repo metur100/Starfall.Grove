@@ -455,3 +455,32 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 @media (max-width: 640px) {
   .health, .mana, .xp { width: 112px; }
 }
+
+/* ─────────── main quest offers, story list, settings */
+.offer-info.main { background: rgba(255, 211, 92, .09); border-color: rgba(255, 211, 92, .55); }
+.offer-info.main small { color: var(--main-q); }
+.offer-info.main b { color: #fff1c0; }
+.trk-main b i { font-style: normal; font-weight: 800; color: rgba(255, 211, 92, .7); font-size: .9em; }
+.q-main .sub-q { margin: 2px 0 0; color: #e8ecf8; }
+.q-main .sub-q em { font-style: normal; font-weight: 900; color: var(--main-q); }
+.story { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.story li { display: flex; gap: 8px; align-items: center; color: #fff1c0; }
+.story li span { width: 16px; color: var(--main-q); text-align: center; }
+.story li.done { color: var(--muted); }
+.settings-panel { text-align: left; }
+.settings-panel h2, .settings-panel > small, .settings-panel > p { text-align: center; }
+.settings-panel .eyebrow { display: flex; justify-content: center; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.setting-row > span { display: flex; flex-direction: column; gap: 1px; }
+.setting-row b { font: 800 13px var(--ui); color: #eef1fb; }
+.setting-row em { font-style: normal; font-size: 11px; color: var(--muted); }
+.setting-row .seg { flex-wrap: wrap; }
+.settings-panel .volume-grid { margin-top: 14px; }
+.fps-meter { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 9; padding: 2px 8px; border-radius: 8px; background: rgba(0, 0, 0, .55); font: 800 11px var(--ui); color: #b9f29d; pointer-events: none; }
+@media (max-height: 520px) and (orientation: landscape) { .setting-row { padding: 5px 0; } }
+.btn.danger { border-color: rgba(255, 120, 110, .45); color: #ffd4cc; }
+.btn.danger.armed { background: rgba(220, 60, 60, .35); border-color: #ff7a6e; color: #fff; }
+.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding: 12px; border-radius: 16px; border: 1px solid rgba(255, 120, 110, .3); background: rgba(120, 20, 20, .15); }
+.danger-zone > span { display: flex; flex-direction: column; gap: 2px; }
+.danger-zone b { font: 800 13px var(--ui); color: #ffd4cc; }
+.danger-zone em { font-style: normal; font-size: 11px; color: var(--muted); }

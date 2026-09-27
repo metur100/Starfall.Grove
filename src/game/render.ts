@@ -126,6 +126,10 @@ export class Renderer {
   quality = 1;
   /** Touch devices have no keyboard, so key hints are left out. */
   touch = false;
+  /** Player settings: swaying grass and flowers, weather particles, screen shake. */
+  decor: 'full' | 'less' | 'off' = 'full';
+  weather = true;
+  shake = true;
 
   private setup(world: WorldDefinition) {
     if (this.worldId === world.id) return;
@@ -145,7 +149,7 @@ export class Renderer {
     this.setup(world);
     const scale = w < 640 ? .72 : w < 960 ? .85 : 1;
     const res = clamp(Math.round(pixelRatio * scale * 2) / 2, 1, 2);
-    if (res !== this.chunkRes) { this.chunkRes = res; this.chunks.clear(); this.sprites.clear(); }
+    this.chunkRes = res;
     const vw = w / scale, vh = h / scale;
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
     const tx = clamp(hero.x + hero.vx * .28 - vw / 2, 0, Math.max(0, world.width - vw));
@@ -153,7 +157,7 @@ export class Renderer {
     if (!this.cam.ready || Math.hypot(tx - this.cam.x, ty - this.cam.y) > 900) { this.cam.x = tx; this.cam.y = ty; this.cam.ready = true; this.fox.x = hero.x - 40; this.fox.y = hero.y + 10; }
     const k = Math.min(1, dt * 5);
     this.cam.x += (tx - this.cam.x) * k; this.cam.y += (ty - this.cam.y) * k;
-    const shake = e.shake * (this.reduced ? .25 : 1);
+    const shake = this.shake ? e.shake * (this.reduced ? .25 : 1) : 0;
     const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
     const camX = this.cam.x, camY = this.cam.y;
     const view: View = { x: camX, y: camY, w: vw, h: vh };
@@ -188,21 +192,20 @@ export class Renderer {
     this.drawProjectiles(ctx, e);
     for (const z of e.hazards) this.drawHazardAir(ctx, z);
     this.drawParticles(ctx, e.particles);
-    this.updateAmbient(e, view, dt);
-    this.drawAmbient(ctx);
+    if (this.weather) { this.updateAmbient(e, view, dt); this.drawAmbient(ctx); } else this.ambient.length = 0;
     this.drawBubbles(ctx, e, view);
     this.drawFloating(ctx, e);
     this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0);
     this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1);
     const rich = this.quality > .5;
-    if (world.ambient === 'petals' && rich) this.drawCloudShadows(ctx, e, view);
+    if (world.ambient === 'petals' && rich && this.weather) this.drawCloudShadows(ctx, e, view);
     ctx.restore();
 
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
     if (world.darkness > 0) this.drawLighting(ctx, w, h, e, toScreen, scale);
-    if (world.ambient === 'leaves' && rich) this.drawGodRays(ctx, w, h);
-    if (world.ambient === 'stars') this.drawShootingStar(ctx, w, h, dt);
-    if (world.ambient === 'petals' && this.quality >= 1) this.drawSunGlow(ctx, w, h);
+    if (world.ambient === 'leaves' && rich && this.weather) this.drawGodRays(ctx, w, h);
+    if (world.ambient === 'stars' && this.weather) this.drawShootingStar(ctx, w, h, dt);
+    if (world.ambient === 'petals' && this.quality >= 1 && this.weather) this.drawSunGlow(ctx, w, h);
     this.drawScreenFx(ctx, w, h, e);
     this.drawMinimap(ctx, w, h, e);
   }
@@ -215,7 +218,7 @@ export class Renderer {
     for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
       const key = `${cx},${cy}`;
       let c = this.chunks.get(key);
-      if (!c && baked < 4) { c = this.bakeChunk(e, cx, cy); baked++; }
+      if (!c ? baked < 4 : c.width !== Math.ceil(CHUNK * this.chunkRes) && baked < 1) { c = this.bakeChunk(e, cx, cy); baked++; }
       if (c) { ctx.drawImage(c, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK); this.chunks.delete(key); this.chunks.set(key, c); }
     }
     // Pre-bake the ring just outside the view so walking never waits on it.
@@ -318,7 +321,7 @@ export class Renderer {
         ctx.strokeStyle = `rgba(230,250,255,${(1 - ph) * .35})`; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.ellipse(cx, cy, 6 + ph * 46, 3 + ph * 20, 0, 0, TAU); ctx.stroke();
       }
-      for (let i = 0; i < (summit ? 16 : 8); i++) {
+      if (this.quality > .5) for (let i = 0; i < (summit ? 16 : 8); i++) {
         const a = Math.max(0, Math.sin(t * 2.6 + i * 1.9 + pi)), x = pond.x + Math.sin(i * 7.3 + pi) * pond.r * .75, y = pond.y + Math.cos(i * 4.1) * pond.r * .4;
         if (a > .3) { ctx.fillStyle = `rgba(255,255,255,${a * .8})`; star(ctx, x, y, 2 + a * 3); ctx.fill(); }
       }
@@ -334,9 +337,10 @@ export class Renderer {
   private drawDecor(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     const p = e.world.palette, t = this.time, hero = e.hero, w = this.wind, dark = e.world.darkness > 0;
     const list = this.liveDecor.rect(v.x - 30, v.y - 30, v.x + v.w + 30, v.y + v.h + 40);
-    const step = this.quality < .7 ? 2 : 1;
-    for (let i = 0; i < list.length; i += step) {
-      const d = list[i];
+    if (this.decor === 'off') return;
+    const keep = this.decor === 'less' ? .45 : 1;
+    for (const d of list) {
+      if (d.seed > keep) continue;
       let sway = Math.sin(t * 1.9 + d.x * .013 + d.y * .007) * .2 * w + Math.sin(t * 4.3 + d.seed * 30) * .04;
       const dx = d.x - hero.x, dy = d.y - hero.y;
       if (Math.abs(dx) < 42 && Math.abs(dy) < 28) sway += Math.sign(dx || 1) * (1 - Math.abs(dx) / 42) * .9;
@@ -828,10 +832,10 @@ export class Renderer {
     const mark = e.npcMarker(n);
     if (mark) {
       const my = y - 56 * s + Math.abs(Math.sin(t * 3.4)) * -8;
-      const mc = n.role === 'guide' ? MAIN_COLOR : SIDE_COLOR;
+      const mc = mark.main ? MAIN_COLOR : SIDE_COLOR;
       glow(ctx, x, my, 28, mc, .8);
       circle(ctx, x, my, 12, mc);
-      ctx.fillStyle = '#2a2f24'; ctx.font = `900 16px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(mark, x, my + 6);
+      ctx.fillStyle = '#2a2f24'; ctx.font = `900 16px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(mark.mark, x, my + 6);
     }
     const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 44, n.name, e.world.palette.accent);
   }
@@ -1293,7 +1297,7 @@ export class Renderer {
   }
 
   // ───────────────────────────── ambience
-  private pushAmbient(a: Ambient) { if (this.ambient.length < 320 * this.quality) this.ambient.push(a); }
+  private pushAmbient(a: Ambient) { if (this.weather && this.ambient.length < 320 * this.quality) this.ambient.push(a); }
   private spawnLeaf(x: number, y: number, e: GameEngine) {
     const c = e.world.ambient === 'petals' ? pick(['#f7c5d5', '#ffffff', '#a3c46a']) : pick(['#e8a54b', '#c9713d', '#a3c46a', '#f0c47a']);
     this.pushAmbient({ x, y, vx: rand(10, 40), vy: rand(20, 40), life: 6, max: 6, size: rand(3.5, 6), rot: rand(0, 6), vr: rand(-3, 3), kind: 'leaf', color: c, phase: rand(0, 6) });
@@ -1362,7 +1366,7 @@ export class Renderer {
 
   // ───────────────────────────── screen-space
   private drawLighting(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, toScreen: (p: Point) => Point, scale: number) {
-    const lc = this.lightCanvas, s = this.quality > .5 ? .5 : .3, lw = Math.ceil(w * s), lh = Math.ceil(h * s);
+    const lc = this.lightCanvas, s = this.quality > .5 ? .5 : this.quality > .4 ? .3 : .22, lw = Math.ceil(w * s), lh = Math.ceil(h * s);
     if (lc.width !== lw || lc.height !== lh) { lc.width = lw; lc.height = lh; }
     const l = lc.getContext('2d')!;
     l.globalCompositeOperation = 'source-over'; l.clearRect(0, 0, lw, lh);
@@ -1425,6 +1429,10 @@ export class Renderer {
     }
     if (this.quality > .5) { ctx.fillStyle = this.vignette.g!; ctx.fillRect(0, 0, w, h); }
     if (e.hero.hp <= e.hero.maxHp * .25) { ctx.globalAlpha = .25 + Math.sin(this.time * 5) * .12; ctx.fillStyle = this.vignette.r!; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = 1; }
+    if (e.danger > .03 && e.hero.hp > e.hero.maxHp * .25) {
+      ctx.globalAlpha = e.danger * (.46 + Math.min(.16, e.combat * .2)) * (.8 + Math.sin(this.time * 4) * .2);
+      ctx.fillStyle = this.vignette.r!; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = 1;
+    }
     if (e.damageFlash > 0) { ctx.fillStyle = `rgba(255,80,60,${e.damageFlash * .5})`; ctx.fillRect(0, 0, w, h); }
     if (e.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,245,220,${Math.min(.5, e.flash * .35)})`; ctx.fillRect(0, 0, w, h); ctx.restore(); }
     if (e.respawnFade > 0) { ctx.fillStyle = `rgba(6,8,14,${Math.min(1, e.respawnFade * 1.3)})`; ctx.fillRect(0, 0, w, h); }
@@ -1497,10 +1505,10 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'chest' && !e.isOpened(o.id)) dot(o, 2, '#ffd35c');
     else if (o.kind === 'shrine') dot(o, 3, acc);
     else if (o.kind === 'finale') { const q = P(o); ctx.fillStyle = '#fff1b8'; star(ctx, q.x, q.y, 5 * size, 5, .45); ctx.fill(); }
-    else if (o.kind === 'questItem') dot(o, 2, SIDE_COLOR);
+    else if (o.kind === 'questItem') dot(o, 2, e.quest(o.questId!)?.main ? MAIN_COLOR : SIDE_COLOR);
     else if (o.kind === 'campfire') dot(o, 2, '#ffb347');
   }
-  for (const n of e.npcs) { if (!seen(e, n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? '#fff7df' : n.role === 'guide' ? MAIN_COLOR : SIDE_COLOR); }
+  for (const n of e.npcs) { if (!seen(e, n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? '#fff7df' : mk.main ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const h = e.hero, ha = Math.atan2(h.faceY, h.faceX), q = P(h);
