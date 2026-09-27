@@ -1,6 +1,7 @@
 export type Point = { x: number; y: number };
 export type LevelId = 'meadow' | 'woods' | 'summit';
 export type SpellId = 'spark' | 'dash' | 'leaf' | 'sunfire' | 'shield' | 'starfall';
+export type ItemId = 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin';
 
 // ───────────────────────────── world layout
 export type PoiKind = 'start' | 'village' | 'farm' | 'camp' | 'ruins' | 'lake' | 'lair' | 'grove' | 'shrine' | 'lookout' | 'finale';
@@ -35,7 +36,8 @@ export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; 
 
 // ───────────────────────────── quests
 export type QuestKind = 'collect' | 'slay' | 'deliver' | 'visit';
-export type QuestReward = { xp: number; hearts?: number; mana?: number; regen?: number };
+/** `hearts` is a permanent max-health bonus (one heart = 20 HP). */
+export type QuestReward = { xp: number; hearts?: number; mana?: number; regen?: number; item?: ItemId };
 export type QuestDef = {
   id: string; title: string; giver: string; kind: QuestKind; count: number; summary: string;
   enemy?: EnemyKind | 'any'; near?: string; item?: string; icon?: ItemIcon; to?: string; place?: string; requires?: string;
@@ -73,21 +75,28 @@ export type MainQuest = { talkedGuide: boolean; keys: string[]; bossDefeated: bo
 
 export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean };
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number };
-export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; xp: number; tracked: boolean };
+export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean };
+export type ItemStack = { id: ItemId; count: number };
+export type BuffState = { id: ItemId; time: number; max: number };
+export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; elapsed: number; questsDone: number; totalQuests: number };
 
 export type GameSnapshot = {
   levelId: LevelId; hp: number; maxHp: number; mana: number; maxMana: number; shield: boolean;
   level: number; xp: number; xpNext: number;
   spells: SpellState[]; nearName: string | null; nearAction: string | null;
-  main: { title: string; step: string }; quests: QuestRow[];
+  main: { title: string; step: string; progress: number; count: number }; quests: QuestRow[];
+  items: ItemStack[]; buffs: BuffState[]; stats: HeroStats;
   defeated: number; combo: number; boss: BossState | null;
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
 };
 
 export type LevelStats = { stars: number; time: number; defeated: number; quests: number; totalQuests: number; level: number };
 export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
+/** A quest being offered: the dialogue ends with Accept / Decline instead of closing. */
+export type QuestOffer = { id: string; title: string; summary: string; reward: string };
 export type EngineEvent =
-  | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete' }
+  | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete'; offer?: QuestOffer }
+  | { type: 'item'; id: ItemId; count: number }
   | { type: 'levelComplete'; levelId: LevelId; stats: LevelStats }
   | { type: 'notice'; text: string; tone: NoticeTone }
   | { type: 'spellLearned'; spell: SpellId }

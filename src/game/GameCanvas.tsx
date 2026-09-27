@@ -3,15 +3,21 @@ import { GameEngine } from './engine';
 import { music } from './music';
 import { Renderer } from './render';
 import { loadSession, saveSession } from './storage';
+import { startTier, type Graphics } from './graphics';
 import type { EngineEvent, GameSnapshot, LevelId } from './types';
 
-// Canvas resolution is capped by a pixel budget so big and high-DPI screens stay smooth.
-const PIXEL_BUDGET = 2_300_000;
+// Each tier caps the canvas resolution by a pixel budget and sets how much effect detail is drawn.
+const TIERS = [
+  { budget: 650_000, dpr: 1, quality: .5 },
+  { budget: 1_300_000, dpr: 1.5, quality: .75 },
+  { budget: 2_300_000, dpr: 2, quality: 1 },
+];
 
-type Props = { levelId: LevelId; runKey: number; paused: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
-export default function GameCanvas({ levelId, runKey, paused, onReady, onSnapshot, onEvent }: Props) {
+type Props = { levelId: LevelId; runKey: number; paused: boolean; graphics: Graphics; touch: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
+export default function GameCanvas({ levelId, runKey, paused, graphics, touch, onReady, onSnapshot, onEvent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused); pausedRef.current = paused;
+  const settings = useRef({ graphics, touch }); settings.current = { graphics, touch };
   const callbacks = useRef({ onSnapshot, onEvent, onReady }); callbacks.current = { onSnapshot, onEvent, onReady };
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -20,21 +26,34 @@ export default function GameCanvas({ levelId, runKey, paused, onReady, onSnapsho
     const renderer = new Renderer();
     callbacks.current.onReady(engine);
     if (import.meta.env.DEV) Object.assign(window, { __engine: engine, __renderer: renderer, __ctx: ctx });
-    let raf = 0, last = 0, lastUi = 0, lastSave = 0, lastMusic = 0, viewW = 1, viewH = 1, dpr = 1, slow = 0, fast = 0;
-    const resize = () => {
+    let raf = 0, last = 0, lastUi = 0, lastSave = 0, lastMusic = 0, viewW = 1, viewH = 1, dpr = 1;
+    // Auto mode starts from a guess about the device and then follows the measured frame time.
+    let mode: Graphics | null = null, tier = 0, frameSum = 0, frames = 0, calmUntil = 0;
+    const applyTier = () => {
+      const t = TIERS[tier];
+      renderer.quality = t.quality; engine.fx = t.quality;
       const rect = canvas.getBoundingClientRect(); viewW = Math.max(1, rect.width); viewH = Math.max(1, rect.height);
-      dpr = Math.min(2, window.devicePixelRatio || 1, Math.sqrt(PIXEL_BUDGET / (viewW * viewH)));
+      dpr = Math.min(t.dpr, window.devicePixelRatio || 1, Math.sqrt(t.budget / (viewW * viewH)));
       canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-    resize();
-    const ro = new ResizeObserver(resize); ro.observe(canvas);
+    const ro = new ResizeObserver(applyTier); ro.observe(canvas);
     music.play(levelId);
     const frame = (now: number) => {
       const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.05, raw); last = now;
-      // Adaptive quality: thin out ambient detail if frames run long, restore it when they recover.
-      if (raw > .026) { slow++; fast = 0; } else if (raw && raw < .018) { fast++; slow = Math.max(0, slow - 1); }
-      if (slow > 45 && renderer.quality > .5) { renderer.quality = Math.max(.5, renderer.quality - .25); slow = 0; }
-      if (fast > 240 && renderer.quality < 1) { renderer.quality = Math.min(1, renderer.quality + .25); fast = 0; }
+      renderer.touch = settings.current.touch;
+      if (mode !== settings.current.graphics) {
+        mode = settings.current.graphics; tier = mode === 'low' ? 0 : mode === 'balanced' ? 1 : mode === 'high' ? 2 : startTier();
+        frameSum = 0; frames = 0; calmUntil = now + 3000; applyTier();
+      }
+      if (mode === 'auto' && raw > 0 && raw < .25 && !pausedRef.current) {
+        frameSum += raw; frames++;
+        // Judge about one second of play at a time; step down fast, step up only after a calm spell.
+        if (frames >= 60 || frameSum > 1) {
+          const avg = frameSum / frames; frameSum = 0; frames = 0;
+          if (avg > .024 && tier > 0) { tier--; applyTier(); calmUntil = now + 20000; }
+          else if (avg < .0135 && tier < TIERS.length - 1 && now > calmUntil) { tier++; applyTier(); calmUntil = now + 8000; }
+        }
+      }
       if (!pausedRef.current) engine.update(dt); else engine.settleFx(dt);
       renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
       if (now - lastUi > 100) { callbacks.current.onSnapshot(engine.snapshot()); lastUi = now; }

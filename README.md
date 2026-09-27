@@ -33,35 +33,49 @@ The world lives on its own:
 
 Things to find:
 
-- Chests (loot and XP)
+- Chests (potions, loot and XP)
 - Runestones with lore (XP the first time you read one)
 - Wells and campfires (restore health and set your resting point)
-- Glow pods (mana and hearts)
+- Glow pods (mana and health)
 
 ## Levels, spells and quests
 
-Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing quests, opening chests, reading runestones and discovering places all give XP. Levelling up restores health and magic, raises max mana and spell power, and adds hearts at levels 4, 8 and 12.
+Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing quests, opening chests, reading runestones and discovering places all give XP. Levelling up restores health and magic, raises max health, max mana and spell power, and adds a larger health boost at levels 4, 8 and 12. Health is shown as a bar.
 
 | Level | Spell learned |
 | --- | --- |
-| 1 | Spark (J / Space), Dash (Shift / K) |
+| 1 | Spark (F), Dash (E) |
 | 2 | Leaf Burst (Q) |
 | 4 | Sunfire (R) |
-| 7 | Moss Shield (F) |
+| 7 | Moss Shield (C) |
 | 10 | Starfall (T) |
 
-Level, XP and quest rewards carry over between chapters.
+Level, XP, quest rewards and the bag carry over between chapters.
+
+**Bag and potions:** chests, elite creatures, guardians and every side quest give potions. Open the bag with **I** or the 🎒 button, or use a potion with **1–5**. On touch, a quick button next to the spells drinks a Healing Draught.
+
+| Key | Potion | Effect |
+| --- | --- | --- |
+| 1 | Healing Draught | Restores half of your health |
+| 2 | Starwater Flask | Refills all magic |
+| 3 | Swiftwind Tonic | 40% faster movement for 25 s |
+| 4 | Sunfire Elixir | 35% more spell damage for 30 s |
+| 5 | Barkskin Brew | Half damage taken for 25 s |
+
+**Character sheet:** tap or click the portrait (or press **P**) to see health, magic, regeneration, spell power, speed and adventure stats.
 
 **Main quest:** talk to the guide, find three key items spread across the map, defeat the guardian, then restore the finale.
 
-**Side quests:** each chapter has 9, of four kinds:
+**Side quests:** each chapter has 9. Talking to a quest giver shows the quest and its reward with **Accept quest** and **Decline** buttons. There are four kinds:
 
 - **Collect:** gather items in a named area.
 - **Slay:** defeat a number of creatures.
 - **Deliver:** carry an item to someone in another village.
 - **Visit:** travel to a distant place.
 
-NPC markers show where quests are: **!** means a quest is available, **?** means one is ready to hand in. Click a quest in the journal to follow it; a green arrow then points to its goal.
+The main quest is always **gold** and side quests are **blue**, on NPC markers, arrows, the map and the quest log. **!** means a quest is available, **?** means one is ready to hand in. A small tracker on the right lists the main quest and your active side quests with their counts; click a quest in the quest log to follow it.
+
+Creatures glow and turn red when they are aggressive, and deepen to full red while winding up an attack.
 
 Creatures respawn after a while so you can keep levelling. Lairs hold packs with a gold-starred elite.
 
@@ -86,18 +100,19 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 - **Trees and buildings:** cached sprites that sway with a cheap skew.
 - **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
 - **Distant entities:** creatures, villagers and animals far from Mira sleep.
-- **Resolution:** canvas resolution is capped by a pixel budget.
-- **Adaptive quality:** ambient detail thins out if frames run long.
+- **Graphics quality:** Auto, High, Balanced or Low in the pause menu. Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn. Auto starts lower on tablets and low-core devices, then steps down within a second if frames run long and back up once they are smooth.
+- **No live blur:** the HUD uses solid glass panels. `backdrop-filter` blur over the constantly redrawn canvas was the biggest cost on weak tablets.
+- **Memory:** the ground chunk cache is sized to the view.
 
 ## Controls
 
 **Keyboard:**
 
 - Move: WASD / arrows
-- Spells: J / Space Spark · Shift / K Dash · Q Leaf Burst · R Sunfire · F Moss Shield · T Starfall
-- E / Enter interact · M map · Tab journal · N mute · Esc pause
+- Attacks: F Spark · E Dash · Q Leaf Burst · R Sunfire · C Moss Shield · T Starfall
+- Space / Enter talk, open or use · 1–5 potions · I bag · P character · M map · Tab quest log · N mute · Esc pause
 
-**Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices.
+**Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices, and prompts say "Tap" instead of showing keyboard keys.
 
 ## Project structure
 

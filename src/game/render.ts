@@ -32,6 +32,18 @@ function shade(c: string, f: number) {
   const n = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)).map(v => clamp(Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f), 0, 255));
   return `rgb(${n[0]},${n[1]},${n[2]})`;
 }
+/** Main quest markers are gold, side quests blue. */
+export const MAIN_COLOR = '#ffd35c';
+export const SIDE_COLOR = '#6fc3ff';
+const tintCache = new Map<string, string>();
+/** Blends a '#rrggbb' colour toward angry red as a creature turns aggressive (k = 0…1). */
+function enrage(c: string, k: number) {
+  if (k < .06) return c;
+  const q = Math.round(k * 8) / 8, key = c + q;
+  let v = tintCache.get(key);
+  if (!v) { const n = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), red = [255, 64, 52], m = q * .6; v = `rgb(${n.map((x, i) => Math.round(x + (red[i] - x) * m)).join(',')})`; tintCache.set(key, v); }
+  return v;
+}
 const glowCache = new Map<string, HTMLCanvasElement>();
 function glowSprite(color: string) {
   let c = glowCache.get(color);
@@ -109,7 +121,11 @@ export class Renderer {
   private bakedDecor: Grid<Decor> = new Grid(256);
   private roadBoxes: Array<{ pts: Point[]; x0: number; y0: number; x1: number; y1: number }> = [];
   private draws: Array<{ y: number; run: () => void }> = [];
+  private near: ReturnType<GameEngine['nearest']> = null;
+  /** 1 = full detail, .75 balanced, .5 low (weak tablets): fewer glows, particles and screen effects. */
   quality = 1;
+  /** Touch devices have no keyboard, so key hints are left out. */
+  touch = false;
 
   private setup(world: WorldDefinition) {
     if (this.worldId === world.id) return;
@@ -142,6 +158,7 @@ export class Renderer {
     const camX = this.cam.x, camY = this.cam.y;
     const view: View = { x: camX, y: camY, w: vw, h: vh };
     this.lights = [];
+    this.near = e.nearest();
 
     ctx.save();
     ctx.scale(scale, scale); ctx.translate(-camX + sx, -camY + sy);
@@ -175,16 +192,17 @@ export class Renderer {
     this.drawAmbient(ctx);
     this.drawBubbles(ctx, e, view);
     this.drawFloating(ctx, e);
-    this.drawArrow(ctx, e, e.mainTarget(), '#ffd35c', 0);
-    this.drawArrow(ctx, e, e.questTarget(), '#9fe8b0', 1);
-    if (world.ambient === 'petals') this.drawCloudShadows(ctx, e, view);
+    this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0);
+    this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1);
+    const rich = this.quality > .5;
+    if (world.ambient === 'petals' && rich) this.drawCloudShadows(ctx, e, view);
     ctx.restore();
 
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
     if (world.darkness > 0) this.drawLighting(ctx, w, h, e, toScreen, scale);
-    if (world.ambient === 'leaves') this.drawGodRays(ctx, w, h);
+    if (world.ambient === 'leaves' && rich) this.drawGodRays(ctx, w, h);
     if (world.ambient === 'stars') this.drawShootingStar(ctx, w, h, dt);
-    if (world.ambient === 'petals') this.drawSunGlow(ctx, w, h);
+    if (world.ambient === 'petals' && this.quality >= 1) this.drawSunGlow(ctx, w, h);
     this.drawScreenFx(ctx, w, h, e);
     this.drawMinimap(ctx, w, h, e);
   }
@@ -202,7 +220,8 @@ export class Renderer {
     }
     // Pre-bake the ring just outside the view so walking never waits on it.
     if (baked === 0) outer: for (let cy = r0 - 1; cy <= r1 + 1; cy++) for (let cx = c0 - 1; cx <= c1 + 1; cx++) if (!this.chunks.has(`${cx},${cy}`) && cx >= 0 && cy >= 0) { this.bakeChunk(e, cx, cy); break outer; }
-    while (this.chunks.size > 70) this.chunks.delete(this.chunks.keys().next().value!);
+    const keep = (c1 - c0 + 3) * (r1 - r0 + 3) + 4;
+    while (this.chunks.size > keep) this.chunks.delete(this.chunks.keys().next().value!);
   }
   private bakeChunk(e: GameEngine, cx: number, cy: number) {
     const res = this.chunkRes, world = e.world, p = world.palette;
@@ -639,7 +658,7 @@ export class Renderer {
       glow(ctx, x, y - 16, 34, acc, .35 * g); this.lights.push({ x, y: y - 16, r: 90, color: acc, a: .6 * g });
     } else if (o.kind === 'shrine') this.drawShrine(ctx, o, e);
     else if (o.kind === 'finale') this.drawFinale(ctx, o, e);
-    const near = e.nearest(); if (near?.kind === 'object' && near.o === o) this.label(ctx, x, y + 44, o.name, acc);
+    const near = this.near; if (near?.kind === 'object' && near.o === o) this.label(ctx, x, y + 44, o.name, acc);
   }
   private label(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, acc: string) {
     ctx.font = `800 13px ${UI}`; ctx.textAlign = 'center';
@@ -809,11 +828,12 @@ export class Renderer {
     const mark = e.npcMarker(n);
     if (mark) {
       const my = y - 56 * s + Math.abs(Math.sin(t * 3.4)) * -8;
-      glow(ctx, x, my, 28, mark === '?' ? '#9fe8b0' : '#ffd35c', .8);
-      circle(ctx, x, my, 12, mark === '?' ? '#9fe8b0' : '#ffd35c');
+      const mc = n.role === 'guide' ? MAIN_COLOR : SIDE_COLOR;
+      glow(ctx, x, my, 28, mc, .8);
+      circle(ctx, x, my, 12, mc);
       ctx.fillStyle = '#2a2f24'; ctx.font = `900 16px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(mark, x, my + 6);
     }
-    const near = e.nearest(); if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 44, n.name, e.world.palette.accent);
+    const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 44, n.name, e.world.palette.accent);
   }
   private drawBubbles(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     ctx.font = `800 13px ${UI}`; ctx.textAlign = 'center';
@@ -988,6 +1008,7 @@ export class Renderer {
     const flash = en.hitFlash > 0;
     ctx.save(); ctx.translate(en.x, en.y); ctx.scale(spawn, spawn);
     if (en.elite) ctx.scale(1.3, 1.3);
+    if (en.rage > .15) glow(ctx, 0, en.kind === 'wisp' ? -10 : -en.r * .15, en.r * (en.boss ? 2 : 2.5), '#ff3b2e', .5 * en.rage * (.85 + Math.sin(t * 9) * .15));
     if (en.windup > 0 && !en.boss && en.kind === 'gloomling') {
       const r = 80; ctx.fillStyle = 'rgba(255,90,70,.12)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(255,140,110,.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]);
     }
@@ -1023,7 +1044,7 @@ export class Renderer {
     const r = en.r, hop = en.aggro ? Math.abs(Math.sin(t * 6)) * 7 : Math.abs(Math.sin(t * 3)) * 3, swell = en.windup > 0 ? 1.15 : 1, lunge = en.lunge > 0 ? 1.2 : 1;
     shadow(ctx, 0, r * .8, r * (1.1 - hop * .02), r * .4);
     ctx.translate(trem, -hop); ctx.scale(swell * lunge, swell / lunge * (1 + Math.sin(t * 12) * .04));
-    ctx.fillStyle = flash ? '#fff' : en.elite ? '#5a3a8a' : '#6d5fc0'; ctx.beginPath(); ctx.moveTo(-r, r * .1); ctx.bezierCurveTo(-r, -r * 1.2, r, -r * 1.2, r, r * .1);
+    ctx.fillStyle = flash ? '#fff' : enrage(en.elite ? '#5a3a8a' : '#6d5fc0', en.rage); ctx.beginPath(); ctx.moveTo(-r, r * .1); ctx.bezierCurveTo(-r, -r * 1.2, r, -r * 1.2, r, r * .1);
     for (let i = 0; i <= 4; i++) { const px = r - i * r * .5; ctx.quadraticCurveTo(px - r * .25, r * (.75 + Math.sin(t * 8 + i) * .12), px - r * .5, r * .55); }
     ctx.closePath(); ctx.fill();
     ellipse(ctx, -r * .3, -r * .45, r * .35, r * .25, 'rgba(255,255,255,.18)');
@@ -1036,7 +1057,7 @@ export class Renderer {
     shadow(ctx, 0, r * .7, r * 1.2, r * .4);
     for (let i = -1; i <= 1; i++) { ctx.save(); ctx.translate(0, r * .45); ctx.rotate(i * .9 + sway * (i || 1)); ellipse(ctx, 0, -r * .1, r * .28, r * .8, '#5d8a3a'); ctx.restore(); }
     ctx.translate(trem, 0);
-    ctx.fillStyle = flash ? '#fff' : en.elite ? '#7a8a3a' : '#8aab52'; ctx.beginPath(); ctx.ellipse(0, -r * .1, r * .9, r * .85, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = flash ? '#fff' : enrage(en.elite ? '#7a8a3a' : '#8aab52', en.rage); ctx.beginPath(); ctx.ellipse(0, -r * .1, r * .9, r * .85, 0, 0, TAU); ctx.fill();
     ellipse(ctx, -r * .3, -r * .45, r * .35, r * .22, 'rgba(255,255,255,.2)');
     ctx.fillStyle = '#e6d9a0';
     for (let i = 0; i < 7; i++) { const a = -Math.PI + (i / 6) * Math.PI + sway * .3; ctx.beginPath(); ctx.moveTo(Math.cos(a - .15) * r * .8, -r * .1 + Math.sin(a - .15) * r * .8); ctx.lineTo(Math.cos(a) * r * 1.35, -r * .1 + Math.sin(a) * r * 1.3); ctx.lineTo(Math.cos(a + .15) * r * .8, -r * .1 + Math.sin(a + .15) * r * .8); ctx.fill(); }
@@ -1053,7 +1074,7 @@ export class Renderer {
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 5; i >= 0; i--) circle(ctx, Math.sin(t * 6 - i * .7) * i * 1.6, i * r * .38, r * (1 - i * .14), `rgba(${120 + i * 10},${140 - i * 10},255,${.35 - i * .04})`);
     ctx.globalCompositeOperation = 'source-over';
-    const g = ctx.createRadialGradient(0, -2, 1, 0, 0, r); g.addColorStop(0, flash ? '#fff' : '#f1ecff'); g.addColorStop(.6, flash ? '#fff' : '#9f8cff'); g.addColorStop(1, 'rgba(90,70,200,.2)');
+    const g = ctx.createRadialGradient(0, -2, 1, 0, 0, r); g.addColorStop(0, flash ? '#fff' : '#f1ecff'); g.addColorStop(.6, flash ? '#fff' : enrage('#9f8cff', en.rage)); g.addColorStop(1, 'rgba(90,70,200,.2)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -r * 1.5 + fl); ctx.quadraticCurveTo(r * 1.1, -r * .3, r * .8, r * .3); ctx.arc(0, r * .2, r * .82, 0, Math.PI); ctx.quadraticCurveTo(-r * 1.1, -r * .3, 0, -r * 1.5 + fl); ctx.fill();
     circle(ctx, -r * .3 + look.x * 2, 0, 2.6, '#1d1540'); circle(ctx, r * .3 + look.x * 2, 0, 2.6, '#1d1540');
     if (en.windup > 0) glow(ctx, 0, 0, r * 2.5, '#ffffff', .6);
@@ -1069,7 +1090,7 @@ export class Renderer {
     const eyeC = en.phase === 2 ? '#ff6b5b' : awake ? '#ffb347' : '#3a3a30';
     if (awake) { circle(ctx, hx - r * .17, hy - 2, 4.5, eyeC); circle(ctx, hx + r * .17, hy - 2, 4.5, eyeC); glow(ctx, hx - r * .17, hy - 2, 14, eyeC, .8); glow(ctx, hx + r * .17, hy - 2, 14, eyeC, .8); }
     else { ctx.fillStyle = '#2a2a20'; ctx.fillRect(hx - r * .25, hy - 2, 9, 2); ctx.fillRect(hx + r * .1, hy - 2, 9, 2); }
-    const g = ctx.createRadialGradient(-r * .3, -r * .6, 4, 0, -r * .2, r * 1.2); g.addColorStop(0, flash ? '#fff' : '#9aa37c'); g.addColorStop(1, flash ? '#fff' : '#4d5840');
+    const g = ctx.createRadialGradient(-r * .3, -r * .6, 4, 0, -r * .2, r * 1.2); g.addColorStop(0, flash ? '#fff' : enrage('#9aa37c', en.rage)); g.addColorStop(1, flash ? '#fff' : enrage('#4d5840', en.rage));
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, -r * .15, r * 1.12, r * .82, 0, Math.PI * 1.02, Math.PI * 1.98); ctx.quadraticCurveTo(0, r * .2, -r * 1.12, -r * .1); ctx.fill();
     ctx.strokeStyle = 'rgba(40,45,30,.45)'; ctx.lineWidth = 2;
     for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-r * .8 + i * r * .55, -r * .05); ctx.lineTo(-r * .55 + i * r * .4, -r * .7); ctx.stroke(); }
@@ -1090,7 +1111,7 @@ export class Renderer {
       ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, r * .6); ctx.lineTo(s * 12, r * 1.05); ctx.moveTo(0, r * .8); ctx.lineTo(-s * 8, r * 1.1); ctx.stroke();
       circle(ctx, 0, r * .45, 8, '#6f9a5c'); ctx.restore();
     }
-    const g = ctx.createLinearGradient(-r * .6, 0, r * .6, 0); g.addColorStop(0, flash ? '#fff' : '#4a3522'); g.addColorStop(.5, flash ? '#fff' : '#7a5a3f'); g.addColorStop(1, flash ? '#fff' : '#4a3522');
+    const g = ctx.createLinearGradient(-r * .6, 0, r * .6, 0); const bark = enrage('#4a3522', en.rage); g.addColorStop(0, flash ? '#fff' : bark); g.addColorStop(.5, flash ? '#fff' : enrage('#7a5a3f', en.rage)); g.addColorStop(1, flash ? '#fff' : bark);
     ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-r * .6, -r * 1.1, r * 1.2, r * 1.65, [r * .5, r * .5, r * .2, r * .2]); ctx.fill();
     ctx.strokeStyle = 'rgba(30,20,10,.4)'; ctx.lineWidth = 2;
     for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-r * .4 + i * r * .27, -r * .7); ctx.quadraticCurveTo(-r * .35 + i * r * .27, 0, -r * .42 + i * r * .27, r * .45); ctx.stroke(); }
@@ -1109,7 +1130,7 @@ export class Renderer {
     ctx.translate(0, hover);
     glow(ctx, 0, 0, r * 3.2, en.phase === 2 ? '#ff6b9a' : '#8a6ff0', .7);
     for (let i = 0; i < 5; i++) { const a = t * 1.3 + i * TAU / 5, ox = Math.cos(a) * r * 1.5, oy = Math.sin(a) * r * .7; ctx.fillStyle = '#c9b6ff'; ctx.beginPath(); ctx.moveTo(ox, oy - 8); ctx.lineTo(ox + 4, oy); ctx.lineTo(ox, oy + 8); ctx.lineTo(ox - 4, oy); ctx.fill(); glow(ctx, ox, oy, 12, '#c9b6ff', .8); }
-    const g = ctx.createRadialGradient(0, 0, 4, 0, 0, r * 1.2); g.addColorStop(0, flash ? '#fff' : '#1a1030'); g.addColorStop(.6, flash ? '#fff' : '#3d2a78'); g.addColorStop(1, flash ? '#fff' : '#a78bfa');
+    const g = ctx.createRadialGradient(0, 0, 4, 0, 0, r * 1.2); g.addColorStop(0, flash ? '#fff' : '#1a1030'); g.addColorStop(.6, flash ? '#fff' : enrage('#3d2a78', en.rage)); g.addColorStop(1, flash ? '#fff' : '#a78bfa');
     ctx.fillStyle = g; star(ctx, 0, 0, r * 1.2, 5, .5, en.angle * .4); ctx.fill();
     ctx.strokeStyle = 'rgba(230,220,255,.8)'; ctx.lineWidth = 2; ctx.stroke();
     circle(ctx, 0, 0, r * .38, '#05020c');
@@ -1219,6 +1240,7 @@ export class Renderer {
     }
   }
   private drawParticles(ctx: CanvasRenderingContext2D, list: Particle[]) {
+    const rich = this.quality > .5;
     for (const p of list) {
       const k = p.life / p.max;
       if (p.kind === 'ring') {
@@ -1235,14 +1257,15 @@ export class Renderer {
       } else if (p.kind === 'smoke') { ctx.globalAlpha = k * .5; circle(ctx, p.x, p.y, p.size * (1 + (1 - k) * 1.6), p.color); }
       else if (p.kind === 'shard') {
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * .66); ctx.restore();
-        if (p.glow) glow(ctx, p.x, p.y, p.size * 3, p.color, .5 * k);
-      } else if (p.kind === 'star') { glow(ctx, p.x, p.y, p.size * 4, p.color, k); ctx.fillStyle = p.color; star(ctx, p.x, p.y, p.size * (.6 + k * .6), 4, .38, p.rot); ctx.fill(); }
-      else if (p.kind === 'ember') { glow(ctx, p.x, p.y, p.size * 3.5 * k + 2, p.color, k); circle(ctx, p.x, p.y, p.size * k * .6 + .5, '#fff6d8'); }
-      else { if (p.glow) glow(ctx, p.x, p.y, p.size * 3, p.color, k); circle(ctx, p.x, p.y, p.size * (.4 + k * .6), p.color); }
+        if (p.glow && rich) glow(ctx, p.x, p.y, p.size * 3, p.color, .5 * k);
+      } else if (p.kind === 'star') { if (rich) glow(ctx, p.x, p.y, p.size * 4, p.color, k); ctx.fillStyle = p.color; star(ctx, p.x, p.y, p.size * (.6 + k * .6), 4, .38, p.rot); ctx.fill(); }
+      else if (p.kind === 'ember') { if (rich) glow(ctx, p.x, p.y, p.size * 3.5 * k + 2, p.color, k); circle(ctx, p.x, p.y, p.size * k * .6 + .5, '#fff6d8'); }
+      else { if (p.glow && rich) glow(ctx, p.x, p.y, p.size * 3, p.color, k); circle(ctx, p.x, p.y, p.size * (.4 + k * .6), p.color); }
       ctx.globalAlpha = 1;
     }
     let n = 0;
-    for (const p of list) if (p.glow && p.kind !== 'ring' && n < 30 && p.life / p.max > .5) { this.lights.push({ x: p.x, y: p.y, r: p.size * 10, color: p.color, a: .5 }); n++; }
+    const most = 30 * this.quality;
+    for (const p of list) if (p.glow && p.kind !== 'ring' && n < most && p.life / p.max > .5) { this.lights.push({ x: p.x, y: p.y, r: p.size * 10, color: p.color, a: .5 }); n++; }
   }
   private drawFloating(ctx: CanvasRenderingContext2D, e: GameEngine) {
     ctx.textAlign = 'center';
@@ -1339,7 +1362,7 @@ export class Renderer {
 
   // ───────────────────────────── screen-space
   private drawLighting(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, toScreen: (p: Point) => Point, scale: number) {
-    const lc = this.lightCanvas, s = .5, lw = Math.ceil(w * s), lh = Math.ceil(h * s);
+    const lc = this.lightCanvas, s = this.quality > .5 ? .5 : .3, lw = Math.ceil(w * s), lh = Math.ceil(h * s);
     if (lc.width !== lw || lc.height !== lh) { lc.width = lw; lc.height = lh; }
     const l = lc.getContext('2d')!;
     l.globalCompositeOperation = 'source-over'; l.clearRect(0, 0, lw, lh);
@@ -1355,8 +1378,9 @@ export class Renderer {
     l.globalAlpha = 1;
     ctx.drawImage(lc, 0, 0, w, h);
     let n = 0;
+    const most = this.quality >= 1 ? 60 : this.quality > .5 ? 25 : 0;
     for (const li of this.lights) {
-      if (!li.color || n > 60) continue;
+      if (!li.color || n >= most) continue;
       const p = toScreen(li);
       if (p.x < -200 || p.x > w + 200 || p.y < -200 || p.y > h + 200) continue;
       glow(ctx, p.x, p.y, li.r * scale * .6, li.color, .12 * li.a); n++;
@@ -1399,8 +1423,8 @@ export class Renderer {
       r.addColorStop(0, 'rgba(200,30,40,0)'); r.addColorStop(1, 'rgba(200,30,40,1)');
       this.vignette = { w, h, g, r };
     }
-    ctx.fillStyle = this.vignette.g!; ctx.fillRect(0, 0, w, h);
-    if (e.hero.hp <= 1) { ctx.globalAlpha = .25 + Math.sin(this.time * 5) * .12; ctx.fillStyle = this.vignette.r!; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = 1; }
+    if (this.quality > .5) { ctx.fillStyle = this.vignette.g!; ctx.fillRect(0, 0, w, h); }
+    if (e.hero.hp <= e.hero.maxHp * .25) { ctx.globalAlpha = .25 + Math.sin(this.time * 5) * .12; ctx.fillStyle = this.vignette.r!; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = 1; }
     if (e.damageFlash > 0) { ctx.fillStyle = `rgba(255,80,60,${e.damageFlash * .5})`; ctx.fillRect(0, 0, w, h); }
     if (e.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,245,220,${Math.min(.5, e.flash * .35)})`; ctx.fillRect(0, 0, w, h); ctx.restore(); }
     if (e.respawnFade > 0) { ctx.fillStyle = `rgba(6,8,14,${Math.min(1, e.respawnFade * 1.3)})`; ctx.fillRect(0, 0, w, h); }
@@ -1420,7 +1444,7 @@ export class Renderer {
     drawMapMarkers(ctx, e, P, 1, this.time);
     ctx.restore();
     ctx.strokeStyle = 'rgba(245,215,130,.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x0 - 5, y0 - 5, MW + 10, MH + 10, 12); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,247,223,.75)'; ctx.font = `800 10px ${UI}`; ctx.textAlign = 'right'; ctx.fillText('M · map', x0 + MW, y0 + MH + 16);
+    if (!this.touch) { ctx.fillStyle = 'rgba(255,247,223,.75)'; ctx.font = `800 10px ${UI}`; ctx.textAlign = 'right'; ctx.fillText('M · map', x0 + MW, y0 + MH + 16); }
   }
 }
 
@@ -1473,12 +1497,12 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'chest' && !e.isOpened(o.id)) dot(o, 2, '#ffd35c');
     else if (o.kind === 'shrine') dot(o, 3, acc);
     else if (o.kind === 'finale') { const q = P(o); ctx.fillStyle = '#fff1b8'; star(ctx, q.x, q.y, 5 * size, 5, .45); ctx.fill(); }
-    else if (o.kind === 'questItem') dot(o, 2, '#9fe8b0');
+    else if (o.kind === 'questItem') dot(o, 2, SIDE_COLOR);
     else if (o.kind === 'campfire') dot(o, 2, '#ffb347');
   }
-  for (const n of e.npcs) { if (!seen(e, n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, mk === '?' ? '#9fe8b0' : mk ? '#ffd35c' : '#fff7df'); }
+  for (const n of e.npcs) { if (!seen(e, n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? '#fff7df' : n.role === 'guide' ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
-  const qt = e.questTarget(); if (qt) { const q = P(qt); ctx.strokeStyle = '#9fe8b0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
+  const qt = e.questTarget(); if (qt) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const h = e.hero, ha = Math.atan2(h.faceY, h.faceX), q = P(h);
   ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(ha); ctx.scale(size, size);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;

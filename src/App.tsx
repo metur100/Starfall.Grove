@@ -4,17 +4,20 @@ import TitleBackdrop from './TitleBackdrop';
 import { GameEngine } from './game/engine';
 import { LEVEL_ORDER, WORLDS } from './game/worlds';
 import { SPELLS, SPELL_ORDER } from './game/spells';
+import { ITEMS, ITEM_ORDER } from './game/items';
+import { GRAPHICS, isTouch, loadGraphics, saveGraphics, type Graphics } from './game/graphics';
 import { clearSession, saveSession } from './game/storage';
 import { loadProfile, resetProfile } from './game/progression';
-import { drawWorldMap } from './game/render';
+import { MAIN_COLOR, SIDE_COLOR, drawWorldMap } from './game/render';
 import { sfx } from './game/audio';
 import { music } from './game/music';
-import type { EngineEvent, GameSnapshot, LevelId, LevelStats, NoticeTone, QuestRow, SpellId, SpellState } from './game/types';
+import type { EngineEvent, GameSnapshot, ItemId, LevelId, LevelStats, NoticeTone, QuestOffer, QuestRow, SpellId, SpellState } from './game/types';
 
 type Mode = 'title' | 'play' | 'victory' | 'ending';
 type Save = { version: 2; done: Record<LevelId, boolean>; stars: Record<LevelId, number>; bestTime: Record<LevelId, number> };
-type Dialogue = { speaker: string; portrait: string; lines: string[]; index: number; then?: 'complete' };
+type Dialogue = { speaker: string; portrait: string; lines: string[]; index: number; then?: 'complete'; offer?: QuestOffer };
 type Toast = { id: number; text: string; tone: NoticeTone };
+type Panel = 'bag' | 'hero' | null;
 const SAVE_KEY = 'starfall-grove-save-v2';
 const ROMAN = ['', 'I', 'II', 'III'];
 const blankSave = (): Save => ({ version: 2, done: { meadow: false, woods: false, summit: false }, stars: { meadow: 0, woods: 0, summit: 0 }, bestTime: { meadow: 0, woods: 0, summit: 0 } });
@@ -29,7 +32,20 @@ function saveNow(data: Save) { try { localStorage.setItem(SAVE_KEY, JSON.stringi
 const unlocked = (save: Save, id: LevelId) => { const i = LEVEL_ORDER.indexOf(id); return i === 0 || save.done[LEVEL_ORDER[i - 1]]; };
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-const KEYMAP: Record<string, SpellId> = { j: 'spark', ' ': 'spark', shift: 'dash', k: 'dash', q: 'leaf', r: 'sunfire', f: 'shield', t: 'starfall' };
+// Keyboard: attacks sit around WASD so the left hand never has to leave it.
+const KEYMAP: Record<string, SpellId> = { f: 'spark', e: 'dash', q: 'leaf', r: 'sunfire', c: 'shield', t: 'starfall' };
+const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.map(id => [ITEMS[id].key, id]));
+const GRAPHICS_LABEL: Record<Graphics, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low' };
+
+/** Tracks whether the device is touch-only, so keyboard hints can be swapped for tap hints. */
+function useTouch() {
+  const [touch, setTouch] = useState(isTouch);
+  useEffect(() => {
+    const mq = matchMedia('(hover: none) and (pointer: coarse)'), on = () => setTouch(mq.matches);
+    mq.addEventListener('change', on); return () => mq.removeEventListener('change', on);
+  }, []);
+  return touch;
+}
 
 function App() {
   const [mode, setMode] = useState<Mode>('title');
@@ -43,15 +59,16 @@ function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [journal, setJournal] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
-  const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number; active: boolean }>({ ox: 0, oy: 0, x: 0, y: 0, active: false });
-  const stickOrigin = useRef<{ ox: number; oy: number } | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
   const [muted, setMuted] = useState(sfx.isMuted());
+  const [graphics, setGraphics] = useState<Graphics>(loadGraphics);
   const [chapterBanner, setChapterBanner] = useState(0);
   const [zone, setZone] = useState<{ name: string; discovered: boolean; key: number } | null>(null);
   const [spellQueue, setSpellQueue] = useState<SpellId[]>([]);
   const [levelBanner, setLevelBanner] = useState<{ level: number; key: number } | null>(null);
   const [bossBanner, setBossBanner] = useState<{ name: string; title: string } | null>(null);
   const [stats, setStats] = useState<LevelStats | null>(null);
+  const touch = useTouch();
   const engineRef = useRef<GameEngine | null>(null);
   const toastId = useRef(0);
   const world = WORLDS[levelId];
@@ -64,6 +81,17 @@ function App() {
     return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); };
   }, [mode]);
 
+  // The joystick is moved by writing styles directly: re-rendering the whole HUD on every pointer move was costly on tablets.
+  const stickRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLElement>(null);
+  const stickOrigin = useRef<{ ox: number; oy: number } | null>(null);
+  const resetStick = () => {
+    stickOrigin.current = null;
+    const s = stickRef.current, t = thumbRef.current;
+    if (s) { s.classList.remove('active'); s.style.left = ''; s.style.top = ''; }
+    if (t) t.style.transform = '';
+  };
+
   const notify = useCallback((text: string, tone: NoticeTone = 'info') => {
     const id = ++toastId.current;
     setToasts(list => [...list.filter(t => t.text !== text).slice(-2), { id, text, tone }]);
@@ -73,13 +101,14 @@ function App() {
   const onSnapshot = useCallback((state: GameSnapshot) => setSnapshot(state), []);
   const onEvent = useCallback((event: EngineEvent) => {
     switch (event.type) {
-      case 'dialogue': engineRef.current?.setMovement(0, 0); stickOrigin.current = null; setStick(s => ({ ...s, x: 0, y: 0, active: false })); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then }); break;
+      case 'dialogue': engineRef.current?.setMovement(0, 0); resetStick(); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then, offer: event.offer }); break;
       case 'notice': notify(event.text, event.tone); break;
+      case 'item': notify(`Found ${ITEMS[event.id].name}${event.count > 1 ? ` ×${event.count}` : ''}`, 'good'); break;
       case 'zone': setZone(z => ({ name: event.name, discovered: event.discovered, key: (z?.key || 0) + 1 })); break;
       case 'spellLearned': setSpellQueue(q => [...q, event.spell]); break;
       case 'levelUp': setLevelBanner(b => ({ level: event.level, key: (b?.key || 0) + 1 })); break;
       case 'quest':
-        if (event.state === 'accepted') notify(`New quest: ${event.title}`, 'good');
+        if (event.state === 'accepted') notify(`Quest accepted: ${event.title}`, 'good');
         else if (event.state === 'completed') notify(`Quest complete: ${event.title}${event.xp ? ` · +${event.xp} XP` : ''}`, 'epic');
         break;
       case 'bossIntro': setBossBanner({ name: event.name, title: event.title }); window.setTimeout(() => setBossBanner(null), 3000); break;
@@ -89,7 +118,7 @@ function App() {
           const next: Save = { ...prev, done: { ...prev.done, [event.levelId]: true }, stars: { ...prev.stars, [event.levelId]: Math.max(prev.stars[event.levelId], event.stats.stars) }, bestTime: { ...prev.bestTime, [event.levelId]: prev.bestTime[event.levelId] ? Math.min(prev.bestTime[event.levelId], event.stats.time) : event.stats.time } };
           saveNow(next); return next;
         });
-        setDialogue(null); setPaused(false); setMapOpen(false); setMode('victory');
+        setDialogue(null); setPaused(false); setMapOpen(false); setPanel(null); setMode('victory');
       }
     }
   }, [notify]);
@@ -97,15 +126,19 @@ function App() {
   const startGame = (id: LevelId, fresh = false) => {
     sfx.unlock();
     if (fresh) clearSession(id);
-    setLevelId(id); setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); stickOrigin.current = null; setStick({ ox: 0, oy: 0, x: 0, y: 0, active: false });
+    setLevelId(id); setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setToasts([]); setChapterBanner(b => b + 1); setMode('play');
   };
   const newGame = () => { for (const id of LEVEL_ORDER) clearSession(id); resetProfile(); const s = blankSave(); setSave(s); saveNow(s); startGame('meadow', true); };
   const leaveToTitle = () => { const e = engineRef.current; if (e && !e.main.finaleDone) saveSession(e.world.id, e.exportSave()); setPaused(false); setMode('title'); };
   const nextLevel = () => { const i = LEVEL_ORDER.indexOf(levelId); if (i < LEVEL_ORDER.length - 1) startGame(LEVEL_ORDER[i + 1], true); else setMode('ending'); };
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
+  const chooseGraphics = (g: Graphics) => { setGraphics(g); saveGraphics(g); sfx.play('ui'); };
   const showSpell = spellQueue.length && !dialogue ? spellQueue[0] : null;
-  const cast = (id: SpellId) => { if (!paused && !dialogue && !showSpell && !mapOpen) engineRef.current?.cast(id); };
+  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel;
+  const cast = (id: SpellId) => { if (!blocked) engineRef.current?.cast(id); };
+  const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen) engineRef.current?.useItem(id); };
+  const openPanel = (p: Panel) => { engineRef.current?.setMovement(0, 0); setJournal(false); setPanel(v => v === p ? null : p); sfx.play('page'); };
   const dismissSpell = () => setSpellQueue(q => q.slice(1));
 
   const [showChapter, setShowChapter] = useState(false);
@@ -116,6 +149,8 @@ function App() {
 
   // Typewriter dialogue.
   const line = dialogue ? dialogue.lines[dialogue.index] : '';
+  const lastLine = !!dialogue && dialogue.index >= dialogue.lines.length - 1 && typed >= line.length;
+  const offerOpen = lastLine && !!dialogue?.offer;
   useEffect(() => {
     if (!dialogue) return;
     setTyped(0);
@@ -127,9 +162,16 @@ function App() {
     if (!dialogue) return;
     if (typed < line.length) { setTyped(line.length); return; }
     if (dialogue.index < dialogue.lines.length - 1) { setDialogue({ ...dialogue, index: dialogue.index + 1 }); return; }
+    if (dialogue.offer) return; // an offer waits for Accept or Decline
     const then = dialogue.then; setDialogue(null);
     if (then === 'complete') engineRef.current?.celebrate();
   }, [dialogue, typed, line]);
+  const answerOffer = (accept: boolean) => {
+    const offer = dialogue?.offer; if (!offer) return;
+    setDialogue(null);
+    if (accept) engineRef.current?.acceptQuest(offer.id);
+    else { sfx.play('page'); notify(`Maybe later. ${dialogue.speaker} will still be here.`); }
+  };
 
   const keys = useRef(new Set<string>());
   const syncKeys = () => {
@@ -139,20 +181,33 @@ function App() {
     engineRef.current?.setMovement(x, y);
   };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     const k = e.key.toLowerCase();
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
-    if (dialogue) { if (k === 'enter' || k === ' ' || k === 'e') { advanceDialogue(); e.preventDefault(); } if (k === 'escape') setDialogue(null); return; }
+    if (dialogue) {
+      if (offerOpen) { if (k === 'enter' || k === ' ' || k === 'y') answerOffer(true); else if (k === 'escape' || k === 'n') answerOffer(false); e.preventDefault(); return; }
+      if (k === 'enter' || k === ' ') { advanceDialogue(); e.preventDefault(); }
+      if (k === 'escape' && !dialogue.offer) setDialogue(null);
+      return;
+    }
     if (k === 'n') { toggleMute(); return; }
     if (mapOpen) { if (k === 'm' || k === 'escape') setMapOpen(false); return; }
     if (paused) { if (k === 'escape') setPaused(false); return; }
+    if (panel) {
+      if (k === 'escape' || (k === 'i' && panel === 'bag') || (k === 'p' && panel === 'hero')) { setPanel(null); e.preventDefault(); return; }
+      if (k === 'i') { setPanel('bag'); return; } if (k === 'p') { setPanel('hero'); return; }
+      if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
+      return;
+    }
     if (k === 'm') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); return; }
     if (k === 'tab' || k === 'l') { setJournal(v => !v); sfx.play('page'); e.preventDefault(); return; }
+    if (k === 'i' || k === 'p') { keys.current.clear(); openPanel(k === 'i' ? 'bag' : 'hero'); return; }
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) { keys.current.add(k); syncKeys(); e.preventDefault(); }
-    if (KEYMAP[k]) { if (k === ' ') e.preventDefault(); if (!e.repeat || KEYMAP[k] === 'spark') cast(KEYMAP[k]); }
+    if (KEYMAP[k]) { if (!e.repeat || KEYMAP[k] === 'spark') cast(KEYMAP[k]); }
     if (e.repeat) return;
-    if (k === 'e' || k === 'enter') engineRef.current?.interact();
-    if (k === 'escape') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setJournal(false); setPaused(true); }
+    if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
+    if (k === ' ' || k === 'enter') { engineRef.current?.interact(); e.preventDefault(); }
+    if (k === 'escape') { keys.current.clear(); engineRef.current?.setMovement(0, 0); if (journal) setJournal(false); else setPaused(true); }
   };
   const keyHandler = useRef(onKeyDown); keyHandler.current = onKeyDown;
   useEffect(() => {
@@ -163,17 +218,15 @@ function App() {
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); keys.current.clear(); engineRef.current?.setMovement(0, 0); };
   }, [mode]);
-  useEffect(() => { if (paused || dialogue || mapOpen) { keys.current.clear(); engineRef.current?.setMovement(0, 0); } }, [paused, dialogue, mapOpen]);
+  useEffect(() => { if (paused || dialogue || mapOpen || panel) { keys.current.clear(); engineRef.current?.setMovement(0, 0); resetStick(); } }, [paused, dialogue, mapOpen, panel]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
-  // Movement is driven synchronously from the pointer events; React state is only for drawing the stick.
-  // (Calling the engine inside a setState updater let a stale, deferred move land after release.)
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
-    const r = el.getBoundingClientRect();
-    stickOrigin.current = { ox: clientX - r.left, oy: clientY - r.top };
-    setStick({ ox: clientX - r.left, oy: clientY - r.top, x: 0, y: 0, active: true });
+    const r = el.getBoundingClientRect(), ox = clientX - r.left, oy = clientY - r.top;
+    stickOrigin.current = { ox, oy };
+    const s = stickRef.current; if (s) { s.classList.add('active'); s.style.left = `${ox}px`; s.style.top = `${oy}px`; }
   };
   const stickMove = (el: HTMLDivElement, clientX: number, clientY: number) => {
     const o = stickOrigin.current; if (!o) return;
@@ -182,45 +235,45 @@ function App() {
     const mag = Math.hypot(x, y); if (mag > 1) { x /= mag; y /= mag; }
     const dead = mag < .12 ? 0 : 1;
     engineRef.current?.setMovement(x * dead, y * dead);
-    setStick(s => ({ ...s, x, y }));
+    if (thumbRef.current) thumbRef.current.style.transform = `translate(${x * STICK_R}px,${y * STICK_R}px)`;
   };
-  const stickEnd = () => { stickOrigin.current = null; setStick(s => ({ ...s, x: 0, y: 0, active: false })); engineRef.current?.setMovement(0, 0); };
-  const tracked = snapshot?.quests.find(q => q.tracked && q.status !== 'done');
+  const stickEnd = () => { resetStick(); engineRef.current?.setMovement(0, 0); };
+  const potions = snapshot?.items.find(i => i.id === 'healthPotion')?.count ?? 0;
 
-  return <div className={`app-shell mode-${mode}`}>
-    {mode === 'title' && <TitleScreen save={save} muted={muted} onToggleMute={toggleMute} onStart={startGame} onNewGame={newGame} />}
+  return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
+    {mode === 'title' && <TitleScreen save={save} muted={muted} touch={touch} onToggleMute={toggleMute} onStart={startGame} onNewGame={newGame} />}
 
     {mode === 'play' && <main className={`play-page theme-${levelId}`}>
       <section className="game-stage">
-        <GameCanvas levelId={levelId} runKey={runKey} paused={isGamePaused} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
+        <GameCanvas levelId={levelId} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
         <div className="hud-top">
-          <Vitals snapshot={snapshot} />
+          <Vitals snapshot={snapshot} onProfile={() => openPanel('hero')} />
           <div className="hud-center">
-            <div className="objective">
-              <small>Chapter {ROMAN[world.chapter]} · {world.title}</small>
-              <strong>{snapshot?.main.step || 'Speak with the villagers to begin.'}</strong>
-              {tracked && <span className={`tracked status-${tracked.status}`}>◆ {tracked.title}: {tracked.status === 'ready' ? `return to ${tracked.giver}` : tracked.detail}</span>}
-            </div>
             {snapshot?.boss && <BossBar boss={snapshot.boss} />}
             {zone && <div className="zone-banner" key={zone.key}><span>✦</span>{zone.name}<span>✦</span>{zone.discovered && <em>Discovered</em>}</div>}
           </div>
           <div className="hud-buttons">
+            <button className="icon-button" onClick={() => openPanel('bag')} aria-label="Bag" title="Bag (I)">🎒</button>
             <button className="icon-button" onClick={() => { setMapOpen(true); sfx.play('page'); }} aria-label="World map" title="Map (M)">🗺️</button>
-            <button className="icon-button" onClick={() => { setJournal(v => !v); sfx.play('page'); }} aria-label="Quest journal" title="Journal (Tab)">📜</button>
-            <button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} title="Sound (N)">{muted ? '🔇' : '🔊'}</button>
+            <button className="icon-button" onClick={() => { setPanel(null); setJournal(v => !v); sfx.play('page'); }} aria-label="Quest log" title="Quest log (Tab)">📜</button>
             <button className="icon-button" onClick={() => { engineRef.current?.setMovement(0, 0); setPaused(true); }} aria-label="Pause" title="Pause (Esc)">❚❚</button>
           </div>
         </div>
+        {snapshot && !journal && <QuestTracker snapshot={snapshot} onOpen={() => { setJournal(true); sfx.play('page'); }} />}
 
         {snapshot && snapshot.combo >= 3 && <div className="combo" key={snapshot.combo}><b>{snapshot.combo}</b><small>COMBO</small></div>}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast tone-${t.tone}`}>{t.text}</div>)}</div>
 
-        {snapshot?.nearName && !dialogue && <button className="near-prompt" onClick={() => engineRef.current?.interact()}>
-          <kbd>E</kbd><span>{snapshot.nearAction}</span><b>{snapshot.nearName}</b>
+        {snapshot?.nearName && !dialogue && !panel && <button className="near-prompt" onClick={() => engineRef.current?.interact()}>
+          {touch ? <i className="tap-hint">Tap</i> : <kbd>Space</kbd>}<span>{snapshot.nearAction}</span><b>{snapshot.nearName}</b>
         </button>}
 
-        <div className="spellbar">{snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} />)}</div>
+        <div className="spellbar">
+          {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} />)}
+          <span className="bar-gap" />
+          {snapshot?.items.slice(0, 2).map(it => <PotionButton key={it.id} id={it.id} count={it.count} onUse={drink} />)}
+        </div>
 
         <div className="touch-controls">
           <div className="stick-zone"
@@ -228,11 +281,12 @@ function App() {
             onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) stickMove(e.currentTarget, e.clientX, e.clientY); }}
             onPointerUp={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); stickEnd(); }}
             onPointerCancel={stickEnd} aria-label="Touch and drag anywhere here to move">
-            <div className={`virtual-stick ${stick.active ? 'active' : ''}`} style={stick.active ? { left: stick.ox, top: stick.oy } : undefined}>
-              <i className="stick-thumb" style={{ transform: `translate(${stick.x * STICK_R}px,${stick.y * STICK_R}px)` }} />
-            </div>
+            <div className="virtual-stick" ref={stickRef}><i className="stick-thumb" ref={thumbRef} /></div>
           </div>
-          <div className="touch-actions">{snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} touch />)}</div>
+          <div className="touch-actions">
+            {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} touch />)}
+            <PotionButton id="healthPotion" count={potions} onUse={drink} touch />
+          </div>
         </div>
 
         {showChapter && <div className="chapter-banner" key={chapterBanner}>
@@ -246,30 +300,40 @@ function App() {
           <div className="spell-card">
             <div className="spell-rays" /><div className="spell-icon">{SPELLS[showSpell].icon}</div>
             <small>New spell learned · Level {SPELLS[showSpell].level}</small><h2>{SPELLS[showSpell].name}</h2><p>{SPELLS[showSpell].description}</p>
-            <kbd>Press {SPELLS[showSpell].key}</kbd>
+            {touch ? <em className="tap-note">Tap its {SPELLS[showSpell].icon} button to cast</em> : <kbd>Press {SPELLS[showSpell].key}</kbd>}
           </div>
         </div>}
 
-        {dialogue && <div className="dialogue" onClick={advanceDialogue} role="dialog" aria-modal="true">
+        {dialogue && <div className={`dialogue ${dialogue.offer ? 'has-offer' : ''}`} onClick={advanceDialogue} role="dialog" aria-modal="true">
           <div className="dialogue-portrait">{dialogue.portrait}</div>
           <div className="dialogue-body">
             <strong>{dialogue.speaker}</strong>
             <p>{line.slice(0, typed)}<span className="caret" /></p>
-            <div className="dialogue-foot"><span>{dialogue.index + 1} / {dialogue.lines.length}</span><em>{typed < line.length ? 'Click to skip' : dialogue.index < dialogue.lines.length - 1 ? 'Continue ▸' : 'Close ▸'}</em></div>
+            {offerOpen && dialogue.offer && <div className="offer" onClick={e => e.stopPropagation()}>
+              <div className="offer-info"><small>Side quest</small><b>{dialogue.offer.title}</b><em>{dialogue.offer.summary}</em><span>Reward: {dialogue.offer.reward}</span></div>
+              <div className="offer-actions">
+                <button className="btn primary" onClick={() => answerOffer(true)}>Accept quest</button>
+                <button className="btn ghost" onClick={() => answerOffer(false)}>Decline</button>
+              </div>
+            </div>}
+            {!offerOpen && <div className="dialogue-foot"><span>{dialogue.index + 1} / {dialogue.lines.length}</span><em>{typed < line.length ? (touch ? 'Tap to skip' : 'Click to skip') : dialogue.index < dialogue.lines.length - 1 ? 'Continue ▸' : 'Close ▸'}</em></div>}
           </div>
         </div>}
 
-        {journal && <Journal snapshot={snapshot} levelId={levelId} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} />}
-        {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} onClose={() => setMapOpen(false)} />}
+        {journal && <Journal snapshot={snapshot} levelId={levelId} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} />}
+        {panel === 'bag' && snapshot && <BagPanel snapshot={snapshot} touch={touch} onUse={drink} onClose={() => setPanel(null)} />}
+        {panel === 'hero' && snapshot && <HeroPanel snapshot={snapshot} levelId={levelId} onClose={() => setPanel(null)} />}
+        {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
         {paused && <div className="overlay"><div className="panel pause-panel">
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The forest can wait.</p>
           <div className="controls-grid">
-            <span><kbd>WASD</kbd> Move</span><span><kbd>J</kbd>/<kbd>Space</kbd> Spark</span><span><kbd>Shift</kbd> Dash</span><span><kbd>Q</kbd> Leaf Burst</span>
-            <span><kbd>R</kbd> Sunfire</span><span><kbd>F</kbd> Moss Shield</span><span><kbd>T</kbd> Starfall</span><span><kbd>E</kbd> Interact</span>
-            <span><kbd>M</kbd> Map</span><span><kbd>Tab</kbd> Journal</span>
+            <span><kbd>WASD</kbd> Move</span><span><kbd>F</kbd> Spark</span><span><kbd>E</kbd> Dash</span><span><kbd>Q</kbd> Leaf Burst</span>
+            <span><kbd>R</kbd> Sunfire</span><span><kbd>C</kbd> Moss Shield</span><span><kbd>T</kbd> Starfall</span><span><kbd>Space</kbd> Talk / use</span>
+            <span><kbd>1</kbd>–<kbd>5</kbd> Potions</span><span><kbd>I</kbd> Bag</span><span><kbd>P</kbd> Character</span><span><kbd>M</kbd> Map</span><span><kbd>Tab</kbd> Quest log</span>
           </div>
           <VolumeControls />
+          <div className="graphics-row"><span>Graphics</span><div className="seg">{GRAPHICS.map(g => <button key={g} className={graphics === g ? 'on' : ''} onClick={() => chooseGraphics(g)}>{GRAPHICS_LABEL[g]}</button>)}</div></div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
           <div className="pause-row">
             <button className="btn ghost" onClick={toggleMute}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
@@ -318,7 +382,7 @@ function App() {
   </div>;
 }
 
-function TitleScreen({ save, muted, onToggleMute, onStart, onNewGame }: { save: Save; muted: boolean; onToggleMute: () => void; onStart: (id: LevelId, fresh?: boolean) => void; onNewGame: () => void }) {
+function TitleScreen({ save, muted, touch, onToggleMute, onStart, onNewGame }: { save: Save; muted: boolean; touch: boolean; onToggleMute: () => void; onStart: (id: LevelId, fresh?: boolean) => void; onNewGame: () => void }) {
   const next = LEVEL_ORDER.find(id => !save.done[id] && unlocked(save, id)) || 'meadow';
   const profile = loadProfile();
   const started = LEVEL_ORDER.some(id => save.done[id]) || profile.level > 1 || profile.xp > 0;
@@ -353,7 +417,9 @@ function TitleScreen({ save, muted, onToggleMute, onStart, onNewGame }: { save: 
         </button>;
       })}
     </section>
-    <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>J</kbd> spark</span><span><kbd>Shift</kbd> dash</span><span><kbd>Q R F T</kbd> spells</span><span><kbd>E</kbd> interact</span><span><kbd>M</kbd> map</span></footer>
+    {touch
+      ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to cast</span><span>Tap people and chests to interact</span></footer>
+      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>F</kbd> spark</span><span><kbd>E</kbd> dash</span><span><kbd>Q R C T</kbd> spells</span><span><kbd>Space</kbd> interact</span><span><kbd>1–5</kbd> potions</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
   </main>;
 }
 
@@ -366,17 +432,30 @@ function VolumeControls() {
   </div>;
 }
 
-function Vitals({ snapshot }: { snapshot: GameSnapshot | null }) {
-  const hp = snapshot?.hp ?? 5, max = snapshot?.maxHp ?? 5, mana = snapshot?.mana ?? 80, maxMana = snapshot?.maxMana ?? 100;
-  const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1;
-  return <div className={`vitals ${hp <= 1 ? 'critical' : ''}`}>
-    <div className="portrait"><span>🧙‍♀️</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></div>
-    <div className="bars">
-      <div className="hearts">{Array.from({ length: max }, (_, i) => <span key={i} className={i < hp ? 'full' : 'empty'}>♥</span>)}</div>
-      <div className="mana"><i style={{ width: `${(mana / maxMana) * 100}%` }} /><b>{mana}</b></div>
-      <div className="xp" title={`${xp} / ${next} XP`}><i style={{ width: next ? `${(xp / next) * 100}%` : '100%' }} /><b>{next ? `${xp} / ${next} XP` : 'MAX'}</b></div>
+function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProfile: () => void }) {
+  const hp = snapshot?.hp ?? 100, max = snapshot?.maxHp ?? 100, mana = snapshot?.mana ?? 80, maxMana = snapshot?.maxMana ?? 100;
+  const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1, pct = Math.max(0, hp / max) * 100;
+  return <div className="vitals-wrap">
+    <div className={`vitals ${hp <= max * .25 ? 'critical' : ''}`}>
+      <button className="portrait" onClick={onProfile} aria-label="Character details" title="Character (P)"><span>🧙‍♀️</span>{snapshot?.shield && <i className="shield-ring" />}<b className="level-badge">{level}</b></button>
+      <div className="bars">
+        <div className="health" title="Health"><i className="lag" style={{ width: `${pct}%` }} /><i className="fill" style={{ width: `${pct}%` }} /><b>{Math.max(0, Math.ceil(hp))} / {max}</b></div>
+        <div className="mana" title="Magic"><i style={{ width: `${(mana / maxMana) * 100}%` }} /><b>{mana}</b></div>
+        <div className="xp" title={`${xp} / ${next} XP`}><i style={{ width: next ? `${(xp / next) * 100}%` : '100%' }} /><b>{next ? `${xp} / ${next} XP` : 'MAX'}</b></div>
+      </div>
     </div>
+    {!!snapshot?.buffs.length && <div className="buffs">{snapshot.buffs.map(b => <span key={b.id} className="buff" title={`${ITEMS[b.id].name} · ${Math.ceil(b.time)}s`} style={{ '--c': ITEMS[b.id].color, '--p': `${(b.time / b.max) * 360}deg` } as CSSProperties}><Flask id={b.id} /><b>{Math.ceil(b.time)}</b></span>)}</div>}
   </div>;
+}
+
+/** WoW-style objective list: the main quest in gold, followed side quests in blue, just goals and counts. */
+function QuestTracker({ snapshot, onOpen }: { snapshot: GameSnapshot; onOpen: () => void }) {
+  const main = snapshot.main;
+  const sides = snapshot.quests.filter(q => q.status === 'active' || q.status === 'ready').sort((a, b) => Number(b.tracked) - Number(a.tracked)).slice(0, 3);
+  return <button className="tracker" onClick={onOpen} aria-label="Open quest log">
+    <span className="trk trk-main"><b>{main.title}</b><span>{main.step}{main.count > 0 && <em>{main.progress}/{main.count}</em>}</span></span>
+    {sides.map(q => <span key={q.id} className={`trk trk-side ${q.status === 'ready' ? 'ready' : ''}`}><b>{q.title}</b><span>{q.goal}{q.count > 0 && <em>{q.progress}/{q.count}</em>}</span></span>)}
+  </button>;
 }
 
 function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
@@ -393,28 +472,81 @@ function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id:
   return <button className={`spell spell-${spell.id} ${ready ? 'ready' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
     style={style} onPointerDown={e => { e.preventDefault(); onCast(spell.id); }} aria-label={spell.name} title={spell.unlocked ? `${spell.name} (${spell.key})${spell.cost ? ` · ${spell.cost} mana` : ''}` : `${spell.name} · learned at level ${spell.level}`}>
     <span className="spell-icon-wrap"><b>{spell.unlocked ? spell.icon : '🔒'}</b>{spell.cooldown > 0 && <i className="cd" />}</span>
-    {!touch && spell.unlocked && <kbd>{spell.key === 'Shift' ? '⇧' : spell.key}</kbd>}
+    {!touch && spell.unlocked && <kbd>{spell.key}</kbd>}
     {spell.cost > 0 && spell.unlocked && <small>{spell.cost}</small>}
     {!spell.unlocked && <small className="lvl">Lv {spell.level}</small>}
   </button>;
 }
 
+function Flask({ id }: { id: ItemId }) { return <i className="flask" style={{ '--c': ITEMS[id].color } as CSSProperties} aria-hidden="true" />; }
+function PotionButton({ id, count, onUse, touch }: { id: ItemId; count: number; onUse: (id: ItemId) => void; touch?: boolean }) {
+  return <button className={`spell potion potion-${id} ${touch ? 'touch' : ''} ${count ? 'ready' : 'poor'}`} style={{ '--spell': ITEMS[id].color } as CSSProperties}
+    onPointerDown={e => { e.preventDefault(); onUse(id); }} aria-label={`${ITEMS[id].name} (${count})`} title={`${ITEMS[id].name} (${ITEMS[id].key}) · ${ITEMS[id].description}`}>
+    <span className="spell-icon-wrap"><Flask id={id} /></span>
+    {!touch && <kbd>{ITEMS[id].key}</kbd>}
+    <small className="count">{count}</small>
+  </button>;
+}
+
+function BagPanel({ snapshot, touch, onUse, onClose }: { snapshot: GameSnapshot; touch: boolean; onUse: (id: ItemId) => void; onClose: () => void }) {
+  return <aside className="side-panel bag-panel">
+    <div className="journal-head"><strong>Bag</strong><button className="icon-button" onClick={onClose} aria-label="Close bag">✕</button></div>
+    <p className="panel-note">Chests, strong creatures and quest rewards fill your bag. Potions carry over between chapters.</p>
+    <div className="bag-list">
+      {snapshot.items.map(it => {
+        const info = ITEMS[it.id], active = snapshot.buffs.find(b => b.id === it.id);
+        return <div key={it.id} className={`bag-item ${it.count ? '' : 'empty'}`} style={{ '--c': info.color } as CSSProperties}>
+          <span className="bag-icon"><Flask id={it.id} /><b>{it.count}</b></span>
+          <div><strong>{info.name}{!touch && <kbd>{info.key}</kbd>}</strong><em>{info.description}{active && ` · active ${Math.ceil(active.time)}s`}</em></div>
+          <button className="btn ghost" disabled={!it.count} onClick={() => onUse(it.id)}>Use</button>
+        </div>;
+      })}
+    </div>
+  </aside>;
+}
+
+function HeroPanel({ snapshot: s, levelId, onClose }: { snapshot: GameSnapshot; levelId: LevelId; onClose: () => void }) {
+  const w = WORLDS[levelId], st = s.stats, spells = s.spells.filter(x => x.unlocked).length;
+  const rows: Array<[string, string]> = [
+    ['Health', `${Math.ceil(s.hp)} / ${s.maxHp}`], ['Magic', `${s.mana} / ${s.maxMana}`], ['Magic regeneration', `${st.regen.toFixed(1)} / s`],
+    ['Spell power', `+${Math.round((st.power - 1) * 100)}%`], ['Spark damage', `${st.spark}`], ['Move speed', `${Math.round(st.speed * 100)}%`],
+    ['Damage taken', `${Math.round((1 - st.guard) * 100)}%`], ['Spells known', `${spells} / ${s.spells.length}`],
+  ];
+  const trip: Array<[string, string]> = [
+    ['Chapter', `${ROMAN[w.chapter]} · ${w.title}`], ['Time in chapter', fmtTime(st.elapsed)], ['Quests done', `${st.questsDone} / ${st.totalQuests}`],
+    ['Creatures defeated', `${s.defeated}`], ['Places discovered', `${s.discovered} / ${s.totalPlaces}`], ['Chests opened', `${s.chests} / ${s.totalChests}`],
+  ];
+  return <aside className="side-panel hero-panel">
+    <div className="journal-head"><strong>Character</strong><button className="icon-button" onClick={onClose} aria-label="Close character sheet">✕</button></div>
+    <div className="hero-card">
+      <span className="portrait big"><span>🧙‍♀️</span><b className="level-badge">{s.level}</b></span>
+      <div><b>Mira</b><em>Star apprentice · Level {s.level}</em>
+        <div className="xp wide"><i style={{ width: s.xpNext ? `${(s.xp / s.xpNext) * 100}%` : '100%' }} /><b>{s.xpNext ? `${s.xp} / ${s.xpNext} XP` : 'MAX LEVEL'}</b></div>
+      </div>
+    </div>
+    <section><small>Attributes</small><dl className="stat-list">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl></section>
+    {!!s.buffs.length && <section><small>Active effects</small><dl className="stat-list">{s.buffs.map(b => <div key={b.id}><dt>{ITEMS[b.id].name}</dt><dd>{Math.ceil(b.time)}s</dd></div>)}</dl></section>}
+    <section><small>Adventure</small><dl className="stat-list">{trip.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl></section>
+  </aside>;
+}
+
 const STATUS_ICON: Record<QuestRow['status'], string> = { available: '!', active: '○', ready: '?', done: '✓', locked: '·' };
-function Journal({ snapshot, levelId, onClose, onTrack }: { snapshot: GameSnapshot | null; levelId: LevelId; onClose: () => void; onTrack: (id: string) => void }) {
+function Journal({ snapshot, levelId, touch, onClose, onTrack }: { snapshot: GameSnapshot | null; levelId: LevelId; touch: boolean; onClose: () => void; onTrack: (id: string) => void }) {
   const w = WORLDS[levelId];
   const [tab, setTab] = useState<'quests' | 'spells' | 'world'>('quests');
   return <aside className="journal">
-    <div className="journal-head"><strong>Journal</strong><button className="icon-button" onClick={onClose} aria-label="Close journal">✕</button></div>
+    <div className="journal-head"><strong>Quest log</strong><button className="icon-button" onClick={onClose} aria-label="Close quest log">✕</button></div>
     <div className="journal-tabs">{(['quests', 'spells', 'world'] as const).map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'quests' ? 'Quests' : t === 'spells' ? 'Spellbook' : 'Explorer'}</button>)}</div>
     {snapshot && tab === 'quests' && <>
-      <section><small>Main quest · {snapshot.main.title}</small><p className="main-q">{snapshot.main.step}</p></section>
-      <section><small>Side quests · click one to follow it</small>
+      <section className="q-main"><small>Main quest · {snapshot.main.title}</small><p className="main-q">{snapshot.main.step}{snapshot.main.count > 0 && <em> {snapshot.main.progress}/{snapshot.main.count}</em>}</p></section>
+      <section className="q-sides"><small>Side quests · {touch ? 'tap' : 'click'} one to follow it</small>
+        {snapshot.quests.length === 0 && <p className="sub-q">Villagers with a blue ! have work for you.</p>}
         {snapshot.quests.map(q => <button key={q.id} className={`side status-${q.status} ${q.tracked ? 'tracked' : ''}`} onClick={() => q.status !== 'done' && q.status !== 'available' && onTrack(q.id)}>
-          <span>{STATUS_ICON[q.status]}</span><div><b>{q.title}</b><em>{q.detail}</em></div><i>{q.status === 'done' ? '' : `${q.xp} XP`}</i>
+          <span>{STATUS_ICON[q.status]}</span><div><b>{q.title}</b><em>{q.detail}</em>{q.status !== 'done' && <em className="reward">Reward: {q.reward}</em>}</div>
         </button>)}
       </section>
     </>}
-    {snapshot && tab === 'spells' && <section><small>Spellbook · new spells come with levels</small><div className="spellbook">{SPELL_ORDER.map(id => { const s = snapshot.spells.find(x => x.id === id)!; return <div key={id} className={`book-spell ${s.unlocked ? '' : 'locked'}`} style={{ '--spell': SPELLS[id].color } as CSSProperties}><b>{s.unlocked ? SPELLS[id].icon : '?'}</b><div><strong>{s.unlocked ? SPELLS[id].name : 'Unknown spell'} <kbd>{s.unlocked ? SPELLS[id].key : `Lv ${SPELLS[id].level}`}</kbd></strong><em>{s.unlocked ? SPELLS[id].description : `Learned at level ${SPELLS[id].level}.`}</em></div></div>; })}</div></section>}
+    {snapshot && tab === 'spells' && <section><small>Spellbook · new spells come with levels</small><div className="spellbook">{SPELL_ORDER.map(id => { const s = snapshot.spells.find(x => x.id === id)!; return <div key={id} className={`book-spell ${s.unlocked ? '' : 'locked'}`} style={{ '--spell': SPELLS[id].color } as CSSProperties}><b>{s.unlocked ? SPELLS[id].icon : '?'}</b><div><strong>{s.unlocked ? SPELLS[id].name : 'Unknown spell'} {(!touch || !s.unlocked) && <kbd>{s.unlocked ? SPELLS[id].key : `Lv ${SPELLS[id].level}`}</kbd>}</strong><em>{s.unlocked ? SPELLS[id].description : `Learned at level ${SPELLS[id].level}.`}</em></div></div>; })}</div></section>}
     {snapshot && tab === 'world' && <>
       <section className="journal-stats"><span>Places discovered</span><b>{snapshot.discovered} / {snapshot.totalPlaces}</b></section>
       <section className="journal-stats"><span>Chests opened</span><b>{snapshot.chests} / {snapshot.totalChests}</b></section>
@@ -425,7 +557,7 @@ function Journal({ snapshot, levelId, onClose, onTrack }: { snapshot: GameSnapsh
   </aside>;
 }
 
-function MapOverlay({ engine, onClose }: { engine: GameEngine; onClose: () => void }) {
+function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boolean; onClose: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current; if (!c) return;
@@ -441,9 +573,9 @@ function MapOverlay({ engine, onClose }: { engine: GameEngine; onClose: () => vo
     return () => cancelAnimationFrame(raf);
   }, [engine]);
   return <div className="map-overlay" onClick={onClose}>
-    <div className="map-head"><strong>{engine.world.region}</strong><span>Explore to reveal the map · <kbd>M</kbd> close</span></div>
+    <div className="map-head"><strong>{engine.world.region}</strong><span>Explore to reveal the map · {touch ? 'tap to close' : <><kbd>M</kbd> close</>}</span></div>
     <canvas ref={ref} />
-    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: '#ffd35c' }} />Quest giver</span><span><i style={{ background: '#9fe8b0' }} />Quest goal</span><span><i style={{ background: engine.world.palette.accent }} />{engine.world.script.keyLabel}</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span></div>
+    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: MAIN_COLOR }} />Main quest</span><span><i style={{ background: SIDE_COLOR }} />Side quest</span><span><i style={{ background: engine.world.palette.accent }} />{engine.world.script.keyLabel}</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span></div>
   </div>;
 }
 

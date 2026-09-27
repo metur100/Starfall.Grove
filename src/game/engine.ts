@@ -1,12 +1,13 @@
 import { ambience, footstep, sfx, type Sfx } from './audio';
-import { MAX_LEVEL, heartsAt, loadProfile, manaAt, powerAt, regenAt, saveProfile, xpToNext, type Profile } from './progression';
+import { ITEMS, ITEM_ORDER, rollItem } from './items';
+import { HP_UNIT, MAX_LEVEL, healthAt, loadProfile, manaAt, powerAt, regenAt, saveProfile, xpToNext, type Profile } from './progression';
 import { SPELLS, SPELL_ORDER } from './spells';
 import { Grid } from './spatial';
 import { RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
 import type {
-  CritterKind, EngineEvent, EnemyKind, EnemySeed, GameSnapshot, LevelId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
-  QuestDef, QuestRow, QuestState, SpellId, WorldDefinition, WorldObject,
+  CritterKind, EngineEvent, EnemyKind, EnemySeed, GameSnapshot, ItemId, LevelId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
+  QuestDef, QuestOffer, QuestRow, QuestState, SpellId, WorldDefinition, WorldObject,
 } from './types';
 
 export type Hero = {
@@ -19,6 +20,8 @@ export type Enemy = EnemySeed & {
   kx: number; ky: number; homeX: number; homeY: number; wanderX: number; wanderY: number; wanderT: number;
   aggro: boolean; spawnT: number; phase: number; action: BossAction | null; actionT: number; actionStep: number;
   pattern: number; summons: number; chargeX: number; chargeY: number; lunge: number; angle: number; summoned?: boolean;
+  /** 0 calm → 1 attacking; drives the red aggro tint. */
+  rage: number;
 };
 export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string };
 export type Critter = { kind: CritterKind; x: number; y: number; homeX: number; homeY: number; tx: number; ty: number; state: 'idle' | 'move' | 'flee' | 'fly'; t: number; face: number; alt: number; hop: number; seed: number };
@@ -31,7 +34,8 @@ export type Pod = { id: number; x: number; y: number; dead: boolean; hitT: numbe
 export type FloatText = { x: number; y: number; text: string; life: number; max: number; color: string; size: number };
 export type Afterimage = { x: number; y: number; life: number; faceX: number };
 export type EngineSave = {
-  version: 3; hero: { x: number; y: number; hp: number; mana: number }; main: MainQuest; quests: Record<string, QuestState>; got: string[];
+  /** `hpUnit` is absent in saves from when health was counted in hearts. */
+  version: 3; hero: { x: number; y: number; hp: number; mana: number; hpUnit?: number }; main: MainQuest; quests: Record<string, QuestState>; got: string[];
   opened: string[]; read: string[]; discovered: string[]; explored: string; brokenPods: number[]; checkpoint: Point; elapsed: number; defeated: number; blessed: boolean; tracked: string | null;
 };
 type Near = { kind: 'object'; o: WorldObject } | { kind: 'npc'; n: Npc };
@@ -86,6 +90,10 @@ export class GameEngine {
   moveX = 0; moveY = 0; elapsed = 0; defeated = 0;
   shake = 0; hitStop = 0; slowMo = 0; damageFlash = 0; respawnFade = 0; flash = 0;
   combo = 0; comboTime = 0; combat = 0; tracked: string | null = null;
+  /** Seconds left on each potion effect. */
+  readonly buffs: Partial<Record<ItemId, number>> = {};
+  /** Effect density set by the graphics quality (1 = full). */
+  fx = 1;
   private eventHandler: (event: EngineEvent) => void;
   private checkpoint: Point;
   private bossIntroShown = false;
@@ -108,7 +116,7 @@ export class GameEngine {
     this.profile = loadProfile();
     const cds = Object.fromEntries(SPELL_ORDER.map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
-    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: heartsAt(p), maxHp: heartsAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0 };
+    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0 };
     this.obstacleGrid = new Grid(256, this.world.obstacles);
     this.roads = new RoadIndex(this.world.roads);
     this.enemies = this.world.enemies.map(seed => this.makeEnemy(seed));
@@ -129,14 +137,14 @@ export class GameEngine {
   private makeEnemy(seed: EnemySeed, summoned = false): Enemy {
     const s = ENEMY_STATS[seed.kind], scale = seed.boss ? 1 : this.world.enemyScale * (seed.elite ? 2.6 : 1);
     const hp = Math.round(s.hp * scale);
-    return { ...seed, hp, maxHp: hp, r: s.r * (seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: 0, summoned };
+    return { ...seed, hp, maxHp: hp, r: s.r * (seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: 0, summoned, rage: 0 };
   }
   setEventHandler(handler: (event: EngineEvent) => void) { this.eventHandler = handler; }
 
   private restore(s: EngineSave) {
     const ok = (p: Point) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
     if (ok(s.hero)) { this.hero.x = clamp(s.hero.x, 30, this.world.width - 30); this.hero.y = clamp(s.hero.y, 30, this.world.height - 30); }
-    this.hero.hp = clamp(Number(s.hero.hp) || this.hero.maxHp, 1, this.hero.maxHp);
+    this.hero.hp = clamp((Number(s.hero.hp) || this.hero.maxHp) * (s.hero.hpUnit ? 1 : HP_UNIT), 1, this.hero.maxHp);
     this.hero.mana = clamp(Number(s.hero.mana) || 0, 0, this.hero.maxMana);
     this.checkpoint = ok(s.checkpoint) ? { ...s.checkpoint } : { ...this.world.spawn };
     if (s.main) Object.assign(this.main, s.main);
@@ -153,7 +161,7 @@ export class GameEngine {
     const h = this.hero;
     let explored = ''; for (const v of this.explored) explored += v ? '1' : '0';
     return {
-      version: 3, hero: { x: h.x, y: h.y, hp: h.hp, mana: h.mana }, main: { ...this.main, keys: [...this.main.keys] }, quests: Object.fromEntries(this.quests),
+      version: 3, hero: { x: h.x, y: h.y, hp: h.hp, mana: h.mana, hpUnit: HP_UNIT }, main: { ...this.main, keys: [...this.main.keys] }, quests: Object.fromEntries(this.quests),
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
       brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: this.blessed, tracked: this.tracked,
     };
@@ -167,14 +175,16 @@ export class GameEngine {
   bossUnlocked() { return this.main.keys.length >= 3; }
   private canHurt(e: Enemy) { return !e.boss || this.bossUnlocked(); }
   spellUnlocked(id: SpellId) { return this.profile.level >= SPELLS[id].level; }
-  get power() { return powerAt(this.profile.level); }
+  get power() { return powerAt(this.profile.level) * (this.buffs.powerElixir ? 1.35 : 1); }
   get bossFight() { const b = this.boss(); return !!b && !b.dead && b.aggro; }
   addShake(n: number) { this.shake = Math.min(22, this.shake + n); }
   poiAt(p: Point, pad = 0): Poi | null { let best: Poi | null = null, bd = Infinity; for (const z of this.world.pois) { const d = dist(p, z); if (d < z.r + pad && d < bd) { bd = d; best = z; } } return best; }
 
   emit(x: number, y: number, count: number, color: string | string[], o: Partial<Particle> & { speed?: number; spread?: number; angle?: number } = {}) {
     const speed = o.speed ?? 160, spread = o.spread ?? Math.PI * 2, base = o.angle ?? 0;
-    for (let i = 0; i < count && this.particles.length < 900; i++) {
+    count = this.fx < 1 ? Math.floor(count * this.fx + Math.random()) : count;
+    const cap = 900 * this.fx;
+    for (let i = 0; i < count && this.particles.length < cap; i++) {
       const a = base + (Math.random() - .5) * spread, v = speed * rand(.35, 1), life = (o.life ?? .7) * rand(.6, 1.2);
       this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, size: (o.size ?? 4) * rand(.6, 1.3), color: Array.isArray(color) ? pick(color) : color, kind: o.kind ?? 'dot', rot: Math.random() * 6.28, vr: rand(-8, 8), grav: o.grav ?? 0, drag: o.drag ?? 2.5, glow: o.glow ?? false });
     }
@@ -202,7 +212,7 @@ export class GameEngine {
   }
   private refreshStats(heal: boolean) {
     const h = this.hero, p = this.profile;
-    h.maxHp = heartsAt(p); h.maxMana = manaAt(p); h.manaRegen = regenAt(p);
+    h.maxHp = healthAt(p); h.maxMana = manaAt(p); h.manaRegen = regenAt(p);
     if (heal) { h.hp = h.maxHp; h.mana = h.maxMana; }
     h.hp = Math.min(h.hp, h.maxHp); h.mana = Math.min(h.mana, h.maxMana);
   }
@@ -312,11 +322,27 @@ export class GameEngine {
     for (const q of this.questsFor(n.id)) if (this.qs(q.id).status === 'available') return '!';
     return null;
   }
-  private accept(q: QuestDef, n: Npc) {
-    const st = this.qs(q.id); st.status = 'active'; st.progress = 0;
+  /** Every quest also pays out one item; quests without a set one get a fixed pick so the offer can name it. */
+  rewardItem(q: QuestDef): ItemId { return q.reward.item ?? ITEM_ORDER[[...q.id].reduce((a, c) => a + c.charCodeAt(0), 0) % ITEM_ORDER.length]; }
+  rewardText(q: QuestDef) {
+    const r = q.reward, parts = [`${Math.round(r.xp * this.world.xpScale)} XP`];
+    if (r.hearts) parts.push(`+${r.hearts * HP_UNIT} max health`);
+    if (r.mana) parts.push(`+${r.mana} max magic`);
+    if (r.regen) parts.push('faster magic');
+    parts.push(ITEMS[this.rewardItem(q)].name);
+    return parts.join(' · ');
+  }
+  private offerQuest(q: QuestDef, n: Npc) {
+    const offer: QuestOffer = { id: q.id, title: q.title, summary: q.summary, reward: this.rewardText(q) };
+    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: q.text.offer, offer });
+  }
+  /** Called by the UI when the player presses Accept on an offer. */
+  acceptQuest(id: string) {
+    const q = this.quest(id); if (!q) return;
+    const st = this.qs(q.id); if (st.status !== 'available') return;
+    st.status = 'active'; st.progress = 0;
     if (q.kind === 'collect') st.progress = this.world.objects.filter(o => o.questId === q.id && this.got.has(o.id)).length;
     this.tracked = q.id;
-    this.say(n.name, n.portrait, q.text.offer);
     this.eventHandler({ type: 'quest', title: q.title, state: 'accepted' }); this.play('quest');
     if (q.kind === 'visit' && this.discovered.has(q.place!)) this.advance(q, 1);
     else if (q.kind === 'collect' && st.progress >= q.count) { st.status = 'ready'; }
@@ -349,10 +375,32 @@ export class GameEngine {
     this.say(speaker.name, speaker.portrait, lines);
     this.eventHandler({ type: 'quest', title: q.title, state: 'completed', xp: Math.round(xp) });
     this.gainXp(xp);
+    this.addItem(this.rewardItem(q));
     if (this.tracked === q.id) this.tracked = this.world.quests.find(x => this.qs(x.id).status === 'active' || this.qs(x.id).status === 'ready')?.id || null;
     for (const other of this.world.quests) if (other.requires === q.id && this.qs(other.id).status === 'locked') this.qs(other.id).status = 'available';
   }
   track(id: string) { if (this.quests.has(id)) this.tracked = id; }
+
+  // ───────────────────────────── inventory
+  addItem(id: ItemId, count = 1) {
+    const bag = this.profile.items; bag[id] = Math.min(99, (bag[id] || 0) + count); saveProfile(this.profile);
+    this.text(this.hero.x, this.hero.y - 70, `+${count} ${ITEMS[id].name}`, ITEMS[id].color, 15);
+    this.eventHandler({ type: 'item', id, count });
+  }
+  useItem(id: ItemId) {
+    if (this.completeTimer > 0) return;
+    const bag = this.profile.items, have = bag[id] || 0, h = this.hero, info = ITEMS[id];
+    if (have <= 0) { this.play('nope'); this.notice(`You have no ${info.name} left. Open chests to find more.`, 'warn'); return; }
+    if (id === 'healthPotion' && h.hp >= h.maxHp) { this.play('nope'); this.notice('Your health is already full.', 'warn'); return; }
+    if (id === 'manaPotion' && h.mana >= h.maxMana - .5) { this.play('nope'); this.notice('Your magic is already full.', 'warn'); return; }
+    if (have > 1) bag[id] = have - 1; else delete bag[id];
+    saveProfile(this.profile);
+    if (id === 'healthPotion') { const heal = Math.min(h.maxHp - h.hp, Math.round(h.maxHp * .5)); h.hp += heal; this.text(h.x, h.y - 50, `+${heal}`, '#ff9aa8', 20); }
+    else if (id === 'manaPotion') h.mana = h.maxMana;
+    else { this.buffs[id] = info.duration; this.notice(`${info.name}: ${info.description}`, 'good'); }
+    this.emit(h.x, h.y - 10, 22, [info.color, '#ffffff'], { speed: 160, life: .8, kind: 'star', glow: true, grav: -60 });
+    this.ring(h.x, h.y, 70, info.color, .5); this.play('drink');
+  }
 
   // ───────────────────────────── world interaction
   isVisible(o: WorldObject) { return this.visibleObject(o); }
@@ -397,6 +445,7 @@ export class GameEngine {
         const n = 4 + Math.floor(Math.random() * 4);
         for (let i = 0; i < n; i++) this.spawnOrb(o.x, o.y - 8, Math.random() < .25 ? 'heart' : 'mana');
         this.notice(`You opened the ${o.name.toLowerCase()}!`, 'good'); this.gainXp(35 * this.world.xpScale, o.x, o.y);
+        this.addItem(rollItem()); if (Math.random() < .35) this.addItem(rollItem());
         return;
       }
       case 'lore': {
@@ -448,7 +497,7 @@ export class GameEngine {
     for (const q of this.world.quests) if (q.kind === 'deliver' && q.to === n.id && this.qs(q.id).status === 'active') return this.complete(q, n, q.text.deliver || ['Thank you!']);
     const mine = this.questsFor(n.id);
     const ready = mine.find(q => this.qs(q.id).status === 'ready'); if (ready) return this.complete(ready, n, ready.text.complete);
-    const offer = mine.find(q => this.qs(q.id).status === 'available'); if (offer) return this.accept(offer, n);
+    const offer = mine.find(q => this.qs(q.id).status === 'available'); if (offer) return this.offerQuest(offer, n);
     const active = mine.find(q => this.qs(q.id).status === 'active');
     if (active) { const st = this.qs(active.id); return this.say(n.name, n.portrait, [...active.text.progress, active.kind === 'deliver' ? '' : `(${st.progress}/${active.count})`].filter(Boolean)); }
     const done = mine.find(q => this.qs(q.id).status === 'done');
@@ -496,6 +545,8 @@ export class GameEngine {
     const drops = e.boss ? 14 : e.summoned ? 1 : e.elite ? 6 : 2;
     for (let i = 0; i < drops; i++) this.spawnOrb(e.x, e.y, Math.random() < (e.boss ? .3 : e.elite ? .3 : .1) ? 'heart' : 'mana');
     const xp = ENEMY_STATS[e.kind].xp * this.world.xpScale * (e.boss ? 1 : e.elite ? 3 : e.summoned ? .3 : 1);
+    if (e.boss) { this.addItem(rollItem()); this.addItem('healthPotion'); }
+    else if (e.elite ? Math.random() < .45 : !e.summoned && Math.random() < .04) this.addItem(e.elite ? rollItem() : 'healthPotion');
     if (e.boss) {
       this.main.bossDefeated = true; this.slowMo = 1.4; this.flash = 1; this.addShake(22); this.play('bossDie');
       for (const other of this.enemies) if (other.summoned && !other.dead) this.killEnemy(other);
@@ -521,10 +572,11 @@ export class GameEngine {
     const h = this.hero;
     if (h.hurtTime > 0 || h.dashTime > 0 || this.completeTimer > 0) return;
     if (h.shieldTime > 0) { this.ring(h.x, h.y, 50, '#9fe8b0', .25); this.play('reflect'); return; }
-    h.hp -= amount; h.hurtTime = 1.1; this.damageFlash = .35; this.combo = 0;
+    const dmg = Math.round(amount * HP_UNIT * (this.buffs.barkskin ? .5 : 1));
+    h.hp -= dmg; h.hurtTime = 1.1; this.damageFlash = .35; this.combo = 0;
     const dx = h.x - from.x, dy = h.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     h.vx += dx / d * 520; h.vy += dy / d * 520;
-    this.text(h.x, h.y - 50, `-${amount}`, '#ff8f7a', 20);
+    this.text(h.x, h.y - 50, `-${dmg}`, '#ff8f7a', 20);
     this.emit(h.x, h.y, 18, ['#ff8f7a', '#ffd1ae', '#ffffff'], { speed: 220, life: .5, glow: true });
     this.addShake(10); this.hitStop = .08; this.play('hurt');
     if (h.hp <= 0) this.respawn();
@@ -566,6 +618,10 @@ export class GameEngine {
     h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt);
     h.mana = Math.min(h.maxMana, h.mana + h.manaRegen * dt);
     this.comboTime -= dt; if (this.comboTime <= 0) this.combo = 0;
+    for (const id of ITEM_ORDER) {
+      const left = this.buffs[id]; if (left === undefined) continue;
+      if (left - dt > 0) this.buffs[id] = left - dt; else { delete this.buffs[id]; this.notice(`${ITEMS[id].name} wore off.`); }
+    }
 
     this.updateHero(dt);
     this.updateEnemies(dt);
@@ -602,7 +658,7 @@ export class GameEngine {
     }
   }
   private updateHero(dt: number) {
-    const h = this.hero, speed = 270;
+    const h = this.hero, speed = 270 * (this.buffs.swiftTonic ? 1.4 : 1);
     if (h.dashTime > 0) {
       h.dashTime -= dt; h.vx = h.dashX * 900; h.vy = h.dashY * 900;
       if (Math.random() < .9) this.afterimages.push({ x: h.x, y: h.y, life: .28, faceX: h.faceX });
@@ -644,6 +700,8 @@ export class GameEngine {
       if (far && !e.aggro) continue; // creatures far away sleep
       e.hitFlash = Math.max(0, e.hitFlash - dt); e.lunge = Math.max(0, e.lunge - dt);
       if (e.spawnT > 0) { e.spawnT -= dt; continue; }
+      const rage = !e.aggro ? 0 : e.windup > 0 || e.lunge > 0 || e.action ? 1 : .55;
+      e.rage += (rage - e.rage) * Math.min(1, dt * 7);
       e.x += e.kx * dt; e.y += e.ky * dt; e.kx *= Math.pow(.004, dt); e.ky *= Math.pow(.004, dt);
       e.x = clamp(e.x, 40, this.world.width - 40); e.y = clamp(e.y, 40, this.world.height - 40);
       if (!e.boss) this.collide(e, e.r * .8);
@@ -1004,7 +1062,7 @@ export class GameEngine {
       o.vx *= Math.pow(.05, dt); o.vy *= Math.pow(.05, dt);
       o.x += o.vx * dt; o.y += o.vy * dt;
       if (o.age > .3 && d < 24) {
-        if (o.kind === 'heart') { h.hp = Math.min(h.maxHp, h.hp + 1); this.text(h.x, h.y - 48, '+♥', '#ff9aa8', 18); this.play('pickup'); }
+        if (o.kind === 'heart') { h.hp = Math.min(h.maxHp, h.hp + HP_UNIT); this.text(h.x, h.y - 48, `+${HP_UNIT}`, '#ff9aa8', 18); this.play('pickup'); }
         else { h.mana = Math.min(h.maxMana, h.mana + 7); this.play('orb'); }
         this.emit(h.x, h.y - 10, 6, o.kind === 'heart' ? '#ff9aa8' : '#9fd8ff', { speed: 90, life: .4, glow: true, size: 3 });
         swapRemove(this.orbs, i); continue;
@@ -1095,7 +1153,9 @@ export class GameEngine {
   private mainRow() {
     const m = this.main, s = this.world.script;
     const guide = this.npcs.find(n => n.role === 'guide');
-    return m.finaleDone ? 'Chapter complete!' : !m.talkedGuide ? `Talk to ${guide?.name}` : m.bossDefeated ? `Restore the ${s.finaleName}` : m.keys.length < 3 ? `Find ${s.keyLabel} (${m.keys.length}/3)` : `Defeat ${s.bossName}`;
+    const step = m.finaleDone ? 'Chapter complete!' : !m.talkedGuide ? `Talk to ${guide?.name}` : m.bossDefeated ? `Restore the ${s.finaleName}` : m.keys.length < 3 ? `Find ${s.keyLabel}` : `Defeat ${s.bossName}`;
+    const collecting = m.talkedGuide && !m.finaleDone && !m.bossDefeated && m.keys.length < 3;
+    return { title: this.world.subtitle, step, progress: collecting ? m.keys.length : 0, count: collecting ? 3 : 0 };
   }
   private questRows(): QuestRow[] {
     const rows: QuestRow[] = [];
@@ -1108,7 +1168,11 @@ export class GameEngine {
           : st.status === 'done' ? 'Complete'
             : q.kind === 'deliver' ? `Bring the ${q.item?.toLowerCase()} to ${to?.name} in ${to?.poiName}.`
               : `${q.summary} (${st.progress}/${q.count})`;
-      rows.push({ id: q.id, title: q.title, giver: giver?.name || '', status: st.status, detail, xp: Math.round(q.reward.xp * this.world.xpScale), tracked: this.tracked === q.id });
+      const target = q.enemy && q.enemy !== 'any' ? `${ENEMY_STATS[q.enemy].name}s defeated` : 'Creatures defeated';
+      const goal = st.status === 'available' ? `Talk to ${giver?.name}` : st.status === 'ready' ? `Return to ${giver?.name}` : st.status === 'done' ? 'Complete'
+        : q.kind === 'collect' ? `${q.item}` : q.kind === 'slay' ? target : q.kind === 'deliver' ? `Bring the ${q.item?.toLowerCase()} to ${to?.name}` : `Visit ${this.world.pois.find(p => p.id === q.place)?.name}`;
+      const counted = st.status === 'active' && (q.kind === 'collect' || q.kind === 'slay');
+      rows.push({ id: q.id, title: q.title, giver: giver?.name || '', status: st.status, detail, goal, progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: Math.round(q.reward.xp * this.world.xpScale), reward: this.rewardText(q), tracked: this.tracked === q.id });
     }
     const order = { ready: 0, active: 1, available: 2, done: 3, locked: 4 };
     return rows.sort((a, b) => order[a.status] - order[b.status]);
@@ -1127,7 +1191,10 @@ export class GameEngine {
       level: p.level, xp: p.xp, xpNext: xpToNext(p.level),
       spells: SPELL_ORDER.map(id => ({ id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: SPELLS[id].cooldown ? h.cds[id] / SPELLS[id].cooldown : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost })),
       nearName, nearAction,
-      main: { title: this.world.subtitle, step: this.mainRow() }, quests: this.questRows(), defeated: this.defeated, combo: this.combo,
+      main: this.mainRow(), quests: this.questRows(), defeated: this.defeated, combo: this.combo,
+      items: ITEM_ORDER.map(id => ({ id, count: p.items[id] || 0 })),
+      buffs: ITEM_ORDER.filter(id => this.buffs[id]).map(id => ({ id, time: this.buffs[id]!, max: ITEMS[id].duration })),
+      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round(10 * this.power), guard: this.buffs.barkskin ? .5 : 0, elapsed: this.elapsed, questsDone: this.world.quests.filter(q => this.qs(q.id).status === 'done').length, totalQuests: this.world.quests.length },
       boss: b && !b.dead && b.aggro ? { name: this.world.script.bossName, title: this.world.script.bossTitle, hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase } : null,
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: [...this.opened].length, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };
