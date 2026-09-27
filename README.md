@@ -45,14 +45,14 @@ Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing que
 | Level | Spell learned |
 | --- | --- |
 | 1 | Spark (F), Dash (E) |
-| 2 | Leaf Burst (U) |
-| 4 | Sunfire (I) |
-| 7 | Moss Shield (O) |
-| 10 | Starfall (P) |
+| 2 | Leaf Burst (H) |
+| 4 | Sunfire (J) |
+| 7 | Moss Shield (K) |
+| 10 | Starfall (L) |
 
 Level, XP, quest rewards and the bag carry over between chapters.
 
-**Bag and potions:** chests, elite creatures, guardians and every side quest give potions. Open the bag with **B** or the 🎒 button, or use a potion with **1–5**. On touch, a quick button next to the spells drinks a Healing Draught.
+**Bag and potions:** chests, elite creatures, guardians and every side quest give potions. Open the bag with **I** or the 🎒 button, or use a potion with **1–5**. On touch, a quick button next to the spells drinks a Healing Draught.
 
 | Key | Potion | Effect |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ Level, XP, quest rewards and the bag carry over between chapters.
 | 4 | Sunfire Elixir | 35% more spell damage for 30 s |
 | 5 | Barkskin Brew | Half damage taken for 25 s |
 
-**Character sheet:** tap or click the portrait (or press **C**) to see health, magic, regeneration, spell power, speed and adventure stats.
+**Character sheet:** tap or click the portrait (or press **P**) to see health, magic, regeneration, spell power, speed and adventure stats.
 
 **Main quest:** each chapter tells its story as a chain of main quests: 5 in Chapter I, 7 in Chapter II and 10 in Chapter III (in `story.ts`). Every step is offered in dialogue and ends in a gold **Main quest** window with **Accept** / **Decline**. You speak with people, gather things, clear out creatures, visit places and find the three key relics, and usually the person you report to hands you the next step. The last quest is always the guardian fight, followed by restoring the chapter's light.
 
@@ -111,8 +111,9 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 
 - Move: WASD / arrows
 - Left hand: WASD move · F Spark · E Dash
-- Right hand (spells): U Leaf Burst · I Sunfire · O Moss Shield · P Starfall
-- Space / Enter talk, open or use · 1–5 potions · B bag · C character · M map · Tab quest log · N mute · Esc pause
+- Right hand, spells (home row): H Leaf Burst · J Sunfire · K Moss Shield · L Starfall
+- Right hand, menus (row above): U spellbook · I inventory · O quest log · P character
+- Space / Enter talk, open or use · 1–5 potions · M map · Tab quest log · N mute · Esc pause
 
 **Reset:** ⚙ Settings → **Reset entire game** (or **Reset game** on the title screen) erases all chapters, levels, potions and quests after a second tap to confirm. Sound and graphics settings are kept.
 
