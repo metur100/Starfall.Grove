@@ -126,7 +126,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .mana { position: relative; width: 170px; height: 11px; border-radius: 99px; background: rgba(255, 255, 255, .1); overflow: hidden; box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5); }
 .mana i { position: absolute; inset: 0 auto 0 0; border-radius: 99px; background: linear-gradient(90deg, #5b8cff, #7fc8ff, #c9b6ff); box-shadow: 0 0 12px rgba(127, 200, 255, .7); transition: width .2s; overflow: hidden; }
 .mana b { position: absolute; right: 6px; top: -1px; font: 900 10px var(--ui); color: #fff; text-shadow: 0 1px 2px #000; }
-.hud-center { position: absolute; left: 50%; transform: translateX(-50%); top: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(440px, 40vw); pointer-events: none; }
+.hud-center { position: absolute; left: 50%; transform: translateX(-50%); top: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; width: clamp(160px, calc(100vw - 560px), 560px); pointer-events: none; }
 /* Quest tracker: small objective text on the right, under the minimap. */
 .tracker { position: absolute; right: 14px; top: 234px; z-index: 3; width: 230px; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: right; cursor: pointer; }
 .trk { display: flex; flex-direction: column; gap: 1px; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, .8); }
@@ -139,7 +139,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .zone-banner { display: flex; align-items: center; gap: 12px; font: 700 clamp(18px, 2.4vw, 26px) var(--display); letter-spacing: .1em; text-transform: uppercase; color: #fff; text-shadow: 0 2px 14px rgba(0, 0, 0, .8), 0 0 30px rgba(245, 210, 122, .5); animation: zone-in 2.8s ease both; white-space: nowrap; }
 .zone-banner span { color: var(--gold); font-size: .6em; }
 .hud-buttons { display: flex; gap: 8px; }
-.boss-bar { width: min(560px, 90vw); animation: drop-in .5s cubic-bezier(.2, 1.4, .4, 1) both; }
+.boss-bar { width: 100%; animation: drop-in .5s cubic-bezier(.2, 1.4, .4, 1) both; }
 .boss-label { display: flex; justify-content: center; align-items: baseline; gap: 10px; margin-bottom: 4px; }
 .boss-label strong { font: 900 17px var(--display); letter-spacing: .14em; text-transform: uppercase; color: #ffe6d8; text-shadow: 0 2px 10px #000, 0 0 20px rgba(255, 90, 70, .6); }
 .boss-label em { font: 900 10px var(--ui); letter-spacing: .2em; font-style: normal; color: #ff6b5b; animation: blink .6s steps(2) infinite; }
@@ -185,7 +185,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .spell.touch.spell-spark { right: 0; bottom: 0; width: 96px; height: 96px; }
 .spell.touch.spell-spark .spell-icon-wrap b { font-size: 40px; }
 .spell.touch.spell-dash { right: 117px; bottom: 19px; }
-.spell.touch.spell-leaf { right: 86px; bottom: 86px; }
+.spell.touch.spell-chain { right: 86px; bottom: 86px; }
 .spell.touch.spell-sunfire { right: 19px; bottom: 117px; }
 .spell.touch.spell-shield { right: 176px; bottom: 82px; }
 .spell.touch.spell-starfall { right: 82px; bottom: 176px; }
@@ -263,7 +263,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .chapter-cards { grid-template-columns: 1fr; max-width: 520px; }
   .chapter-card { padding-top: 90px; }
   .card-art { height: 80px; }
-  .hud-center { width: min(360px, 44vw); }
+  .hud-center { width: clamp(160px, calc(100vw - 560px), 520px); }
 }
 @media (max-width: 640px) {
   .hud-top { top: 8px; left: 8px; right: 8px; }
@@ -273,8 +273,8 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .health b { font-size: 9px; }
   .mana { width: 112px; height: 8px; }
   .icon-button { width: 36px; height: 36px; border-radius: 12px; font-size: 14px; }
-  .hud-center { position: fixed; top: 60px; width: calc(100% - 16px); }
-  .boss-bar { width: calc(100vw - 16px); }
+  .hud-center { position: fixed; top: 86px; left: 8px; right: 146px; width: auto; transform: none; }
+  .boss-bar { width: 100%; }
   .zone-banner { font-size: 16px; }
   .dialogue { padding: 12px; gap: 12px; }
   .dialogue-portrait { width: 58px; height: 58px; font-size: 34px; }
@@ -484,3 +484,112 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .danger-zone > span { display: flex; flex-direction: column; gap: 2px; }
 .danger-zone b { font: 800 13px var(--ui); color: #ffd4cc; }
 .danger-zone em { font-style: normal; font-size: 11px; color: var(--muted); }
+
+/* ─────────── gold, shops, regions, chapter screen */
+.vitals-row { display: flex; align-items: center; gap: 8px; padding-left: 6px; }
+.vitals-row .buffs { padding-left: 0; }
+.gold-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px 2px 4px; border-radius: 99px; background: var(--glass); border: 1px solid var(--line); font: 900 12px/18px var(--ui); color: #ffe38a; pointer-events: none; }
+.gold-chip i, .coin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff4c0, #f5b54a 55%, #b8741e); box-shadow: inset 0 0 0 1.5px rgba(120, 70, 10, .5); }
+.gold-chip.big { margin-left: auto; margin-right: 10px; font-size: 14px; padding: 3px 12px 3px 5px; }
+.btn.price { gap: 6px; min-width: 76px; }
+.btn.price:disabled { opacity: .4; cursor: default; transform: none; }
+.bag-item.upgrade .up-icon { font-size: 22px; color: var(--gold); text-shadow: 0 0 10px rgba(255, 211, 92, .7); }
+.pips { display: flex; gap: 4px; margin-top: 5px; }
+.pips i { width: 16px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .15); }
+.pips i.on { background: var(--gold); box-shadow: 0 0 6px rgba(255, 211, 92, .6); }
+.boss-label .boss-lv { font: 900 11px var(--ui); color: #ffb4a0; }
+.side b .ch { font-style: normal; font-size: 9px; font-weight: 900; margin-left: 6px; padding: 1px 5px; border-radius: 6px; background: rgba(255, 255, 255, .08); color: var(--muted); vertical-align: 2px; }
+.lands p { display: flex; justify-content: space-between; margin: 6px 0 0; font-size: 13px; }
+.lands p span { color: var(--muted); font-weight: 800; }
+/* Phone prompt: just the action word, as a small pill. */
+.near-prompt.compact { padding: 7px 18px; gap: 0; }
+.near-prompt.compact span { font: 900 14px var(--ui); color: var(--gold); letter-spacing: .04em; }
+.region-banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; text-align: center; animation: level-in 4.2s ease both; white-space: nowrap; }
+.region-banner small { font: 800 12px var(--ui); letter-spacing: .45em; text-transform: uppercase; color: var(--gold); text-shadow: 0 2px 10px #000; }
+.region-banner h3 { margin: 0; font: 900 clamp(26px, 4.5vw, 46px)/1.1 var(--deco); color: #fff4d6; text-shadow: 0 3px 18px rgba(0, 0, 0, .8), 0 0 30px rgba(245, 210, 122, .4); }
+.region-banner span { font: 800 13px var(--ui); color: #e8ecff; text-shadow: 0 2px 8px #000; }
+.region-banner em { margin-top: 4px; padding: 4px 12px; border-radius: 99px; font: 900 12px var(--ui); font-style: normal; color: #fff; background: rgba(200, 40, 40, .75); border: 1px solid #ff7a6e; }
+.region-banner.danger h3 { color: #ffd0c8; }
+.offer-actions .btn:disabled { opacity: .45; cursor: default; transform: none; }
+.offer-actions .btn { transition: opacity .25s, transform .18s; }
+.victory-overlay { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); overflow-y: auto; background: radial-gradient(ellipse at center, rgba(8, 10, 24, .55), rgba(4, 6, 14, .88)); animation: fade-in .4s both; }
+.victory-overlay .victory-panel { margin: 0; }
+.victory-hint { margin: 14px auto 0 !important; font-size: 12px; color: var(--muted) !important; }
+.map-head { align-items: center; }
+.map-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.map-tabs button { display: flex; flex-direction: column; align-items: flex-start; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); cursor: pointer; font: 800 13px var(--display); color: var(--muted); }
+.map-tabs button small { font: 800 10px var(--ui); color: var(--muted); letter-spacing: .08em; }
+.map-tabs button.on { color: var(--gold); border-color: var(--gold); background: rgba(245, 210, 122, .14); }
+
+/* ─────────── phones: fewer, smaller words */
+@media (pointer: coarse) {
+  .toasts { top: 64px; width: auto; max-width: 60vw; }
+  .toast { padding: 5px 14px; font-size: 12px; }
+  .toast.tone-epic { font: 800 13px var(--display); padding: 6px 16px; }
+  .level-banner span { display: none; }
+}
+
+/* ─────────── landscape phones: everything fits one screen, nothing to scroll */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hud-top { top: 8px; left: 8px; right: 8px; }
+  .vitals { padding: 5px 10px 5px 5px; gap: 6px; }
+  .portrait { width: 36px; height: 36px; font-size: 20px; }
+  .health, .mana, .xp { width: 112px; }
+  .health { height: 13px; } .health b { font-size: 9px; }
+  .mana { height: 8px; } .xp { height: 8px; } .xp b { font-size: 7.5px; }
+  .level-badge { min-width: 18px; height: 18px; font-size: 10px; }
+  .icon-button { width: 36px; height: 36px; border-radius: 12px; font-size: 14px; }
+  .hud-center { width: clamp(150px, calc(100vw - 400px), 460px); }
+  .boss-label strong { font-size: 13px; } .boss-track { height: 11px; }
+  .zone-banner { font-size: 15px; }
+  .region-banner { top: 18%; } .region-banner h3 { font-size: 26px; }
+  .level-banner { top: 16%; } .level-banner b { font-size: 56px; }
+  .chapter-banner h2 { font-size: 44px; } .chapter-banner small { font-size: 11px; }
+  .combo { top: 40%; } .combo b { font-size: 30px; }
+  /* Bottom centre is free between the joystick and the spell wheel, and never covers the person being talked to. */
+  .near-prompt { top: auto; bottom: 14px; }
+  .near-prompt.compact { padding: 10px 28px; }
+  .zone-banner { max-width: 100%; overflow: hidden; text-overflow: ellipsis; gap: 8px; }
+  /* Dialogue: short and wide, with Accept on the right where the "continue" hint was. */
+  .dialogue { bottom: 8px; padding: 10px 12px; gap: 10px; width: min(820px, calc(100% - 16px)); border-radius: 18px; }
+  .dialogue-portrait { width: 48px; height: 48px; font-size: 28px; border-radius: 14px; }
+  .dialogue-body strong { font-size: 15px; }
+  .dialogue-body p { margin: 2px 0 4px; min-height: 2.4em; font-size: 14px; line-height: 1.45; }
+  .offer { flex-wrap: nowrap; gap: 10px; }
+  .offer-info { flex: 1 1 auto; padding: 6px 10px; }
+  .offer-info b { font-size: 14px; } .offer-info em { font-size: 12px; } .offer-info span { font-size: 11px; }
+  .offer-actions { width: auto; flex-wrap: nowrap; } .offer-actions .btn { flex: none; min-height: 40px; padding: 0 16px; }
+  .offer-actions .btn.primary { min-width: 112px; }
+  .spell-card { padding: 14px 20px 14px; border-radius: 20px; width: min(520px, calc(100% - 32px)); }
+  .spell-icon { width: 56px; height: 56px; font-size: 30px; margin-bottom: 6px; }
+  .spell-card h2 { font-size: 26px; margin: 2px 0 4px; } .spell-card p { font-size: 13px; margin-bottom: 8px; line-height: 1.4; }
+  .spell-rays { top: 44px; }
+  /* Chapter complete: text on the left, stars, stats and the Next chapter button on the right. */
+  .victory-panel.compact { width: min(880px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; padding: 16px 22px; text-align: left; border-radius: 20px; }
+  .victory-panel.compact h1 { margin: 8px 0 6px; font-size: 26px; }
+  .victory-panel.compact p { margin: 0; font-size: 13px; line-height: 1.5; }
+  .victory-panel.compact .star-row { margin: 0 0 8px; } .victory-panel.compact .star-row span { font-size: 30px; }
+  .victory-panel.compact .stat-row { gap: 6px; margin-bottom: 10px; } .victory-panel.compact .stat-row div { padding: 6px 4px; } .victory-panel.compact .stat-row b { font-size: 15px; } .victory-panel.compact .stat-row small { font-size: 9px; }
+  .victory-panel.compact .menu-actions { flex-wrap: nowrap; gap: 8px; } .victory-panel.compact .menu-actions .btn { min-height: 42px; padding: 0 14px; font-size: 13px; }
+  .victory-panel.compact .menu-actions .btn.primary { flex: 1; }
+  .victory-panel.compact .victory-hint { margin-top: 8px !important; font-size: 11px; }
+  .victory-panel.compact .eyebrow { justify-content: flex-start; }
+  .ending-page .victory-panel { padding: 16px 22px; } .ending-page .victory-panel h1 { font-size: 28px; margin: 8px 0; } .ending-page .victory-panel p { font-size: 13px; margin-bottom: 8px; } .ending-page .star-row { margin: 4px 0 10px; } .ending-page .star-row span { font-size: 26px; }
+  /* Title: logo, buttons and the three chapter cards on one screen. */
+  .title-top { padding: 6px 0; }
+  .title-hero { padding: 0 0 8px; }
+  .title-hero > .eyebrow, .title-hero > p:not(.title-level) { display: none; }
+  .title-logo { margin: 0 0 8px; font-size: 44px; }
+  .title-level { margin-top: 6px; font-size: 11px; }
+  .title-hero .btn.big { min-height: 46px; font-size: 14px; }
+  .chapter-cards { grid-template-columns: repeat(3, 1fr); max-width: none; gap: 10px; padding: 4px 0 8px; }
+  .chapter-card { padding: 46px 12px 10px; border-radius: 16px; }
+  .chapter-card .card-art { height: 40px; }
+  .chapter-card strong { font-size: 15px; } .chapter-card em { display: none; } .chapter-card small { font-size: 9px; }
+  .card-foot { margin-top: 4px; } .card-spell { font-size: 10px; padding: 3px 8px 3px 4px; } .card-spell b { width: 18px; height: 18px; font-size: 10px; }
+  .title-foot { display: none; }
+  .map-overlay { padding: 8px 12px; gap: 6px; }
+  .map-tabs button { padding: 4px 10px; font-size: 12px; }
+  .map-legend { font-size: 11px; gap: 4px 12px; }
+  .side-panel, .journal { padding: 12px 14px; }
+}

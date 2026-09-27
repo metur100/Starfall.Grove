@@ -4,7 +4,7 @@ import { music } from './music';
 import { Renderer } from './render';
 import { loadSession, saveSession } from './storage';
 import { TIER_NAMES, TIER_OF, startTier, type GraphicsSettings } from './graphics';
-import type { EngineEvent, GameSnapshot, LevelId } from './types';
+import type { EngineEvent, GameSnapshot } from './types';
 
 // Each tier caps the canvas resolution by a pixel budget and sets how much effect detail is drawn.
 // The lowest tier renders below screen resolution and lets the browser scale it up.
@@ -15,8 +15,8 @@ const TIERS = [
   { budget: 2_300_000, dpr: 2, quality: 1 },
 ];
 
-type Props = { levelId: LevelId; runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
-export default function GameCanvas({ levelId, runKey, paused, graphics, touch, onReady, onSnapshot, onEvent }: Props) {
+type Props = { runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
+export default function GameCanvas({ runKey, paused, graphics, touch, onReady, onSnapshot, onEvent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fpsRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(paused); pausedRef.current = paused;
@@ -25,7 +25,7 @@ export default function GameCanvas({ levelId, runKey, paused, graphics, touch, o
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false }); if (!ctx) return;
-    const engine = new GameEngine(levelId, event => callbacks.current.onEvent(event), loadSession(levelId));
+    const engine = new GameEngine(event => callbacks.current.onEvent(event), loadSession());
     const renderer = new Renderer();
     callbacks.current.onReady(engine);
     if (import.meta.env.DEV) Object.assign(window, { __engine: engine, __renderer: renderer, __ctx: ctx });
@@ -41,7 +41,7 @@ export default function GameCanvas({ levelId, runKey, paused, graphics, touch, o
       canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     const ro = new ResizeObserver(applyTier); ro.observe(canvas);
-    music.play(levelId);
+    music.play(engine.regionTrack);
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       const g = settings.current.graphics, capped = g.fps === 30;
@@ -78,12 +78,12 @@ export default function GameCanvas({ levelId, runKey, paused, graphics, touch, o
         fpsFrames = 0; fpsSince = now;
       }
       if (now - lastUi > 100) { callbacks.current.onSnapshot(engine.snapshot()); lastUi = now; }
-      if (now - lastMusic > 250) { lastMusic = now; music.play(engine.bossFight ? 'boss' : levelId); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
-      if (!pausedRef.current && now - lastSave > 3000) { saveSession(levelId, engine.exportSave()); lastSave = now; }
+      if (now - lastMusic > 250) { lastMusic = now; music.play(engine.bossFight ? 'boss' : engine.regionTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
+      if (!pausedRef.current && now - lastSave > 3000) { saveSession(engine.exportSave()); lastSave = now; }
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null); };
-  }, [levelId, runKey]);
+  }, [runKey]);
   return <>
     <canvas ref={canvasRef} className="world-canvas" aria-label="Starfall Grove game world" />
     <div ref={fpsRef} className="fps-meter" hidden />

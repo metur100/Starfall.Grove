@@ -17,73 +17,45 @@ Every push to `master` deploys to GitHub Pages through `.github/workflows/deploy
 
 ## The world
 
-Each chapter is a large open map of 9600 × 6720 px, about 10× bigger than before. Every map has:
+The valley is **one continuous world** (29,184 × 6,720 px) made of three lands laid side by side. You walk from one to the next through a gate in the border cliffs. Each land keeps its own look, lighting, weather, music and difficulty:
 
-- **13 named places:** villages, farms, camps, ruins, lakes, creature lairs, groves, a shrine, a lookout and the guardian's lair.
-- **Roads between the places**, with signposts that point the way.
-- **Forests shaped by noise**, open meadows and extra ponds between them.
-- **Fog of war:** the minimap and the full map (M) reveal the world as you explore.
-- **Discovery rewards:** a new place gives XP and becomes a resting point.
+| Chapter | Land | Creature levels | Guardian |
+| --- | --- | --- | --- |
+| I · The Broken Beacon | Sunpetal Meadow | 1–6 | Mossback (Lv 7) |
+| II · The Bell Beneath the Roots | Whisperroot Woods | 7–12 | Bramble Warden (Lv 13) |
+| III · The Hollow Star | Starfall Summit | 13–18 | The Hollow Star (Lv 19), then Umbra (Lv 20) |
 
-The world lives on its own:
+Creature levels rise from a land's entrance to its far side. Every creature shows a coloured **Lv** tag (grey, green, white, orange, red with a skull), and a banner warns you when you walk into a land that is too strong for you. Creatures above your level take less damage from you and hit much harder.
 
-- **Villagers:** they sweep, hammer, farm, chop wood, fish, patrol, play tag and travel the roads between villages. They call out to you as you pass.
-- **Animals:** rabbits, deer, squirrels, goats, frogs and ducks run away from you, and birds take flight.
-- **Buildings:** chimneys smoke, windmills turn, and in the woods and on the summit house windows glow at night.
+Each land has a **main city** (Goldenhearth, Lanternmarket, Skyhold): a fountain plaza, manors, rows of houses, market stalls, a **merchant** (potions), a **smith** (upgrades) and an **inn** (rest and resting point). Each land also has villages, a farm, camps, ruins, lakes, lairs, a grove, a shrine and its finale.
 
-Things to find:
+Things to find: chests (potions, gold, XP), runestones with lore, wells and fountains, campfires, glow pods and caged captives.
 
-- Chests (potions, loot and XP)
-- Runestones with lore (XP the first time you read one)
-- Wells and campfires (restore health and set your resting point)
-- Glow pods (mana and health)
+## Story
+
+Master Orrin vanished the night the star fell. Mira and her fox Tuft follow his trail across the valley and learn that the Beacon, the Bell and the Star were lit to seal away **Umbra, the Eclipse**. Orrin's lost pupil **Sable** is putting the lights out because Umbra promised to end her pain. On the Summit, Mira frees Orrin, learns that he pulled the star down trying to heal Sable, and wins Sable back. When the Hollow Star breaks, Umbra rises from all three lands at once. It uses every guardian's attacks and has three times the Hollow Star's health.
+
+The main story (in `story.ts`) has **10 quests in Chapter I, 15 in Chapter II and 20 in Chapter III**. Finishing a chapter shows a chapter-complete screen with a **Next chapter** button. The world stays the same: you simply walk on.
 
 ## Levels, spells and quests
 
-Mira starts with **Spark** and **Dash** only. Defeating creatures, finishing quests, opening chests, reading runestones and discovering places all give XP. Levelling up restores health and magic, raises max health, max mana and spell power, and adds a larger health boost at levels 4, 8 and 12. Health is shown as a bar.
+Mira starts with Spark and Dash. Levels go up to 20.
 
 | Level | Spell learned |
 | --- | --- |
 | 1 | Spark (L), Dash (E) |
-| 2 | Leaf Burst (K) |
+| 2 | Chain Lightning (K): leaps between up to five creatures and stuns them |
 | 4 | Sunfire (J) |
 | 7 | Moss Shield (H) |
 | 10 | Starfall (G) |
 
-Level, XP, quest rewards and the bag carry over between chapters.
+**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions. Smiths sell three upgrades with five ranks each: Starsteel Staff (+8% spell power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
 
-**Bag and potions:** chests, elite creatures, guardians and every side quest give potions. Open the bag with **I** or the 🎒 button, or use a potion with **1–5**. On touch, a quick button next to the spells drinks a Healing Draught.
+**Quests:** gold main quests and blue side quests (38 side quests in total). Quest kinds are collect, slay, deliver, visit, talk, relic and boss, plus **rescue**: defeat the guards around a cage, then open it to free the captive. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident.
 
-| Key | Potion | Effect |
-| --- | --- | --- |
-| 1 | Healing Draught | Restores half of your health |
-| 2 | Starwater Flask | Refills all magic |
-| 3 | Swiftwind Tonic | 40% faster movement for 25 s |
-| 4 | Sunfire Elixir | 35% more spell damage for 30 s |
-| 5 | Barkskin Brew | Half damage taken for 25 s |
+**Creatures:** gloomlings, thornlings, void wisps, bristleboars (telegraphed charge), sporecaps (poison clouds), shadewolves (circling packs), webspinners (slowing silk), frost wraiths (blink and ice shards) and crag golems (ground slam). Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 60 seconds**.
 
-**Character sheet:** tap or click the portrait (or press **P**) to see health, magic, regeneration, spell power, speed and adventure stats.
-
-**Main quest:** each chapter tells its story as a chain of main quests: 5 in Chapter I, 7 in Chapter II and 10 in Chapter III (in `story.ts`). Every step is offered in dialogue and ends in a gold **Main quest** window with **Accept** / **Decline**. You speak with people, gather things, clear out creatures, visit places and find the three key relics, and usually the person you report to hands you the next step. The last quest is always the guardian fight, followed by restoring the chapter's light.
-
-**Side quests:** each chapter has 9. Talking to a quest giver shows the quest and its reward with **Accept quest** and **Decline** buttons. There are four kinds:
-
-- **Collect:** gather items in a named area.
-- **Slay:** defeat a number of creatures.
-- **Deliver:** carry an item to someone in another village.
-- **Visit:** travel to a distant place.
-
-The main quest is always **gold** and side quests are **blue**, on NPC markers, arrows, the map and the quest log. **!** means a quest is available, **?** means one is ready to hand in. A small tracker on the right lists the main quest and your active side quests with their counts; click a quest in the quest log to follow it.
-
-Creatures glow and turn red when they are aggressive, and deepen to full red while winding up an attack. While any of them is close and hostile, the edges of the screen glow red.
-
-Creatures respawn after a while so you can keep levelling. Lairs hold packs with a gold-starred elite.
-
-| Chapter | Guardian | Guardian level |
-| --- | --- | --- |
-| I · Sunpetal Meadow | Mossback | 4+ |
-| II · Whisperroot Woods | Bramble Warden | 8+ |
-| III · Starfall Summit | The Hollow Star | 12+ |
+**Phones:** the prompt just says **Talk** (or Trade, Rest…), notifications are one or two words, and every screen, including the chapter-complete screen, fits a landscape phone without scrolling.
 
 ## Sound and music
 
@@ -111,7 +83,7 @@ Creatures respawn after a while so you can keep levelling. Lairs hold packs with
 
 - Move: WASD / arrows
 - Left hand: WASD move · E Dash
-- Right hand, home row: L Spark (F also works), then leftward in learning order: K Leaf Burst · J Sunfire · H Moss Shield · G Starfall
+- Right hand, home row: L Spark (F also works), then leftward in learning order: K Chain Lightning · J Sunfire · H Moss Shield · G Starfall
 - Right hand, menus (row above): U spellbook · I inventory · O quest log · P character
 - Space / Enter talk, open or use · 1–5 potions · M map · Tab quest log · N mute · Esc pause
 
@@ -130,8 +102,9 @@ src/
     types.ts           Shared game types
     spells.ts          Spell table and unlock levels
     progression.ts     Levels, XP curve and the hero profile that carries between chapters
-    worlds.ts          Chapter layouts: places, people, quests, lore and scripts
-    worldgen.ts        Builds each map: roads, villages, forests, creatures, loot, critters
+    story.ts           The main story: 45 quests across three chapters
+    worlds.ts          Region layouts: places, people, side quests, lore and scripts
+    worldgen.ts        Builds each region and stitches them into one valley: roads, cities, villages, forests, creatures, loot
     spatial.ts         Uniform grid for fast proximity and view queries
     engine.ts          Movement, combat, bosses, quests, villagers, wildlife, exploration, saves
     render.ts          Canvas renderer: ground chunks, sprites, characters, lighting, minimap, world map
@@ -146,7 +119,7 @@ src/
 Progress is stored in browser storage on the current device:
 
 - `starfall-grove-save-v2`: chapters completed and stars.
-- `starfall-grove-hero-v1`: level, XP and quest rewards.
-- `starfall-grove-session-v3-<chapter>`: the in-chapter state (position, quests, chests, explored map).
+- `starfall-grove-hero-v1`: level, XP, gold, upgrades, bag and quest rewards.
+- `starfall-grove-valley-v1`: the adventure in progress (position, quests, chests, explored map).
 
-A chapter in progress under the older save format starts fresh; completed chapters are kept.
+Saves from the older three-map version start a fresh adventure. The hero's level and bag are kept.
