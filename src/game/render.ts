@@ -120,6 +120,8 @@ function spriteBounds(o: Obstacle): [number, number, number, number] {
 // ───────────────────────────── renderer
 export class Renderer {
   private cam = { x: 0, y: 0, ready: false };
+  /** The engine's hard-cut counter last seen: a new value snaps the camera. */
+  private camCut = -1;
   private fox = { x: 0, y: 0, vx: 0, flip: 1 };
   private ambient: Ambient[] = [];
   private lights: Light[] = [];
@@ -170,10 +172,12 @@ export class Renderer {
     this.chunkRes = res;
     const vw = w / scale, vh = h / scale;
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
-    const tx = clamp(hero.x + hero.vx * .28 - vw / 2, 0, Math.max(0, world.width - vw));
-    const ty = clamp(hero.y + hero.vy * .28 - vh / 2, 0, Math.max(0, world.height - vh));
-    if (!this.cam.ready || Math.hypot(tx - this.cam.x, ty - this.cam.y) > 900) { this.cam.x = tx; this.cam.y = ty; this.cam.ready = true; this.fox.x = hero.x - 40; this.fox.y = hero.y + 10; }
-    const k = Math.min(1, dt * 5);
+    // In a cutscene the camera glides to what the story shows; otherwise it follows the hero a little ahead.
+    const focus = e.cineFocus;
+    const tx = clamp((focus ? focus.x : hero.x + hero.vx * .28) - vw / 2, 0, Math.max(0, world.width - vw));
+    const ty = clamp((focus ? focus.y : hero.y + hero.vy * .28) - vh / 2, 0, Math.max(0, world.height - vh));
+    if (!this.cam.ready || this.camCut !== e.camCut || (!focus && Math.hypot(tx - this.cam.x, ty - this.cam.y) > 900)) { this.cam.x = tx; this.cam.y = ty; this.cam.ready = true; this.camCut = e.camCut; this.fox.x = hero.x - 40; this.fox.y = hero.y + 10; }
+    const k = Math.min(1, dt * (focus ? 1.8 : 5));
     this.cam.x += (tx - this.cam.x) * k; this.cam.y += (ty - this.cam.y) * k;
     const shake = this.shake ? e.shake * (this.reduced ? .25 : 1) : 0;
     const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
@@ -215,13 +219,14 @@ export class Renderer {
     this.drawSlashes(ctx, e);
     this.drawSpellMarks(ctx, e);
     for (const z of e.hazards) this.drawHazardAir(ctx, z);
+    this.drawFires(ctx, e, view);
     this.drawParticles(ctx, e.particles);
+    this.drawMeteors(ctx, e);
     if (this.weather) { this.updateAmbient(e, view, dt); this.drawAmbient(ctx); } else this.ambient.length = 0;
     this.drawBubbles(ctx, e, view);
     this.drawLevelTags(ctx, e, view);
     this.drawFloating(ctx, e);
-    this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0);
-    this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1);
+    if (!e.cine) { this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0); this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1); }
     const rich = this.quality > .5, here = regionOf(world, hero.x), amb = here.ambient;
     if (amb === 'petals' && rich && this.weather) this.drawCloudShadows(ctx, e, view);
     ctx.restore();
@@ -231,13 +236,14 @@ export class Renderer {
     const nr = this.near;
     if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
     else this.nearScreen = null;
-    const dark = this.darkAt(world, camX + vw / 2);
+    // Story scenes at night darken even the sunny meadow, so lamps and fires glow.
+    const dark = Math.max(this.darkAt(world, camX + vw / 2), e.cineDark);
     if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, amb === 'stars' ? '8,8,32' : amb === 'embers' ? '28,10,8' : '6,20,22');
     if (amb === 'leaves' && rich && this.weather) this.drawGodRays(ctx, w, h);
     if (amb === 'stars' && this.weather) this.drawShootingStar(ctx, w, h, dt);
     if (amb === 'petals' && this.quality >= 1 && this.weather) this.drawSunGlow(ctx, w, h);
     this.drawScreenFx(ctx, w, h, e);
-    this.drawMinimap(ctx, w, h, e);
+    if (!e.cine) this.drawMinimap(ctx, w, h, e);
   }
 
   // ───────────────────────────── ground chunks
@@ -833,6 +839,12 @@ export class Renderer {
     else if (o.kind === 'shrine') this.drawShrine(ctx, o, e);
     else if (o.kind === 'finale') this.drawFinale(ctx, o, e);
     else if (o.kind === 'cage') this.drawCage(ctx, o, e);
+    else if (o.kind === 'site') this.drawSite(ctx, o, e);
+    else if (o.kind === 'switch') this.drawSwitch(ctx, o, e);
+    else if (o.kind === 'clue') this.drawClue(ctx, o, e);
+    else if (o.kind === 'pen') this.drawPen(ctx, o);
+    else if (o.kind === 'ward') this.drawWard(ctx, o, e);
+    else if (o.kind === 'barrier') this.drawBarrier(ctx, o, e);
     const near = this.near; if (near?.kind === 'object' && near.o === o) this.label(ctx, x, y + 44, o.name, acc);
   }
   /** A cracked stone wall with faint light in its cracks; once a bomb breaks it, a heap of rubble. */
@@ -1002,6 +1014,191 @@ export class Renderer {
     glow(ctx, x, y - 70, lit ? 220 : 60, acc, lit ? .9 : .4 + Math.sin(t * 2) * .1);
     this.lights.push({ x, y: y - 60, r: lit ? 520 : 160, color: acc, a: 1 });
   }
+  // ───────────────────────────── quest places
+  /** Something to build: a staked-out plot with a ghostly plan and a growing pile of materials, then the finished thing. */
+  private drawSite(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const x = o.x, y = o.y, t = this.time, built = e.siteBuilt(o), q = o.questId ? e.quest(o.questId) : undefined;
+    if (built) { this.drawStructure(ctx, o.variant || 'tower', x, y, 1); return; }
+    const have = q ? e.questProgress(q.id) : 0, need = q?.count || 1, ready = have >= need;
+    shadow(ctx, x, y + 14, 60, 14, .18);
+    ctx.strokeStyle = 'rgba(240,230,200,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.ellipse(x, y + 8, 58, 20, 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    for (const [sx, sy] of [[-56, 6], [56, 6], [0, -12], [0, 28]]) { rect(ctx, x + sx - 2, y + sy - 16, 4, 18, '#8a6a48'); }
+    // The plan, glowing faintly where it will stand.
+    ctx.save(); ctx.globalAlpha = .22 + Math.sin(t * 2.4) * .08 + (ready ? .15 : 0); this.drawStructure(ctx, o.variant || 'tower', x, y, 0); ctx.restore();
+    for (let i = 0; i < Math.min(need, have); i++) { const px = x - 44 + (i % 3) * 16, py = y + 22 - Math.floor(i / 3) * 7; rect(ctx, px, py, 26, 6, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, py, 26, 2, '#c9a06a'); }
+    if (ready) { glow(ctx, x, y - 10, 70, '#ffd35c', .35 + Math.sin(t * 4) * .15); this.lights.push({ x, y: y - 10, r: 120, color: '#ffd35c', a: .7 }); }
+  }
+  /** The finished (a = 1) or planned (a = 0, drawn as a ghost) shape of a build site. */
+  private drawStructure(ctx: CanvasRenderingContext2D, kind: string, x: number, y: number, a: number) {
+    const wood = a ? '#8a5a34' : '#e8f4ff', dark = a ? '#6f4a2a' : '#c9d8e8', stone = a ? '#8c8f80' : '#e8f4ff', t = this.time;
+    if (a) shadow(ctx, x, y + 14, 50, 12, .28);
+    switch (kind) {
+      case 'tower':
+        for (const sx of [-30, 26]) rect(ctx, x + sx, y - 110, 6, 124, wood);
+        ctx.strokeStyle = dark; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 28, y); ctx.lineTo(x + 28, y - 90); ctx.moveTo(x + 28, y); ctx.lineTo(x - 28, y - 90); ctx.stroke();
+        rect(ctx, x - 40, y - 116, 82, 10, dark);
+        ctx.fillStyle = a ? '#b85a44' : '#e8f4ff'; ctx.beginPath(); ctx.moveTo(x - 46, y - 116); ctx.lineTo(x, y - 160); ctx.lineTo(x + 48, y - 116); ctx.closePath(); ctx.fill();
+        if (a) { const fl = .8 + Math.sin(t * 9) * .2; glow(ctx, x, y - 128, 34, '#ffcf6e', .7 * fl); this.lights.push({ x, y: y - 128, r: 200, color: '#ffcf6e', a: .8 }); }
+        break;
+      case 'barricade':
+        for (let i = -3; i <= 3; i++) { const sx = x + i * 16; ctx.fillStyle = i % 2 ? wood : dark; ctx.beginPath(); ctx.moveTo(sx - 6, y + 10); ctx.lineTo(sx - 6, y - 34 - Math.abs(i) * 2); ctx.lineTo(sx, y - 46 - Math.abs(i) * 2); ctx.lineTo(sx + 6, y - 34 - Math.abs(i) * 2); ctx.lineTo(sx + 6, y + 10); ctx.fill(); }
+        rect(ctx, x - 56, y - 18, 112, 6, dark);
+        break;
+      case 'well':
+        ellipse(ctx, x, y, 34, 14, stone); ellipse(ctx, x, y - 4, 26, 9, a ? '#2a3a44' : 'rgba(255,255,255,.4)');
+        for (const sx of [-28, 24]) rect(ctx, x + sx, y - 60, 5, 60, wood);
+        ctx.fillStyle = a ? '#a8644e' : '#e8f4ff'; ctx.beginPath(); ctx.moveTo(x - 38, y - 58); ctx.lineTo(x, y - 84); ctx.lineTo(x + 38, y - 58); ctx.closePath(); ctx.fill();
+        break;
+      case 'lantern':
+        rect(ctx, x - 3, y - 92, 6, 100, a ? '#4a4a58' : wood);
+        ctx.fillStyle = a ? '#5a5a6a' : wood; ctx.beginPath(); ctx.moveTo(x - 16, y - 92); ctx.lineTo(x, y - 110); ctx.lineTo(x + 16, y - 92); ctx.fill();
+        ctx.fillStyle = a ? 'rgba(255,250,220,.95)' : 'rgba(255,255,255,.5)'; ctx.fillRect(x - 11, y - 90, 22, 26);
+        if (a) { ctx.fillStyle = '#c9b6ff'; star(ctx, x, y - 77, 8, 5, .45, t); ctx.fill(); glow(ctx, x, y - 77, 90, '#c9b6ff', .8); this.lights.push({ x, y: y - 77, r: 260, color: '#c9b6ff', a: 1 }); }
+        break;
+      case 'bellows':
+        ctx.fillStyle = a ? '#7a4a2a' : wood; ctx.beginPath(); ctx.moveTo(x - 50, y - 6); ctx.lineTo(x + 30, y - 30 + (a ? Math.sin(t * 3) * 8 : 0)); ctx.lineTo(x + 30, y + 14); ctx.closePath(); ctx.fill();
+        rect(ctx, x + 28, y - 10, 34, 10, a ? '#c9a24c' : stone); for (let i = 0; i < 3; i++) circle(ctx, x - 20 + i * 18, y - 4 - i * 6, 4, a ? '#c9a24c' : stone);
+        if (a && Math.random() < .3) this.pushAmbient({ x: x + 62, y: y - 6, vx: rand(30, 60), vy: rand(-30, -10), life: .8, max: .8, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 });
+        break;
+      default: // bridge site: a stack of lumber and a trestle
+        rect(ctx, x - 40, y - 10, 80, 8, wood); rect(ctx, x - 34, y - 2, 6, 14, dark); rect(ctx, x + 28, y - 2, 6, 14, dark);
+    }
+  }
+  /** Braziers, lanterns, runes, totems and vents that a quest lights one by one. */
+  private drawSwitch(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const x = o.x, y = o.y, t = this.time, lit = e.switchLit(o), v = o.variant || 'brazier', reg = regionOf(e.world, x), rock = reg.palette.rock;
+    shadow(ctx, x, y + 10, 22, 7, .28);
+    switch (v) {
+      case 'lantern':
+        rect(ctx, x - 3, y - 66, 6, 72, '#4a4a58'); rect(ctx, x - 12, y - 70, 24, 4, '#3a3a48');
+        ctx.fillStyle = lit ? 'rgba(255,245,200,.95)' : 'rgba(60,60,72,.8)'; ctx.fillRect(x - 9, y - 66, 18, 20);
+        if (lit) { glow(ctx, x, y - 56, 60, '#ffe38a', .9); this.lights.push({ x, y: y - 56, r: 200, color: '#ffe38a', a: 1 }); }
+        break;
+      case 'rune': case 'totem': {
+        const c = v === 'rune' ? '#9fe8ff' : '#b9f29d';
+        ctx.fillStyle = v === 'rune' ? rock : '#6f5337'; ctx.beginPath(); ctx.moveTo(x - 14, y + 8); ctx.lineTo(x - 12, y - 46); ctx.quadraticCurveTo(x, y - 60, x + 12, y - 46); ctx.lineTo(x + 14, y + 8); ctx.closePath(); ctx.fill();
+        if (v === 'totem') { circle(ctx, x - 5, y - 38, 3, lit ? c : '#3a2a1a'); circle(ctx, x + 5, y - 38, 3, lit ? c : '#3a2a1a'); rect(ctx, x - 16, y - 26, 32, 5, '#8a6a48'); }
+        ctx.strokeStyle = lit ? c : 'rgba(0,0,0,.35)'; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(x - 6, y - 30); ctx.lineTo(x, y - 18); ctx.lineTo(x + 6, y - 30); ctx.moveTo(x, y - 18); ctx.lineTo(x, y - 4); ctx.stroke();
+        if (lit) { glow(ctx, x, y - 24, 50, c, .8); this.lights.push({ x, y: y - 24, r: 160, color: c, a: .9 }); }
+        break;
+      }
+      case 'vent':
+        ellipse(ctx, x, y, 26, 11, '#3a2a26'); ellipse(ctx, x, y - 2, 18, 7, lit ? '#bfe8ff' : '#ff7a3d');
+        if (lit) { ctx.fillStyle = 'rgba(223,246,255,.85)'; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x - 14 + i * 9, y - 2); ctx.lineTo(x - 11 + i * 9, y - 22 - (i % 2) * 8); ctx.lineTo(x - 8 + i * 9, y - 2); ctx.fill(); } this.lights.push({ x, y, r: 90, color: '#bfe8ff', a: .6 }); }
+        else { glow(ctx, x, y - 6, 40, '#ff7a3d', .6 + Math.sin(t * 5 + x) * .2); if (Math.random() < .2) this.pushAmbient({ x: x + rand(-10, 10), y: y - 6, vx: 0, vy: rand(-60, -30), life: .8, max: .8, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 }); this.lights.push({ x, y, r: 120, color: '#ff7a3d', a: .8 }); }
+        break;
+      default: // brazier
+        ctx.fillStyle = shade(rock, -.15); ctx.beginPath(); ctx.moveTo(x - 8, y + 8); ctx.lineTo(x - 5, y - 20); ctx.lineTo(x + 5, y - 20); ctx.lineTo(x + 8, y + 8); ctx.fill();
+        ellipse(ctx, x, y - 22, 18, 7, rock); ellipse(ctx, x, y - 24, 14, 4, '#2a2220');
+        if (lit) { this.drawFlame(ctx, x, y - 24, .9, '#ffb347'); this.lights.push({ x, y: y - 40, r: 220, color: '#ffb347', a: 1 }); }
+        else if (Math.random() < .03) this.pushAmbient({ x, y: y - 26, vx: 0, vy: -20, life: 1, max: 1, size: 5, rot: 0, vr: 0, kind: 'smoke', color: 'rgba(120,120,130,.4)', phase: 0 });
+    }
+    // The switch's name stays readable on phones too: an ordered puzzle depends on it.
+    if (!lit) { ctx.font = `800 11px ${UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(14,20,30,.7)'; const w = ctx.measureText(o.name).width + 12; ctx.beginPath(); ctx.roundRect(x - w / 2, y + 16, w, 17, 8); ctx.fill(); ctx.fillStyle = '#fff1d0'; ctx.fillText(o.name, x, y + 28); }
+  }
+  /** Glowing footprints from the last clue to the next, and a sparkle where the clue is. */
+  private drawClue(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const t = this.time, q = o.questId ? e.quest(o.questId) : undefined; if (!q) return;
+    const prev = (o.step || 0) > 0 ? e.world.objects.find(c => c.kind === 'clue' && c.questId === q.id && c.step === (o.step || 0) - 1) : e.world.pois.find(p => p.id === q.near);
+    const from = prev || o, dx = o.x - from.x, dy = o.y - from.y, len = Math.hypot(dx, dy), ux = dx / Math.max(1, len), uy = dy / Math.max(1, len), a = Math.atan2(dy, dx);
+    const start = Math.max(0, len - 1100);
+    for (let s = start, i = 0; s < len - 30; s += 44, i++) {
+      const side = i % 2 ? 1 : -1, px = from.x + ux * s - uy * side * 8, py = from.y + uy * s + ux * side * 8;
+      const pulse = .35 + .45 * Math.max(0, Math.sin(t * 3 - s * .012));
+      ctx.save(); ctx.translate(px, py); ctx.rotate(a); ctx.globalAlpha = pulse * Math.min(1, (s - start) / 200 + .2);
+      ellipse(ctx, 0, 0, 6, 3.4, '#fff1b8'); ellipse(ctx, 6, 0, 2.6, 2.4, '#fff1b8'); ctx.restore();
+    }
+    const bob = Math.sin(t * 3) * 3;
+    glow(ctx, o.x, o.y - 6 + bob, 46, '#fff1b8', .6); ctx.strokeStyle = `rgba(255,241,184,${.6 + Math.sin(t * 4) * .3})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(o.x, o.y + 6, 26 + Math.sin(t * 3) * 4, 10, 0, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#fffbe8'; star(ctx, o.x, o.y - 14 + bob, 8, 4, .35, t); ctx.fill();
+    this.lights.push({ x: o.x, y: o.y, r: 110, color: '#fff1b8', a: .8 });
+  }
+  /** A round sheep pen with a gap to drive the animals through. */
+  private drawPen(ctx: CanvasRenderingContext2D, o: WorldObject) {
+    const x = o.x, y = o.y;
+    ellipse(ctx, x, y, 92, 50, 'rgba(160,130,70,.28)');
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * TAU; if (a > 1.2 && a < 1.95) continue; // the gate faces the viewer
+      const px = x + Math.cos(a) * 96, py = y + Math.sin(a) * 54;
+      rect(ctx, px - 2.5, py - 26, 5, 28, '#8a6a48');
+      const b = (i + 1) / 18 * TAU; if (b > 1.2 && b < 1.95) continue;
+      ctx.strokeStyle = '#a8844a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px, py - 20); ctx.lineTo(x + Math.cos(b) * 96, y + Math.sin(b) * 54 - 20); ctx.moveTo(px, py - 8); ctx.lineTo(x + Math.cos(b) * 96, y + Math.sin(b) * 54 - 8); ctx.stroke();
+    }
+    ellipse(ctx, x - 30, y - 6, 16, 8, '#d9b45a'); ellipse(ctx, x + 36, y + 10, 14, 7, '#c9a44c');
+  }
+  /** What a siege attacks: a palisade that cracks as it takes hits, with its health over it while the fight lasts. */
+  private drawWard(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const s = e.siege, mine = s?.ward === o, hp = mine ? s!.hp / 100 : 1, x = o.x + (mine && Math.random() < .1 ? rand(-2, 2) : 0), y = o.y;
+    this.drawStructure(ctx, 'barricade', x, y, 1);
+    if (hp < .66) { ctx.strokeStyle = 'rgba(30,20,10,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 20, y - 30); ctx.lineTo(x - 10, y - 14); ctx.lineTo(x - 18, y); ctx.moveTo(x + 22, y - 36); ctx.lineTo(x + 12, y - 20); ctx.stroke(); }
+    if (mine) {
+      const w = 100, by = y - 72;
+      ctx.fillStyle = 'rgba(14,20,30,.8)'; ctx.beginPath(); ctx.roundRect(x - w / 2 - 3, by - 3, w + 6, 12, 6); ctx.fill();
+      ctx.fillStyle = hp > .5 ? '#7fd46b' : hp > .25 ? '#ffd35c' : '#ff6b5b'; ctx.beginPath(); ctx.roundRect(x - w / 2, by, w * Math.max(0, hp), 6, 3); ctx.fill();
+      glow(ctx, x, y - 20, 90, '#ffd35c', .2);
+    }
+  }
+  /** The crossing between two lands: a chasm with a broken bridge, a wall of thorns or a seal of black ice. */
+  private drawBarrier(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const x = o.x, y = o.y, t = this.time, open = e.barrierOpen(o), v = o.variant || 'bridge', H = 215;
+    if (v === 'bridge') {
+      // The gorge, with a river far below.
+      ctx.fillStyle = '#2a2420'; ctx.beginPath(); ctx.moveTo(x - 58, y - H); for (let i = 0; i <= 10; i++) ctx.lineTo(x - 58 + Math.sin(i * 1.7) * 8, y - H + i * H * .2); ctx.lineTo(x + 58, y + H); for (let i = 10; i >= 0; i--) ctx.lineTo(x + 58 + Math.cos(i * 1.3) * 8, y - H + i * H * .2); ctx.closePath(); ctx.fill();
+      const g = ctx.createLinearGradient(x - 40, 0, x + 40, 0); g.addColorStop(0, '#1e3a44'); g.addColorStop(.5, '#3d7f8f'); g.addColorStop(1, '#1e3a44');
+      ctx.fillStyle = g; ctx.fillRect(x - 22, y - H, 44, H * 2);
+      ctx.fillStyle = 'rgba(230,250,255,.35)'; for (let i = 0; i < 8; i++) { const yy = y - H + ((t * 60 + i * 55) % (H * 2)); ctx.fillRect(x - 8 + Math.sin(i) * 6, yy, 3, 18); }
+      ctx.strokeStyle = 'rgba(120,110,90,.6)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - 58, y - H); ctx.lineTo(x - 58, y + H); ctx.moveTo(x + 58, y - H); ctx.lineTo(x + 58, y + H); ctx.stroke();
+      if (open) {
+        shadow(ctx, x, y + 44, 80, 10, .3);
+        for (let i = 0; i < 9; i++) { const px = x - 72 + i * 18; rect(ctx, px, y - 38, 16, 76, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, y - 38, 16, 3, '#c9a06a'); }
+        for (const sy of [-40, 38]) { ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - 76, y + sy - 22); ctx.quadraticCurveTo(x, y + sy - 8, x + 76, y + sy - 22); ctx.stroke(); for (const px of [-76, 76]) rect(ctx, x + px - 4, y + sy - 30, 8, 30, '#6f5337'); }
+      } else {
+        for (const side of [-1, 1]) { for (let i = 0; i < 3; i++) { ctx.save(); ctx.translate(x + side * 56, y - 30 + i * 22); ctx.rotate(side * (.9 + i * .15)); rect(ctx, -4, 0, 8, 34 - i * 6, i % 2 ? '#8a5a34' : '#6f4a2a'); ctx.restore(); } rect(ctx, x + side * 70 - 5, y - 46, 10, 34, '#6f5337'); }
+      }
+    } else if (v === 'thorns') {
+      if (open) { for (let i = 0; i < 12; i++) { const yy = y - H + i * 38; ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 50 + (i % 2) * 90, yy); ctx.lineTo(x - 40 + (i % 2) * 90, yy - 14); ctx.stroke(); } return; }
+      glow(ctx, x, y, 200, '#6a4bd6', .25 + Math.sin(t * 2) * .08);
+      for (let i = 0; i < 26; i++) {
+        const yy = y - H + (i / 25) * H * 2, sw = Math.sin(t * 1.4 + i) * 4;
+        ctx.strokeStyle = i % 3 ? '#2e2438' : '#3d2c1f'; ctx.lineWidth = 9 - (i % 3) * 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x - 70, yy + sw); ctx.bezierCurveTo(x - 20, yy - 40 + sw, x + 20, yy + 40 - sw, x + 70, yy - sw); ctx.stroke();
+        ctx.fillStyle = '#1e1628'; for (let k = 0; k < 4; k++) { const px = x - 50 + k * 34, py = yy + Math.sin(k + i) * 16; ctx.beginPath(); ctx.moveTo(px, py - 4); ctx.lineTo(px + 4, py - 14); ctx.lineTo(px + 7, py - 3); ctx.fill(); }
+      }
+      if (Math.random() < .08) this.pushAmbient({ x: x + rand(-60, 60), y: y + rand(-H, H), vx: 0, vy: -12, life: 1.4, max: 1.4, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#c9b6ff', phase: 0 });
+    } else {
+      if (open) { for (let i = 0; i < 14; i++) { const px = x + Math.sin(i * 3.1) * 70, py = y - H + i * 32; ctx.fillStyle = 'rgba(120,150,210,.7)'; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + 10, py - 16); ctx.lineTo(px + 18, py + 2); ctx.fill(); } return; }
+      const g = ctx.createLinearGradient(x - 50, 0, x + 50, 0); g.addColorStop(0, 'rgba(40,50,110,.92)'); g.addColorStop(.5, 'rgba(90,110,190,.85)'); g.addColorStop(1, 'rgba(30,40,90,.92)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 48, y + H); for (let i = 0; i <= 12; i++) ctx.lineTo(x - 48 + Math.sin(i * 2.3) * 10, y + H - i * H * 2 / 12); ctx.lineTo(x + 48, y - H); for (let i = 12; i >= 0; i--) ctx.lineTo(x + 48 + Math.cos(i * 1.9) * 10, y + H - i * H * 2 / 12); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = `rgba(201,182,255,${.5 + Math.sin(t * 2) * .2})`; ctx.lineWidth = 1.6;
+      ctx.beginPath(); for (let i = 0; i < 6; i++) { const yy = y - H + 40 + i * 64; ctx.moveTo(x - 30, yy); ctx.lineTo(x - 4, yy + 20); ctx.lineTo(x + 24, yy + 6); } ctx.stroke();
+      glow(ctx, x, y, 180, '#6a7fd6', .3); this.lights.push({ x, y, r: 260, color: '#8ea0ff', a: .6 });
+    }
+  }
+  private drawMeteors(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    for (const m of e.meteors) {
+      const f = Math.min(1, m.t / m.dur), x = m.x0 + (m.x1 - m.x0) * f, y = m.y0 + (m.y1 - m.y0) * f, a = Math.atan2(m.y1 - m.y0, m.x1 - m.x0);
+      const tail = m.dark ? 320 : 420, tx = x - Math.cos(a) * tail, ty = y - Math.sin(a) * tail;
+      const g = ctx.createLinearGradient(tx, ty, x, y); g.addColorStop(0, m.dark ? 'rgba(26,16,48,0)' : 'rgba(255,241,184,0)'); g.addColorStop(1, m.dark ? 'rgba(58,42,106,.9)' : 'rgba(255,250,230,.95)');
+      ctx.strokeStyle = g; ctx.lineWidth = m.dark ? 22 : 14; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke();
+      glow(ctx, x, y, m.dark ? 70 : 120, m.dark ? '#6a4bd6' : '#fff1b8', 1); if (!m.dark) circle(ctx, x, y, 10, '#ffffff');
+      this.lights.push({ x, y, r: m.dark ? 200 : 420, color: m.dark ? '#6a4bd6' : '#fff1b8', a: 1 });
+    }
+  }
+  private drawFires(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
+    for (const f of e.fires) {
+      if (f.x < v.x - 100 || f.x > v.x + v.w + 100 || f.y < v.y - 100 || f.y > v.y + v.h + 200) continue;
+      const k = Math.min(1, f.t / 2);
+      this.drawFlame(ctx, f.x - 14, f.y, 1.1 * k, '#ff9a4a'); this.drawFlame(ctx, f.x + 16, f.y + 6, .8 * k, '#ff7a3d');
+      this.lights.push({ x: f.x, y: f.y, r: 260 * k, color: '#ff9a4a', a: 1 });
+    }
+  }
+  /** A wolf walking with the hero, or one in a cutscene: drawn like Fenn (a pale spirit when `spirit`). */
+  private drawBeast(ctx: CanvasRenderingContext2D, n: Npc, e: GameEngine) {
+    this.drawPet(ctx, { x: n.x, y: n.y, face: n.faceX, target: null, cd: 0, bite: 0, leapT: 0, walk: n.walkT, spirit: !!n.spirit, life: 99, moving: n.moving }, e);
+  }
   private drawFlame(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) {
     const t = this.time;
     glow(ctx, x, y - 10 * size, 60 * size, color, .9);
@@ -1030,6 +1227,8 @@ export class Renderer {
   // ───────────────────────────── villagers
   private drawNpc(ctx: CanvasRenderingContext2D, n: Npc, e: GameEngine) {
     const t = this.time, L = n.look, s = L.small ? .78 : 1, act = n.activity;
+    if (n.beast) { this.drawBeast(ctx, n, e); this.drawQuestPersonMark(ctx, n, 46); return; }
+    if (n.spirit) ctx.globalAlpha = .55;
     const walking = n.moving;
     const step = walking ? Math.sin(n.walkT * 2.2) : 0, bob = walking ? -Math.abs(step) * 3 : Math.sin(t * 2 + n.homeX) * 1.2;
     const x = n.x, y = n.y;
@@ -1102,7 +1301,18 @@ export class Renderer {
       ctx.strokeStyle = '#ffd35c'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = '#ffd35c'; ctx.font = `900 15px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(icon, x, my + 5);
     }
+    this.drawQuestPersonMark(ctx, n, 58 * s);
+    ctx.globalAlpha = 1;
     const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 44, n.name, reg.palette.accent);
+  }
+  /** Someone walking with the hero wears a green ring (red while scared); a thief a red one. */
+  private drawQuestPersonMark(ctx: CanvasRenderingContext2D, n: Npc, lift: number) {
+    if (n.role !== 'follower' && n.role !== 'thief') return;
+    const t = this.time, c = n.role === 'thief' || n.scared ? '#ff6b5b' : '#7fd46b';
+    ctx.strokeStyle = alpha(c, .8); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(n.x, n.y + 20, 24, 8, 0, 0, TAU); ctx.stroke();
+    const my = n.y - lift - 6 + Math.sin(t * 4) * 3;
+    ctx.fillStyle = 'rgba(14,20,30,.8)'; ctx.beginPath(); ctx.arc(n.x, my, 11, 0, TAU); ctx.fill();
+    ctx.fillStyle = c; ctx.font = `900 13px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(n.role === 'thief' ? '✋' : n.scared ? '!' : '♥', n.x, my + 5);
   }
   private drawBubbles(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     ctx.font = `800 13px ${UI}`; ctx.textAlign = 'center';
@@ -1149,6 +1359,15 @@ export class Renderer {
         ellipse(ctx, hx + 3, hy, 7, 5, '#a8744a'); circle(ctx, hx + 3, hy - 2, 1.2, '#2a1f1b');
         ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(hx, hy - 4); ctx.lineTo(hx - 3, hy - 14); ctx.lineTo(hx - 7, hy - 16); ctx.moveTo(hx - 3, hy - 14); ctx.lineTo(hx + 1, hy - 19); ctx.stroke();
         circle(ctx, -18, -8, 3, '#fff');
+        break;
+      }
+      case 'sheep': {
+        const leg = moving ? Math.sin(c.hop * 10) * 4 : 0, wool = snow ? '#fafbff' : '#f4f1e8';
+        shadow(ctx, 0, 12, 18, 5, .22);
+        ctx.strokeStyle = '#3a3238'; ctx.lineWidth = 3; for (const [lx, ph] of [[-9, 1], [-4, -1], [6, -1], [10, 1]] as Array<[number, number]>) { ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx + leg * ph, 12); ctx.stroke(); }
+        for (const [bx, by, r] of [[-8, -6, 9], [0, -9, 10], [8, -6, 9], [-2, -2, 9], [6, -1, 8]] as Array<[number, number, number]>) circle(ctx, bx, by, r, wool);
+        ellipse(ctx, 15, -9, 6, 5, '#3a3238'); ellipse(ctx, 11, -13, 3, 2, '#3a3238', -.5); circle(ctx, 17, -10, 1.2, '#ffffff');
+        if (c.penned) { ctx.fillStyle = '#b9f29d'; ctx.font = `900 11px ${UI}`; ctx.textAlign = 'center'; ctx.fillText('♥', 0, -24); }
         break;
       }
       case 'goat': {
@@ -2464,6 +2683,7 @@ export class Renderer {
     if (e.damageFlash > 0) { ctx.fillStyle = `rgba(255,80,60,${e.damageFlash * .5})`; ctx.fillRect(0, 0, w, h); }
     if (e.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,245,220,${Math.min(.5, e.flash * .35)})`; ctx.fillRect(0, 0, w, h); ctx.restore(); }
     if (e.respawnFade > 0) { ctx.fillStyle = `rgba(6,8,14,${Math.min(1, e.respawnFade * 1.3)})`; ctx.fillRect(0, 0, w, h); }
+    if (e.cineFade > 0) { ctx.fillStyle = `rgba(4,6,12,${Math.min(1, e.cineFade)})`; ctx.fillRect(0, 0, w, h); }
   }
   private drawMinimap(ctx: CanvasRenderingContext2D, w: number, sh: number, e: GameEngine) {
     const small = w < 640 || sh < 520, MW = small ? 128 : 190, MH = small ? 96 : 140, span = 2800, S = MW / span;

@@ -137,3 +137,15 @@ export function GearIcon({ slot, item, size = 34 }: { slot: GearSlot; item?: Gea
     <path d={SLOT_PATHS[slot]} fill={`url(#${id})`} fillRule="evenodd" stroke={item ? c : 'rgba(255,255,255,.25)'} strokeWidth="1.2" strokeLinejoin="round" />
   </svg>;
 }
+
+/** The journal button: a leather book with a gold star on the cover, a ribbon for quests and a quill for the spellbook. */
+export function JournalIcon({ size = 24 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+    <path d="M6 5.5c0-1.4 1.1-2.5 2.5-2.5H25v22H8.5C7.1 25 6 26.1 6 27.5z" fill="#8a4f3a" stroke="#3a2016" strokeWidth="1.2" />
+    <path d="M6 27.5C6 26.1 7.1 25 8.5 25H25v4H8.5C7.1 29 6 28.4 6 27.5z" fill="#f3e6c4" stroke="#3a2016" strokeWidth="1.2" />
+    <path d="M9 3.2v21.6" stroke="#5e3222" strokeWidth="1.4" />
+    <path d="M16.5 8.2l1.5 3.1 3.4.5-2.5 2.4.6 3.4-3-1.6-3 1.6.6-3.4-2.5-2.4 3.4-.5z" fill="#ffd35c" stroke="#9a6a1a" strokeWidth=".7" />
+    <path d="M21.5 25v6l1.8-1.4 1.8 1.4v-6z" fill="#c0392b" />
+    <path d="M12.5 20.5h9" stroke="#e8c46a" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>;
+}

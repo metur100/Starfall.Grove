@@ -10,8 +10,9 @@ import { keyLabel, keyOf, spellKey } from './keys';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
+import { cineFor, type CineFx, type Shot } from './cutscenes';
 import type {
-  CritterKind, EngineEvent, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MiniGame, MountId, NoticeTone, TrailId, NpcDef, Obstacle, Point, Poi,
+  CineState, CritterKind, EngineEvent, NpcLook, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MiniGame, MountId, NoticeTone, TrailId, NpcDef, Obstacle, Point, Poi,
   QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
@@ -39,13 +40,24 @@ export type Enemy = EnemySeed & {
   chillT: number; frozenT: number; burrowT: number;
   /** Heroic creatures: seconds to the next ground slam, and whether they have enraged at half health. */
   heroT: number; enraged: boolean;
+  /** Siege attackers march on `raid`; creatures from a cutscene vanish when it ends. */
+  raid?: Point; cineOnly?: boolean;
 };
 /** Fenn, Wren's wolf, and the spirit wolves of Call of the Wild (`life` counts down; Fenn's is endless). */
 export type Pet = { x: number; y: number; face: number; target: Enemy | null; cd: number; bite: number; leapT: number; walk: number; spirit: boolean; life: number; moving: boolean };
 /** Wren's Snare Trap: `t` is the time left; once sprung it snaps shut and fades. */
 export type Trap = { x: number; y: number; t: number; sprung: boolean };
-export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string };
-export type Critter = { kind: CritterKind; x: number; y: number; homeX: number; homeY: number; tx: number; ty: number; state: 'idle' | 'move' | 'flee' | 'fly'; t: number; face: number; alt: number; hop: number; seed: number };
+export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string;
+  /** Quest people: whose quest they belong to, drawn as a wolf (a pale spirit one), too scared to walk, and a thief's stamina. */
+  quest?: string; beast?: boolean; spirit?: boolean; scared?: boolean; tireT?: number; restT?: number; ang?: number };
+export type Critter = { kind: CritterKind; x: number; y: number; homeX: number; homeY: number; tx: number; ty: number; state: 'idle' | 'move' | 'flee' | 'fly'; t: number; face: number; alt: number; hop: number; seed: number;
+  /** An animal to herd for the quest `herd`, and whether it is safely in the pen. */
+  herd?: string; penned?: boolean; slide?: number };
+/** A falling star (or, `dark`, a streak of Umbra's smoke) in a cutscene, and a burning roof. */
+export type Meteor = { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; dark: boolean };
+export type Fire = { x: number; y: number; t: number; s: number };
+type Cine = { id: string; shots: Shot[]; i: number; t: number; dur: number; cutT: number; pending: Point | null; ctx: Record<string, Point>; then?: () => void; timers: Array<{ t: number; fx: CineFx }> };
+type Siege = { q: QuestDef; ward: WorldObject; wave: number; waveT: number; hp: number; spawned: boolean; raiders: Enemy[] };
 type BossAction = 'slam' | 'boulders' | 'nova' | 'roots' | 'charge' | 'spiral' | 'meteors' | 'blink';
 export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice' | 'frost' | 'knife' | 'fire' | 'arrow'; targetId?: string; crit?: boolean; spin: number;
   /** Arrows pass through this many more creatures; `passed` are the ones already hit. */
@@ -70,6 +82,8 @@ export type EngineSave = {
   blessed: string[]; tracked: string | null; chapterStart: { elapsed: number; defeated: number }; awaiting: boolean; foxQueue: string[];
   /** Cracked walls broken and waterfall caves found. */
   secrets?: string[];
+  /** Answers picked in conversations, and where people walking with the hero were. */
+  choices?: Record<string, 'a' | 'b'>; escorts?: Array<{ id: string; x: number; y: number }>;
   /** Columns of the explore grid when saved: the valley grew a fourth land, so older fog maps are re-laid row by row. */
   exploreCols?: number;
 };
@@ -85,8 +99,21 @@ export function personalize(l: string, hero: HeroId) {
     .replace('(Tuft sniffs the icy wind blowing through the Eastern Gate and whines.)', '(An icy wind howls through the Eastern Gate.)')
     .replace('(Tuft stares east,', '(You stare east,')
     .replace('(Tuft’s fur stands on end.', '(The hair on your neck stands on end.')
-    .replace(/ and Tuft\b/g, '').replace(/ with Tuft\b/g, '').replace(/\bTuft\b/g, 'the wind');
+    .replace(/ and Tuft\b/g, '').replace(/ with Tuft\b/g, '').replace(/\bTuft\b/g, 'the wind')
+    // Lines written for Orrin's apprentice, told to someone who isn't.
+    .replace('Your teacher, Master Orrin, rode', 'Master Orrin, the old star-wizard, rode')
+    .replace('Orrin’s apprentice. He said you would come looking.', 'You’re the one Tamsin sent? Good. The valley needs every brave pair of hands.')
+    .replace('what your master was looking for', 'what Master Orrin was looking for')
+    .replace('You fight like Orrin’s student.', 'You fight like one of the old Wardens.')
+    .replace('Orrin’s apprentice! Oh, that stubborn old man.', 'Rowan sent you about Orrin? Oh, that stubborn old man.')
+    .replace('Orrin’s other apprentice?', 'The hero who lit the Beacon?')
+    .replace('and Orrin’s apprentice at that', 'and the one who rang the Bell, at that')
+    .replace('Orrin’s apprentice. We have prayed for you.', 'The hero of the Beacon and the Bell. We have prayed for you.')
+    .replace('bring your teacher home', 'bring Orrin home').replace('Free your teacher,', 'Free Master Orrin,')
+    .replace(/^\S+…\? Oh, my brave \w+\. You came all this way\.$/, 'You came for me? All this way, for a foolish old man… Bless you.');
 }
+/** Quests that show a running count in the log. */
+const COUNTED = new Set(['collect', 'slay', 'key', 'build', 'activate', 'trail', 'herd', 'defend']);
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -140,6 +167,36 @@ const ACTIVE_RANGE = 1700;
 const RESPAWN_TIME = 240;
 /** Heroic creatures take longer to come back. */
 const HEROIC_RESPAWN = 600;
+/** A siege's barricade health, and how long building takes. */
+const SIEGE_HP = 100, WORK_TIME = 2.6;
+const SWITCH_COLOR: Record<string, string> = { brazier: '#ffb347', lantern: '#ffe38a', rune: '#9fe8ff', totem: '#b9f29d', vent: '#bfe8ff' };
+const BARRIER_TEXT: Record<string, string> = {
+  bridge: 'The Gloomwater Bridge lies broken in the river. There is no way across until it is rebuilt.',
+  thorns: 'A wall of black thorns chokes the Eastern Gate. Nothing can get through.',
+  ice: 'A wall of black ice seals the Eastern Gate. It is colder than any winter.',
+};
+const BARRIER_OPEN: Record<string, string> = { bridge: 'The mended bridge creaks cheerfully underfoot.', thorns: 'Only dry, crumbling stalks are left of the thorn wall.', ice: 'Shards of black ice glitter at the roadside, melting slowly.' };
+const INTRO_LINE: Record<HeroId, string> = {
+  mira: '(Tuft tugs at your sleeve. Bridgekeeper Tamsin is waving from the gate. She might know where Master Orrin went.)',
+  kael: 'Aldric told me to warn the valley. The bridgekeeper will know who to tell. Then I find him.',
+  lyra: 'Nessa came this way. Someone here must have seen her. The bridgekeeper, maybe.',
+  riven: 'No more jobs. No more feathers. If the Beacon is dead, someone ought to find out why. Might as well be me.',
+  wren: 'Easy, Fenn. We’ll find them. Let’s ask the bridgekeeper which way the shadows went.',
+};
+/**
+ * Each hero plays the shared story plus their own: a hero's quests slot into the main chain right after the quest they
+ * name in `after`, and whatever came next now waits for them.
+ */
+function questsForHero(all: QuestDef[], hero: HeroId): QuestDef[] {
+  const out = all.filter(q => !q.hero).map(q => ({ ...q })), last = new Map<string, string>();
+  for (const hq of all.filter(q => q.hero === hero).map(q => ({ ...q }))) {
+    const anchor = hq.after, prev = anchor ? last.get(anchor) || anchor : null, i = prev ? out.findIndex(q => q.id === prev) : -1;
+    if (!anchor || !prev || i < 0) { out.push(hq); continue; }
+    for (const q of out) if (q.main && q.requires === prev) q.requires = hq.id;
+    hq.requires = prev; out.splice(i + 1, 0, hq); last.set(anchor, hq.id);
+  }
+  return out;
+}
 /** Consumables a quest can pay out (the rare feather is left to luck and merchants). */
 const QUEST_ITEMS = ITEM_ORDER.filter(id => id !== 'phoenixFeather');
 
@@ -232,10 +289,22 @@ export class GameEngine {
   private exploreTick = 0;
   /** Seconds to wait before the next chapter's opener, so it starts after the chapter banner. */
   private foxDelay = 0;
+  /** The cutscene playing, and those waiting. `cineFocus` is where the camera looks; `camCut` changes on every hard cut. */
+  cine: Cine | null = null; private cineQueue: Array<{ id: string; ctx: Record<string, Point>; then?: () => void }> = [];
+  cineFocus: Point | null = null; camCut = 0; cineFade = 0;
+  /** How dark a story scene makes the world (0 = as it is). */
+  cineDark = 0; private cineNight = 0;
+  readonly meteors: Meteor[] = []; readonly fires: Fire[] = [];
+  /** A siege under way, and something being built. */
+  siege: Siege | null = null; private siegeCd = 0;
+  work: { o: WorldObject; q: QuestDef; t: number } | null = null;
+  private ambushes: Array<{ q: string; x: number; y: number; done: boolean }> = [];
+  private choices: Record<string, 'a' | 'b'> = {};
+  private introSeen = false; private barrierNoticeT = -99; private barriers: WorldObject[] = [];
 
   constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
     this.heroId = heroId; this.spellIds = HEROES[heroId].spells;
-    this.world = getWorld(); this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
+    const base = getWorld(); this.world = { ...base, quests: questsForHero(base.quests, heroId) }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
     this.profile = loadProfile(heroId);
     const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
@@ -249,10 +318,12 @@ export class GameEngine {
     this.questById = new Map(this.world.quests.map(q => [q.id, q]));
     for (const q of this.world.quests) this.quests.set(q.id, { status: q.requires ? 'locked' : 'available', progress: 0 });
     this.campfires = this.world.objects.filter(o => o.kind === 'campfire');
+    this.barriers = this.world.objects.filter(o => o.kind === 'barrier');
     this.exploreCols = Math.ceil(this.world.width / EXPLORE_CELL);
     this.explored = new Uint8Array(this.exploreCols * Math.ceil(this.world.height / EXPLORE_CELL));
     this.totals = { places: this.world.pois.length, chests: this.world.objects.filter(o => o.kind === 'chest').length, lore: this.world.objects.filter(o => o.kind === 'lore').length, sideQuests: this.world.quests.filter(q => !q.main).length, secrets: this.world.objects.filter(o => o.kind === 'crack' || o.kind === 'waterfall').length };
     if (saved?.version === 4) this.restore(saved);
+    this.restoreQuestPeople(saved);
     this.regionId = this.regionAt(this.hero.x).id;
     if (heroId === 'wren') this.pets.push(this.makePet(false));
     this.markExplored();
@@ -290,6 +361,9 @@ export class GameEngine {
     // that screen (the "next chapter quest has no arrow" bug) are freed here, and any chapter opener that was never
     // started is queued again so it begins on its own.
     this.awaitingChapter = false;
+    this.introSeen = true;
+    if (s.choices && typeof s.choices === 'object') for (const [k, v] of Object.entries(s.choices)) if (v === 'a' || v === 'b') this.choices[k] = v;
+    this.repairChain();
     this.foxQueue = Array.isArray(s.foxQueue) ? s.foxQueue.filter(id => this.quests.has(id)) : [];
     for (const q of this.world.quests) if (q.giver === 'fox' && this.qs(q.id).status === 'available' && !this.foxQueue.includes(q.id)) this.foxQueue.push(q.id);
     const broken = new Set(Array.isArray(s.brokenPods) ? s.brokenPods : []);
@@ -299,6 +373,40 @@ export class GameEngine {
     const final = this.world.quests.find(q => q.boss?.endsWith(':final'));
     if (final && this.qs(final.id).status === 'active' && !this.main.bosses.includes(final.boss!)) this.spawnFinal(false);
   }
+  /**
+   * The story grew new quests between old ones. A save that is already past such a quest counts it as done; one that
+   * reached it just now gets it offered. Quests whose goal changed shape are handed in if the old progress covers it.
+   */
+  private repairChain() {
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const q of this.world.quests) {
+        const st = this.qs(q.id);
+        if (st.status !== 'locked' || !q.requires || this.quests.get(q.requires)?.status !== 'done') continue;
+        const passed = this.world.quests.some(o => o.requires === q.id && this.qs(o.id).status !== 'locked');
+        st.status = passed ? 'done' : 'available'; changed = true;
+      }
+    }
+    for (const q of this.world.quests) { const st = this.qs(q.id); if (st.status === 'active' && q.kind !== 'boss' && q.kind !== 'build' && st.progress >= q.count) st.status = 'ready'; }
+  }
+  /** People walking with the hero, thieves on the run and herds to drive come back with a loaded game. */
+  private restoreQuestPeople(saved?: EngineSave | null) {
+    for (const q of this.world.quests) {
+      const st = this.qs(q.id); if (st.status !== 'active') continue;
+      const cage = this.world.objects.find(o => o.kind === 'cage' && o.questId === q.id);
+      if (q.kind === 'escort' || (q.kind === 'rescue' && q.escort && cage && this.got.has(cage.id))) {
+        const pos = saved?.escorts?.find(e => e.id === q.id) || (q.kind === 'escort' ? this.escortStart(q) : cage && { x: cage.x, y: cage.y + 40 });
+        if (pos) this.spawnFollower(q, pos);
+      }
+      if (q.kind === 'chase') this.spawnThief(q);
+      if (q.kind === 'herd') this.spawnHerd(q);
+      if (q.kind === 'defend') st.progress = 0;
+    }
+  }
+  private escortStart(q: QuestDef): Point {
+    const p = this.poi(q.from); if (p) return { x: p.x + 40, y: p.y + 70 };
+    const g = this.npcs.find(n => n.id === q.giver); return g ? { x: g.x + 50, y: g.y + 30 } : { x: this.hero.x + 60, y: this.hero.y };
+  }
   exportSave(): EngineSave {
     const h = this.hero;
     let explored = ''; for (const v of this.explored) explored += v ? '1' : '0';
@@ -307,6 +415,7 @@ export class GameEngine {
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
       brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], secrets: [...this.secrets], tracked: this.tracked,
       chapterStart: { ...this.chapterStart }, awaiting: false, foxQueue: [...this.foxQueue], exploreCols: this.exploreCols,
+      choices: { ...this.choices }, escorts: this.npcs.filter(n => n.role === 'follower' && n.quest).map(n => ({ id: n.quest!, x: n.x, y: n.y })),
     };
   }
 
@@ -323,7 +432,7 @@ export class GameEngine {
   region(id: RegionId) { return this.world.regions.find(r => r.id === id)!; }
   get heroRegion() { return this.regionAt(this.hero.x); }
   /** The story chapter being played: the first region whose light is not yet restored. */
-  get chapter() { return this.world.regions.find(r => !this.main.finales.includes(r.id))?.chapter ?? this.world.regions.length; }
+  get chapter() { const q = this.currentMain(); return q ? this.region(q.region).chapter : this.world.regions.length; }
   private bossName(e: Enemy) { const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.name || 'Umbra' : s.bossName; }
   private bossTitle(e: Enemy) { const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.title || '' : s.bossTitle; }
   private bossQuest(e: Enemy) { return this.world.quests.find(q => q.kind === 'boss' && q.boss === e.id) || null; }
@@ -345,7 +454,14 @@ export class GameEngine {
   get regionTrack() { return this.regionId; }
   addShake(n: number) { this.shake = Math.min(22, this.shake + n); }
   poiAt(p: Point, pad = 0): Poi | null { let best: Poi | null = null, bd = Infinity; for (const z of this.world.pois) { const d = dist(p, z); if (d < z.r + pad && d < bd) { bd = d; best = z; } } return best; }
-  npcVisible(n: Npc) { return !n.after || this.qs(n.after)?.status === 'done'; }
+  npcVisible(n: Npc) {
+    if (n.hero && n.hero !== this.heroId) return false;
+    if (n.after && this.quests.get(n.after)?.status !== 'done') return false;
+    if (n.until) { const s = this.quests.get(n.until)?.status; if (s && s !== 'locked' && s !== 'available') return false; }
+    return true;
+  }
+  /** A quest's lines, in this hero's own version where it has one. */
+  private tx(q: QuestDef) { const o = q.textFor?.[this.heroId]; return o ? { ...q.text, ...o } : q.text; }
   /** Hero damage against a creature: weaker the higher it is above Mira's level. */
   private dealMul(level: number) { const d = level - this.profile.level; return d > 0 ? Math.max(.3, 1 - d * .1) : 1 + Math.min(.3, -d * .04); }
   /** Damage Mira takes from a creature of this level. */
@@ -440,7 +556,7 @@ export class GameEngine {
   }
   cast(id: SpellId) {
     sfx.unlock();
-    if (this.completeTimer > 0) return;
+    if (this.completeTimer > 0 || this.cine) return;
     const info = SPELLS[id], h = this.hero;
     if (this.riding && this.spellUnlocked(id)) this.dismount();
     if (!this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
@@ -807,7 +923,7 @@ export class GameEngine {
   /** R: call the mount (not while creatures are after you), or step off it. */
   toggleMount() {
     sfx.unlock();
-    if (this.completeTimer > 0) return;
+    if (this.completeTimer > 0 || this.cine) return;
     if (this.riding) return this.dismount();
     const id = this.mountId, h = this.hero;
     if (!id) { this.play('nope'); this.notice('You have no mount yet. The first one is earned by discovering 10 places (the Wanderer achievement).', 'warn', 'No mount yet'); return; }
@@ -937,7 +1053,7 @@ export class GameEngine {
   }
   private offerQuest(q: QuestDef, n: Npc, before: string[] = []) {
     const offer: QuestOffer = { id: q.id, title: q.title, summary: q.summary, reward: this.rewardText(q), main: !!q.main };
-    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: this.personal([...before, ...q.text.offer]), offer });
+    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: this.personal([...before, ...this.tx(q).offer]), offer });
   }
   /** Called by the UI when the player presses Accept on an offer. */
   acceptQuest(id: string) {
@@ -952,6 +1068,10 @@ export class GameEngine {
         : q.kind === 'visit' ? Number(this.discovered.has(q.place!)) : q.kind === 'boss' ? Number(this.main.bosses.includes(q.boss!)) : 0;
     if (already) this.advance(q, already);
     if (q.kind === 'rescue') this.spawnGuards(q);
+    if (q.kind === 'escort') this.spawnFollower(q, this.escortStart(q));
+    if (q.kind === 'chase') this.spawnThief(q);
+    if (q.kind === 'herd') this.spawnHerd(q);
+    if (q.cine?.start && q.kind !== 'defend') this.queueCine(q.cine.start, this.cineCtx(q));
     if (q.kind === 'boss' && q.boss?.endsWith(':final')) this.spawnFinal(true);
     else if (q.kind === 'boss' && !this.main.bosses.includes(q.boss!)) { const e = this.enemies.find(x => x.id === q.boss); if (e) { this.notice(`The seal on ${this.bossName(e)} is breaking…`, 'epic', 'The seal breaks!'); this.addShake(6); } }
   }
@@ -965,11 +1085,18 @@ export class GameEngine {
       else this.complete(q, null, [], true);
       return;
     }
+    if (q.kind === 'build') {
+      if (st.progress >= q.count) { this.notice(`All the ${q.item?.toLowerCase()} is gathered. Now build the ${q.siteName?.toLowerCase() || 'site'}!`, 'good', 'Now build it!'); this.play('quest'); }
+      else this.notice(`${q.item} ${st.progress}/${q.count}`, 'good', `${st.progress}/${q.count}`);
+      return;
+    }
+    if (st.progress >= q.count && q.auto) { this.autoComplete(q); return; }
     if (st.progress >= q.count) {
       st.status = 'ready';
       this.eventHandler({ type: 'quest', title: q.title, state: 'ready' }); this.play('quest');
       const to = this.npcs.find(n => n.id === this.reportTo(q));
       this.notice(`${q.title}: report to ${to?.name || 'the quest giver'}.`, 'good', `Report to ${to?.name.split(' ').pop() || 'giver'}`);
+      if (q.cine?.ready) this.queueCine(q.cine.ready, this.cineCtx(q));
     } else if (q.kind !== 'collect') this.notice(`${q.title} ${st.progress}/${q.count}`, 'info', `${st.progress}/${q.count}`);
   }
   private complete(q: QuestDef, speaker: Npc | null, lines: string[], silent = false) {
@@ -1000,15 +1127,512 @@ export class GameEngine {
       this.qs(other.id).status = 'available';
       if (other.giver === 'fox') this.foxQueue.push(other.id);
     }
+    this.removeQuestNpcs(q.id);
+    if (this.siege?.q === q) this.siege = null;
+    if (q.cine?.done) this.queueCine(q.cine.done, this.cineCtx(q));
+    if (q.main) {
+      const mains = this.world.quests.filter(x => x.main && x.region === q.region);
+      if (mains[mains.length - 1] === q && mains.every(x => this.qs(x.id).status === 'done')) this.endChapter(q.region);
+    }
   }
   track(id: string) { if (this.quests.has(id)) this.tracked = id; }
   /** Tuft's nudges (the next chapter's opener) start on their own once the fireworks are over. */
   private flushFox() {
-    if (!this.foxQueue.length || this.completeTimer > 0 || this.foxDelay > 0) return;
+    if (!this.foxQueue.length || this.completeTimer > 0 || this.foxDelay > 0 || this.cinePlaying) return;
     const id = this.foxQueue.shift()!, q = this.quest(id);
     if (!q || this.qs(id).status !== 'available') return;
-    const voice = this.guideVoice; this.say(voice.name, voice.portrait, q.text.offer);
+    const voice = this.guideVoice; this.say(voice.name, voice.portrait, this.tx(q).offer);
     this.acceptQuest(id);
+  }
+
+  // ───────────────────────────── cutscenes
+  /** Plays a cutscene as soon as nothing else is on screen (dialogue, fireworks). `ctx` names quest spots such as '$ward'. */
+  queueCine(id: string, ctx: Record<string, Point> = {}, then?: () => void) {
+    if (!cineFor(id, this.heroId)) { then?.(); return; }
+    this.cineQueue.push({ id, ctx, then });
+  }
+  get cinePlaying() { return !!this.cine || this.cineQueue.length > 0; }
+  private beginCine(next: { id: string; ctx: Record<string, Point>; then?: () => void }) {
+    const shots = cineFor(next.id, this.heroId); if (!shots) { next.then?.(); return; }
+    this.cine = { id: next.id, shots, i: -1, t: 0, dur: 0, cutT: 0, pending: null, ctx: next.ctx, then: next.then, timers: [] };
+    this.setMovement(0, 0); this.hero.vx = this.hero.vy = 0; this.work = null;
+    this.nextShot();
+  }
+  /** Where a shot or an effect looks: a place, a person, an object, the hero or a quest spot, moved by dx/dy. */
+  private cineAt(ref: string | undefined, dx = 0, dy = 0): Point {
+    const c = this.cine, base = this.cineFocus || c?.pending || this.hero;
+    let p: Point = base;
+    if (ref === 'hero') p = this.hero;
+    else if (ref?.startsWith('$')) p = c?.ctx[ref] || base;
+    else if (ref?.startsWith('npc:')) p = this.npcs.find(n => n.id === ref.slice(4)) || base;
+    else if (ref?.startsWith('obj:')) p = this.world.objects.find(o => o.id === ref.slice(4)) || base;
+    else if (ref) p = this.world.pois.find(z => z.id === ref) || base;
+    return { x: p.x + dx, y: p.y + dy };
+  }
+  private nextShot() {
+    const c = this.cine!; c.i++;
+    if (c.i >= c.shots.length) { this.endCine(); return; }
+    const s = c.shots[c.i];
+    c.t = 0; c.dur = s.dur ?? clamp(2 + (s.text?.length || 0) * .045, 3, 8);
+    if (s.night !== undefined) this.cineNight = s.night;
+    let delay = 0;
+    if (s.at) {
+      const p = this.cineAt(s.at, s.dx, s.dy), from = this.cineFocus || this.hero;
+      if (s.cut || (!this.cineFocus && dist(from, p) > 900) || dist(from, p) > 4200) { c.cutT = .6; c.pending = p; delay = .3; } else this.cineFocus = p;
+    } else if (!this.cineFocus) this.cineFocus = { x: this.hero.x, y: this.hero.y };
+    for (const f of s.fx || []) c.timers.push({ t: (f.delay || 0) + delay, fx: f });
+    for (const a of s.actors || []) {
+      if (this.npcs.some(n => n.id === `actor:${a.id}`)) continue;
+      const at = c.pending || this.cineFocus || this.hero, x = at.x + (a.dx || 0), y = at.y + (a.dy || 0);
+      const n = this.tempNpc(`actor:${a.id}`, a.name || '', '', { skin: '#f0c8a2', robe: '#8a6fb0', hat: 'none', hatColor: '#5b5480', hair: '#6b3f2a', ...a.look }, x, y, 'actor');
+      n.beast = a.beast; n.spirit = a.spirit; n.faceX = a.face || 1;
+      if (a.walk) { n.tx = x + a.walk.dx; n.ty = y + a.walk.dy; n.moving = true; }
+      this.npcs.push(n);
+    }
+  }
+  /** Tapping moves to the next shot; skipping ends the whole cutscene. */
+  advanceCine() { const c = this.cine; if (c && c.t > .45 && c.cutT <= 0) this.nextShot(); }
+  skipCine() { if (this.cine) this.endCine(); }
+  private endCine() {
+    const c = this.cine; if (!c) return;
+    // Effects still waiting (a skip) happen at once, so nothing the story needs is lost.
+    for (const t of c.timers) this.cineFx(t.fx);
+    this.cine = null;
+    for (let i = this.npcs.length - 1; i >= 0; i--) if (this.npcs[i].role === 'actor') this.npcs.splice(i, 1);
+    for (const e of this.enemies) if (e.cineOnly && !e.dead) { e.dead = true; e.deadT = 0; this.emit(e.x, e.y, 10, ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 120, life: .6, kind: 'smoke', size: 10 }); }
+    if (this.cineFocus && dist(this.cineFocus, this.hero) > 700) { this.cineFade = 1; this.camCut++; }
+    this.cineFocus = null; this.markerVersion++; this.cineNight = 0;
+    c.then?.();
+  }
+  private updateCine(dt: number) {
+    const c = this.cine!;
+    c.t += dt;
+    if (c.cutT > 0) {
+      c.cutT -= dt; this.cineFade = c.cutT > .3 ? Math.min(1, (.6 - c.cutT) / .3) : Math.max(0, c.cutT / .3);
+      if (c.pending && c.cutT <= .3) { this.cineFocus = c.pending; c.pending = null; this.camCut++; }
+    }
+    for (let i = c.timers.length - 1; i >= 0; i--) { const t = c.timers[i]; t.t -= dt; if (t.t <= 0) { c.timers.splice(i, 1); this.cineFx(t.fx); } }
+    if (this.cine === c && c.t >= c.dur && c.cutT <= 0) this.nextShot();
+  }
+  /** The world effects a cutscene uses to show that something happened. */
+  private cineFx(f: CineFx) {
+    const p = this.cineAt(f.at, f.dx, f.dy), acc = this.regionAt(p.x).palette.accent;
+    switch (f.kind) {
+      case 'starfall': this.meteors.push({ x0: p.x - 1100, y0: p.y - 1300, x1: p.x, y1: p.y, t: 0, dur: 1.3, dark: false }); this.play('starfall'); break;
+      case 'smoke': this.meteors.push({ x0: p.x, y0: p.y, x1: p.x + (f.to?.dx ?? 1400), y1: p.y + (f.to?.dy ?? 600), t: 0, dur: 2.4, dark: true }); this.play('voidShot'); break;
+      case 'shadow':
+        this.emit(p.x, p.y, 60, ['#1a1030', '#3a2a6a', '#6a4bd6', '#c9b6ff'], { speed: 320, life: 1.4, kind: 'smoke', size: 22, drag: 1.8 });
+        this.emit(p.x, p.y, 30, ['#c9b6ff', '#ff6b9a'], { speed: 420, life: 1, kind: 'star', glow: true, size: 5 });
+        this.ring(p.x, p.y, 240, '#6a4bd6', 1); this.addShake(10); this.flash = Math.max(this.flash, .2); this.play('roar'); break;
+      case 'gloom': case 'wolves': case 'imps': case 'wisps': {
+        const kind: EnemyKind = f.kind === 'gloom' ? 'gloomling' : f.kind === 'wolves' ? 'shadewolf' : f.kind === 'imps' ? 'emberImp' : 'wisp';
+        const n = f.n || 4, reg = this.regionAt(p.x);
+        for (let i = 0; i < n; i++) {
+          const a = i / n * 6.28 + rand(0, .8), r = rand(60, 230), q = { x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r * .7 };
+          this.collide(q, 24);
+          const e = this.makeEnemy({ id: `cine-${this.summonCount++}`, kind, x: q.x, y: q.y, level: reg.levels[0], region: reg.id }, true);
+          e.aggro = false; e.spawnT = .6 + i * .18; e.cineOnly = true; this.enemies.push(e);
+          this.emit(q.x, q.y, 12, ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 110, life: .8, kind: 'smoke', size: 12 });
+        }
+        this.play(f.kind === 'wolves' ? 'roar' : 'squeak'); break;
+      }
+      case 'fire': {
+        const houses = this.obstacleGrid.near(p.x, p.y, 750).filter(o => o.kind === 'house' || o.kind === 'manor' || o.kind === 'tent' || o.kind === 'stall').sort((a, b) => dist(a, p) - dist(b, p)).slice(0, f.n || 2);
+        const spots = houses.length ? houses.map(o => ({ x: o.x + rand(-20, 20), y: o.y - (o.kind === 'manor' ? 80 : 56) })) : [{ x: p.x, y: p.y }];
+        for (const s of spots) this.fires.push({ x: s.x, y: s.y, t: f.t ?? 60, s: 1 });
+        this.play('sunfire'); break;
+      }
+      case 'douse': for (let i = this.fires.length - 1; i >= 0; i--) { const fi = this.fires[i]; if (dist(fi, p) < 1200) { this.emit(fi.x, fi.y, 16, 'rgba(230,235,245,.6)', { speed: 90, life: 1.4, kind: 'smoke', size: 16, grav: -40 }); swapRemove(this.fires, i); } } break;
+      case 'collapse':
+        this.emit(p.x, p.y, 40, ['#8a6a48', '#6f5337', '#a8844a'], { speed: 320, life: 1, kind: 'shard', size: 7, grav: 600 });
+        this.emit(p.x, p.y, 16, 'rgba(160,150,130,.5)', { speed: 140, life: 1.3, kind: 'smoke', size: 22 }); this.addShake(12); this.play('slam'); this.play('splash'); break;
+      case 'light':
+        this.ring(p.x, p.y, 420, acc, 1.3); this.ring(p.x, p.y, 200, '#fff1b8', .8);
+        this.emit(p.x, p.y, 90, [acc, '#ffffff', '#fff1b8'], { speed: 460, life: 1.5, kind: 'star', glow: true, size: 6, drag: 1.6 });
+        this.flash = Math.max(this.flash, .45); this.play('learn'); break;
+      case 'build':
+        this.emit(p.x, p.y, 30, 'rgba(200,180,140,.55)', { speed: 160, life: 1.1, kind: 'smoke', size: 16 });
+        this.emit(p.x, p.y - 20, 30, ['#ffd35c', '#ffffff', '#c9a06a'], { speed: 260, life: 1, kind: 'star', glow: true, size: 5 }); this.play('hammer'); this.play('chest'); break;
+      case 'shatter':
+        this.emit(p.x, p.y - 40, 70, ['#dff6ff', '#9fd8ff', '#ffffff', '#6fb8e8'], { speed: 460, life: 1.2, kind: 'shard', size: 8, grav: 500 });
+        this.ring(p.x, p.y, 260, '#bfe8ff', .9); this.flash = Math.max(this.flash, .35); this.addShake(12); this.play('reflect'); this.play('slam'); break;
+      case 'wither':
+        this.emit(p.x, p.y - 40, 60, ['#6a5a3a', '#8a7a4a', '#4a3a2a'], { speed: 260, life: 1.6, kind: 'leaf', size: 8, grav: 120 });
+        this.emit(p.x, p.y, 20, 'rgba(120,100,80,.5)', { speed: 120, life: 1.4, kind: 'smoke', size: 20 }); this.play('pod'); break;
+      case 'memory':
+        this.emit(p.x, p.y - 20, 60, ['#dff6ff', '#c9b6ff', '#ffffff'], { speed: 140, life: 2, kind: 'star', glow: true, size: 4, grav: -40, drag: 1 });
+        this.ring(p.x, p.y, 180, '#dff6ff', 1.2); this.play('discover'); break;
+      case 'quake': this.addShake(18); this.emit(p.x, p.y, 24, 'rgba(150,120,90,.5)', { speed: 200, life: 1, kind: 'smoke', size: 18 }); this.play('roar'); break;
+      case 'ring': this.ring(p.x, p.y, 160, acc, 1); this.emit(p.x, p.y - 30, 30, [acc, '#ffffff'], { speed: 200, life: 1, kind: 'star', glow: true, size: 5 }); this.play('key'); break;
+    }
+  }
+  /** Meteors and cutscene fires. */
+  private updateFx(dt: number) {
+    for (let i = this.meteors.length - 1; i >= 0; i--) {
+      const m = this.meteors[i]; m.t += dt;
+      const f = Math.min(1, m.t / m.dur), x = m.x0 + (m.x1 - m.x0) * f, y = m.y0 + (m.y1 - m.y0) * f;
+      if (Math.random() < .8) this.emit(x, y, 2, m.dark ? ['#1a1030', '#3a2a6a', '#6a4bd6'] : ['#fff1b8', '#ffd35c', '#ffffff'], { speed: 40, life: m.dark ? 1.2 : .7, kind: m.dark ? 'smoke' : 'star', glow: !m.dark, size: m.dark ? 14 : 5 });
+      if (m.t >= m.dur) {
+        swapRemove(this.meteors, i);
+        if (!m.dark) { this.flash = Math.max(this.flash, .7); this.addShake(18); this.ring(m.x1, m.y1, 380, '#fff1b8', 1.1); this.emit(m.x1, m.y1, 90, ['#fff1b8', '#ffd35c', '#ff9a4a', '#ffffff'], { speed: 520, life: 1.4, kind: 'star', glow: true, size: 6 }); this.play('slam'); }
+      }
+    }
+    for (let i = this.fires.length - 1; i >= 0; i--) {
+      const fi = this.fires[i]; fi.t -= dt;
+      if (fi.t <= 0) { swapRemove(this.fires, i); continue; }
+      if (Math.abs(fi.x - this.hero.x) > 1800 && !this.cine) continue;
+      if (Math.random() < dt * 22 * this.fx) this.emit(fi.x + rand(-26, 26), fi.y, 1, ['#ffcf6e', '#ff9a4a', '#ff5f3d'], { speed: 60, life: .8, kind: 'ember', glow: true, size: 4, grav: -120 });
+      if (Math.random() < dt * 5 * this.fx) this.emit(fi.x + rand(-20, 20), fi.y - 20, 1, 'rgba(60,50,50,.45)', { speed: 30, life: 2, kind: 'smoke', size: 20, grav: -50 });
+    }
+  }
+
+  // ───────────────────────────── quest people: followers, thieves, herds
+  private tempNpc(id: string, name: string, portrait: string, look: NpcLook, x: number, y: number, role: 'follower' | 'thief' | 'actor'): Npc {
+    return { id, name, portrait, look, activity: 'idle', x, y, region: this.regionAt(x).id, role, lines: [], barks: [], homeX: x, homeY: y, tx: x, ty: y, moving: false, faceX: 1, waitT: 0, routeI: 0, routeDir: 1, workT: 0, bark: '', barkT: 0, barkCd: 3, walkT: 0, poiName: this.poiAt({ x, y })?.name || '' };
+  }
+  private poi(id?: string) { return id ? this.world.pois.find(p => p.id === id) || null : null; }
+  private followerOf(qid: string) { return this.npcs.find(n => n.role === 'follower' && n.quest === qid) || null; }
+  private thiefOf(qid: string) { return this.npcs.find(n => n.role === 'thief' && n.quest === qid) || null; }
+  private removeQuestNpcs(qid: string) { for (let i = this.npcs.length - 1; i >= 0; i--) if (this.npcs[i].quest === qid && this.npcs[i].role !== 'villager') this.npcs.splice(i, 1); }
+  /** Where an escort ends: the place it names, or (after a rescue) whoever the captive is brought home to. */
+  private escortGoal(q: QuestDef): Point | null {
+    if (q.kind === 'escort') return this.poi(q.place);
+    const to = this.npcs.find(n => n.id === this.reportTo(q)); return to ? { x: to.x, y: to.y } : null;
+  }
+  private spawnFollower(q: QuestDef, at: Point) {
+    if (this.followerOf(q.id)) return;
+    const c = q.who || q.captive; if (!c) return;
+    const n = this.tempNpc(`${q.id}:follower`, c.name, c.portrait, c.look, at.x, at.y, 'follower');
+    n.quest = q.id; n.beast = q.beast === 'wolf'; n.spirit = n.beast; this.npcs.push(n);
+    // Two ambushes wait along the way, ahead of where the walk starts.
+    const goal = this.escortGoal(q); if (!goal) return;
+    const d0 = dist(at, goal), nx = -(goal.y - at.y) / Math.max(1, d0), ny = (goal.x - at.x) / Math.max(1, d0);
+    if (d0 < 900) return;
+    for (const f of [.35, .72]) this.ambushes.push({ q: q.id, x: at.x + (goal.x - at.x) * f + nx * 170, y: at.y + (goal.y - at.y) * f + ny * 170, done: false });
+  }
+  private updateFollower(n: Npc, dt: number) {
+    const q = this.quest(n.quest!); if (!q) return;
+    const h = this.hero, st = this.qs(q.id);
+    n.barkT = Math.max(0, n.barkT - dt); n.barkCd -= dt;
+    const say = (lines: string[]) => { if (n.barkCd <= 0) { n.bark = pick(lines); n.barkT = 2.6; n.barkCd = rand(5, 8); } };
+    if (st.status !== 'active') { n.moving = false; n.faceX = h.x > n.x ? 1 : -1; return; }
+    const threat = this.enemies.some(e => !e.dead && e.spawnT <= 0 && !e.boss && (e.aggro || e.guard === q.id) && Math.abs(e.x - n.x) < 480 && Math.abs(e.y - n.y) < 480 && dist(e, n) < 460);
+    n.scared = threat;
+    const dh = dist(h, n);
+    if (threat) { n.moving = false; say(n.beast ? ['(whimpers)', '(growls, hackles up)'] : ['Eek! Keep them away!', 'Help!', 'I can’t go on with those things here!']); }
+    else if (dh > 760) { n.moving = false; say(n.beast ? ['(howls for you)'] : ['Wait for me!', 'Not so fast!', 'Don’t leave me behind!']); }
+    else if (dh > 90) {
+      const sp = this.riding ? 340 : 240, dx = h.x - n.x, dy = h.y - n.y, ox = n.x, oy = n.y;
+      n.x += dx / dh * sp * dt; n.y += dy / dh * sp * dt; n.moving = true; n.walkT += dt * sp / 18;
+      if (Math.abs(dx) > 2) n.faceX = dx > 0 ? 1 : -1;
+      this.collide(n, 14);
+      // Caught on a tree or a wall for a while: catch up behind the hero instead of walking on the spot.
+      n.restT = Math.hypot(n.x - ox, n.y - oy) < sp * dt * .3 ? (n.restT || 0) + dt : 0;
+      if (n.restT > 1.2 && dh > 160) { const p = { x: h.x - (dx / dh) * 70, y: h.y - (dy / dh) * 70 }; this.collide(p, 14); n.x = p.x; n.y = p.y; n.restT = 0; this.emit(n.x, n.y, 8, 'rgba(220,200,150,.55)', { speed: 60, life: .5, kind: 'smoke', size: 8 }); }
+    } else { n.moving = false; n.faceX = h.x > n.x ? 1 : -1; }
+    const goal = this.escortGoal(q);
+    if (goal && dist(n, goal) < 200) {
+      const lines = this.tx(q).arrive || [];
+      if (q.auto) { st.progress = q.count; this.autoComplete(q, lines); return; }
+      if (lines.length) this.say(n.name, n.portrait, lines);
+      this.advance(q, q.count - st.progress);
+    }
+  }
+  private checkAmbushes() {
+    for (const a of this.ambushes) {
+      if (a.done) continue;
+      const q = this.quest(a.q), f = this.followerOf(a.q);
+      if (!q || this.qs(q.id).status !== 'active') { a.done = true; continue; }
+      if (!f || dist(f, a) > 640) continue;
+      a.done = true;
+      const reg = this.region(q.region), kinds: EnemyKind[] = q.ambush?.length ? q.ambush : this.world.enemies.filter(e => e.region === q.region && !e.boss && Math.abs(e.x - a.x) < 2000).map(e => e.kind).slice(0, 6);
+      const near = this.world.enemies.filter(e => e.region === q.region && !e.boss && Math.abs(e.x - a.x) < 1600 && Math.abs(e.y - a.y) < 1600);
+      const level = near.length ? Math.round(near.reduce((s, e) => s + e.level, 0) / near.length) : reg.levels[0];
+      for (let i = 0; i < 3; i++) {
+        const ang = i / 3 * 6.28, p = { x: a.x + Math.cos(ang) * 90, y: a.y + Math.sin(ang) * 70 }; this.collide(p, 24);
+        const e = this.makeEnemy({ id: `${q.id}-amb-${this.summonCount++}`, kind: kinds.length ? kinds[i % kinds.length] : 'gloomling', x: p.x, y: p.y, level, region: q.region, guard: q.id, elite: i === 0 });
+        e.aggro = true; e.spawnT = .7; this.enemies.push(e);
+        this.emit(p.x, p.y, 14, ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 140, life: .7, kind: 'smoke', size: 12 });
+      }
+      this.notice(`Ambush! Protect ${f.name}!`, 'warn', 'Ambush!'); this.play('roar'); this.addShake(6);
+    }
+  }
+  private spawnThief(q: QuestDef) {
+    if (this.thiefOf(q.id) || !q.who) return;
+    const p = this.poi(q.place) || this.hero, s = { x: p.x + 60, y: p.y + 40 }; this.collide(s, 20);
+    const n = this.tempNpc(`${q.id}:thief`, q.who.name, q.who.portrait, q.who.look, s.x, s.y, 'thief');
+    n.quest = q.id; n.tireT = 4; n.restT = 0; n.ang = 0; this.npcs.push(n);
+  }
+  private updateThief(n: Npc, dt: number) {
+    const q = this.quest(n.quest!); if (!q || this.qs(q.id).status !== 'active') return;
+    const h = this.hero, d = dist(h, n);
+    n.barkT = Math.max(0, n.barkT - dt); n.barkCd -= dt; n.restT = Math.max(0, (n.restT || 0) - dt);
+    if (d < 56 && !this.cine) { this.catchThief(q, n); return; }
+    if (!n.scared) {
+      n.moving = false; n.faceX = h.x > n.x ? 1 : -1;
+      if (d < 380) { n.scared = true; n.tireT = rand(3.4, 4.6); n.bark = pick(['Can’t catch me!', 'Too slow!', 'Eep! Run!']); n.barkT = 2.4; this.play('squeak', n); this.notice(`${n.name} is getting away — catch them!`, 'warn', 'Catch them!'); }
+      return;
+    }
+    if (d > 1500) { n.scared = false; n.x = n.homeX; n.y = n.homeY; n.moving = false; this.notice(`${n.name} slipped away back to their hiding place.`, 'info', 'They got away'); return; }
+    if (n.restT > 0) { n.moving = false; if (Math.random() < dt * 6) this.emit(n.x + n.faceX * 12, n.y - 30, 1, 'rgba(255,255,255,.6)', { speed: 20, life: .5, size: 3, grav: -20 }); return; }
+    n.tireT = (n.tireT || 0) - dt;
+    if (n.tireT <= 0) { n.restT = 1.15; n.tireT = rand(3.2, 4.6); n.bark = 'Huff… puff…'; n.barkT = 1.2; return; }
+    // Runs from the hero with a pull back toward home, so the chase circles instead of crossing the map.
+    let ax = (n.x - h.x) / Math.max(1, d), ay = (n.y - h.y) / Math.max(1, d);
+    const hx = n.homeX - n.x, hy = n.homeY - n.y, hl = Math.hypot(hx, hy) || 1, pull = clamp((hl - 450) / 900, 0, .75);
+    const a = Math.atan2(ay * (1 - pull) + hy / hl * pull, ax * (1 - pull) + hx / hl * pull) + (n.ang || 0) + Math.sin(this.elapsed * 1.7) * .3;
+    ax = Math.cos(a); ay = Math.sin(a);
+    const sp = 236, ox = n.x, oy = n.y;
+    n.x = clamp(n.x + ax * sp * dt, 80, this.world.width - 80); n.y = clamp(n.y + ay * sp * dt, 80, this.world.height - 80);
+    this.collide(n, 14);
+    // Stuck against a tree or a wall: try another way.
+    if (Math.hypot(n.x - ox, n.y - oy) < sp * dt * .35) n.ang = (n.ang || 0) + (Math.random() < .5 ? 1.3 : -1.3); else n.ang = (n.ang || 0) * Math.pow(.2, dt);
+    n.moving = true; n.walkT += dt * sp / 16; if (Math.abs(ax) > .1) n.faceX = ax > 0 ? 1 : -1;
+    if (Math.random() < dt * 6) this.emit(n.x, n.y + 18, 1, 'rgba(220,200,150,.55)', { speed: 30, life: .5, kind: 'smoke', size: 6 });
+  }
+  private catchThief(q: QuestDef, n: Npc) {
+    const lines = this.tx(q).deliver || ['Alright, alright! You caught me!'], at = { x: n.x, y: n.y };
+    this.npcs.splice(this.npcs.indexOf(n), 1);
+    this.play('pickup'); this.emit(at.x, at.y - 20, 24, ['#fff1b8', '#ffffff'], { speed: 180, life: .8, kind: 'star', glow: true });
+    if (q.escapes) this.cineFx({ kind: 'shadow', at: undefined, dx: 0, dy: 0 });
+    if (q.cine?.caught) this.queueCine(q.cine.caught, { $thief: at }, () => this.say(n.name, n.portrait, lines));
+    else this.say(n.name, n.portrait, lines);
+    this.advance(q, 1);
+  }
+  private penOf(qid: string) { return this.world.objects.find(o => o.kind === 'pen' && o.questId === qid) || null; }
+  private spawnHerd(q: QuestDef) {
+    if (this.critters.some(c => c.herd === q.id)) return;
+    const near = this.poi(q.near), pen = this.penOf(q.id); if (!near || !pen) return;
+    const st = this.qs(q.id);
+    for (let i = 0; i < q.count; i++) {
+      const penned = i < st.progress, a = rand(0, 6.28), r = penned ? rand(0, 50) : rand(260, 620);
+      const base = penned ? pen : near, p = { x: base.x + Math.cos(a) * r, y: base.y + Math.sin(a) * r * .7 };
+      if (!penned) { this.collide(p, 14); if (inPond(this.world.ponds, p.x, p.y, 20)) { p.x = near.x + rand(-200, 200); p.y = near.y + rand(-160, 160); } }
+      this.critters.push({ kind: q.animal || 'sheep', x: p.x, y: p.y, homeX: p.x, homeY: p.y, tx: p.x, ty: p.y, state: 'idle', t: rand(0, 2), face: 1, alt: 0, hop: 0, seed: Math.random(), herd: q.id, penned });
+    }
+  }
+  private updateHerdAnimal(c: Critter, dt: number) {
+    const q = this.quest(c.herd!), pen = this.penOf(c.herd!), h = this.hero;
+    c.hop += dt; c.t -= dt;
+    if (!q || !pen) return;
+    if (c.penned) {
+      if (c.t <= 0) { const a = rand(0, 6.28), r = rand(0, 55); c.tx = pen.x + Math.cos(a) * r; c.ty = pen.y + Math.sin(a) * r * .6; c.t = rand(2, 5); c.state = 'move'; }
+      const dx = c.tx - c.x, dy = c.ty - c.y, d = Math.hypot(dx, dy);
+      if (d > 3) { c.x += dx / d * 22 * dt; c.y += dy / d * 22 * dt; c.face = dx > 0 ? 1 : -1; } else c.state = 'idle';
+      return;
+    }
+    const d = dist(h, c), ox = c.x, oy = c.y;
+    if (d < 210 && this.qs(q.id).status === 'active') {
+      // Walk up behind an animal and it trots away from you: that is how you steer it into the pen.
+      const a0 = Math.atan2(c.y - h.y, c.x - h.x), a = a0 + (c.slide || 0), sp = d < 120 ? 200 : 130;
+      c.x += Math.cos(a) * sp * dt; c.y += Math.sin(a) * sp * dt; c.state = 'flee'; c.face = Math.cos(a) > 0 ? 1 : -1;
+      this.collide(c, 12);
+      // Pressed against a house or a rock: slide along it, turning toward the side the pen is on.
+      if (Math.hypot(c.x - ox, c.y - oy) < sp * dt * .35) { const toPen = Math.atan2(pen.y - c.y, pen.x - c.x), side = Math.sin(toPen - a0) >= 0 ? 1 : -1; c.slide = clamp((c.slide || 0) + side * dt * 6, -1.6, 1.6); }
+      else c.slide = (c.slide || 0) * Math.pow(.3, dt);
+      if (Math.random() < dt * .8) this.play('squeak', c);
+    } else {
+      if (c.t <= 0) { c.tx = c.x + rand(-60, 60); c.ty = c.y + rand(-40, 40); c.t = rand(2, 5); c.state = 'move'; }
+      const dx = c.tx - c.x, dy = c.ty - c.y, dd = Math.hypot(dx, dy);
+      if (dd > 3 && c.state === 'move') { c.x += dx / dd * 18 * dt; c.y += dy / dd * 18 * dt; c.face = dx > 0 ? 1 : -1; } else c.state = 'idle';
+    }
+    this.collide(c, 12);
+    if (inPond(this.world.ponds, c.x, c.y, 4)) { c.x = ox; c.y = oy; }
+    if (dist(c, pen) < 80) {
+      c.penned = true; c.state = 'idle'; c.t = 1;
+      this.text(c.x, c.y - 40, '✓', '#b9f29d', 22); this.emit(c.x, c.y - 10, 12, ['#b9f29d', '#ffffff'], { speed: 120, life: .6, kind: 'star', glow: true });
+      this.play('pickup', c); this.advance(q, 1);
+    }
+  }
+
+  // ───────────────────────────── trails, switches, building
+  private checkClues() {
+    const h = this.hero;
+    for (const o of this.world.objects) {
+      if (o.kind !== 'clue' || Math.abs(o.x - h.x) > 110 || Math.abs(o.y - h.y) > 110 || !this.visibleObject(o) || dist(h, o) > 100) continue;
+      const q = this.quest(o.questId!); if (!q) continue;
+      const st = this.qs(q.id), line = q.clues?.[o.step || 0] || '…', voice = this.guideVoice, last = st.progress + 1 >= q.count;
+      this.got.add(o.id); this.play('discover');
+      this.emit(o.x, o.y - 10, 26, ['#fff1b8', '#ffffff', '#b9f29d'], { speed: 180, life: .9, kind: 'star', glow: true });
+      if (last && q.auto) { st.progress = q.count; this.complete(q, null, [], true); this.say(voice.name, voice.portrait, [line, ...this.tx(q).complete]); return; }
+      this.say(voice.name, voice.portrait, [line]);
+      this.advance(q, 1);
+      return;
+    }
+  }
+  private lightSwitch(o: WorldObject) {
+    const q = this.quest(o.questId!), st = q && this.quests.get(q.id), c = SWITCH_COLOR[o.variant || 'brazier'] || '#ffcf6e';
+    if (this.got.has(o.id)) { this.notice(`The ${o.name.toLowerCase()} is already burning.`); return; }
+    if (!q || !st || st.status !== 'active') { this.play('page'); this.say(o.name, '🕯️', ['Cold and dark. It is waiting for something.']); return; }
+    if (q.ordered && (o.step || 0) !== st.progress) {
+      // The wrong one: every light of the puzzle goes out again.
+      for (const s of this.world.objects) if (s.questId === q.id && s.kind === 'switch' && this.got.has(s.id)) { this.got.delete(s.id); this.emit(s.x, s.y - 30, 12, 'rgba(120,110,130,.6)', { speed: 80, life: 1, kind: 'smoke', size: 12 }); }
+      st.progress = 0; this.touchQuests(); this.play('nope'); this.addShake(4);
+      const v = this.guideVoice; this.say(v.name, v.portrait, [`The ${o.name.toLowerCase()} sputters, and every light goes out at once. The order must matter.`, ...(this.tx(q).progress.slice(0, 1))]);
+      return;
+    }
+    this.got.add(o.id); this.play('learn', o); this.flash = Math.max(this.flash, .12);
+    this.emit(o.x, o.y - 34, 34, [c, '#ffffff', '#fff1b8'], { speed: 220, life: 1, kind: 'star', glow: true, size: 5 }); this.ring(o.x, o.y - 20, 90, c, .6);
+    this.advance(q, 1);
+  }
+  switchLit(o: WorldObject) { return this.got.has(o.id); }
+  questProgress(id: string) { return this.quests.get(id)?.progress || 0; }
+  siteBuilt(o: WorldObject) { return this.got.has(o.id); }
+  private startWork(o: WorldObject) {
+    const q = this.quest(o.questId!), st = q && this.quests.get(q.id);
+    if (this.got.has(o.id)) { this.say(o.name, '🔨', ['It stands strong. Good work.']); return; }
+    if (!q || !st || st.status !== 'active') { this.play('page'); this.say(o.name, '🔨', ['A building site, marked out with stakes and string. It needs a plan, and materials.']); return; }
+    if (st.progress < q.count) { this.play('nope'); this.notice(`You need ${q.count - st.progress} more ${q.item?.toLowerCase()} to build here.`, 'warn', `${st.progress}/${q.count} ${q.item}`); return; }
+    this.dismount(); this.work = { o, q, t: 0 }; this.play('hammer', o);
+  }
+  private updateWork(dt: number) {
+    const w = this.work!, h = this.hero;
+    if (Math.hypot(h.vx, h.vy) > 60 || dist(h, w.o) > 150) { this.work = null; this.notice('Building stopped. Stand still at the site to build.', 'info', 'Stopped'); return; }
+    const before = w.t; w.t += dt;
+    if (Math.floor(before / .42) !== Math.floor(w.t / .42)) { this.play('hammer', w.o); this.emit(w.o.x + rand(-40, 40), w.o.y - rand(10, 40), 6, ['#c9a06a', '#8a6a4a', 'rgba(200,180,140,.6)'], { speed: 120, life: .6, kind: 'shard', size: 4, grav: 400 }); }
+    if (w.t < WORK_TIME) return;
+    this.work = null; this.got.add(w.o.id);
+    this.cineFx({ kind: 'build', at: `obj:${w.o.id}` }); this.addShake(5);
+    this.notice(`${w.o.name} built!`, 'epic', 'Built!'); this.touchQuests();
+    const q = w.q, st = this.qs(q.id);
+    if (q.auto) { this.autoComplete(q); return; }
+    st.status = 'ready'; this.eventHandler({ type: 'quest', title: q.title, state: 'ready' }); this.play('quest');
+    const to = this.npcs.find(n => n.id === this.reportTo(q)); this.notice(`${q.title}: report to ${to?.name || 'the quest giver'}.`, 'good', `Report to ${to?.name.split(' ').pop() || 'giver'}`);
+    if (q.cine?.ready) this.queueCine(q.cine.ready, this.cineCtx(q));
+  }
+
+  // ───────────────────────────── sieges
+  private wardOf(qid: string) { return this.world.objects.find(o => o.kind === 'ward' && o.questId === qid) || null; }
+  private updateSiege(dt: number) {
+    const h = this.hero;
+    if (!this.siege) {
+      if (this.siegeCd > 0) { this.siegeCd -= dt; return; }
+      for (const q of this.world.quests) {
+        if (q.kind !== 'defend' || this.qs(q.id).status !== 'active') continue;
+        const ward = this.wardOf(q.id); if (!ward || Math.abs(ward.x - h.x) > 600 || dist(ward, h) > 560) continue;
+        this.siege = { q, ward, wave: this.qs(q.id).progress, waveT: 3, hp: SIEGE_HP, spawned: false, raiders: [] };
+        this.notice(`${q.title}: defend ${q.ward?.toLowerCase() || 'the barricade'}!`, 'epic', 'Defend!');
+        if (q.cine?.start) this.queueCine(q.cine.start, { $ward: { x: ward.x, y: ward.y } });
+        return;
+      }
+      return;
+    }
+    const s = this.siege, st = this.qs(s.q.id), waves = s.q.waves || [3, 4, 5];
+    if (st.status !== 'active') { this.siege = null; return; }
+    if (dist(h, s.ward) > 1700) { this.failSiege('You left the fight, and the attackers melted back into the dark.'); return; }
+    if (this.cinePlaying) return;
+    if (s.spawned && !s.raiders.some(e => !e.dead)) {
+      s.spawned = false; s.wave++; st.progress = s.wave; this.touchQuests();
+      if (s.wave >= waves.length) { this.winSiege(); return; }
+      this.notice(`Wave ${s.wave} of ${waves.length} beaten! More are coming…`, 'good', `Wave ${s.wave}/${waves.length}`); this.play('quest'); s.waveT = 6;
+      s.hp = Math.min(SIEGE_HP, s.hp + 15);
+    }
+    if (!s.spawned) { s.waveT -= dt; if (s.waveT <= 0) this.spawnWave(); return; }
+    for (const e of s.raiders) {
+      if (e.dead || e.aggro || e.spawnT > 0 || Math.abs(e.x - s.ward.x) > 90 || dist(e, s.ward) > 84) continue;
+      s.hp -= dt * (e.elite ? 3.2 : 2.2);
+      if (Math.random() < dt * 2) { this.emit(s.ward.x + rand(-30, 30), s.ward.y - rand(10, 50), 5, ['#c9a06a', '#ffffff'], { speed: 140, life: .4, kind: 'shard', size: 3, grav: 300 }); this.play('hit', s.ward); }
+    }
+    if (s.hp <= 0) this.failSiege(`${s.q.ward || 'The barricade'} has fallen!`);
+  }
+  private spawnWave() {
+    const s = this.siege!, q = s.q, waves = q.waves || [3, 4, 5], n = waves[s.wave] || 4, reg = this.region(q.region);
+    const kinds: EnemyKind[] = q.foes?.length ? q.foes : ['gloomling'];
+    const near = this.world.enemies.filter(e => e.region === q.region && !e.boss && Math.abs(e.x - s.ward.x) < 2400 && Math.abs(e.y - s.ward.y) < 2400);
+    const level = clamp((near.length ? Math.round(near.reduce((a, e) => a + e.level, 0) / near.length) : reg.levels[0]) + (s.wave > 1 ? 1 : 0), reg.levels[0], reg.levels[1]);
+    const base = rand(0, 6.28), gates = [0, 2.1, 4.2].map(a => ({ x: s.ward.x + Math.cos(base + a) * 760, y: s.ward.y + Math.sin(base + a) * 560 }));
+    for (let i = 0; i < n; i++) {
+      const g = gates[i % 3], p = { x: clamp(g.x + rand(-90, 90), reg.x0 + 120, reg.x1 - 120), y: clamp(g.y + rand(-70, 70), 120, this.world.height - 120) }; this.collide(p, 26);
+      const e = this.makeEnemy({ id: `${q.id}-raid-${this.summonCount++}`, kind: kinds[(i + s.wave) % kinds.length], x: p.x, y: p.y, level, region: q.region, guard: q.id, elite: s.wave === waves.length - 1 && i === 0 });
+      e.raid = { x: s.ward.x, y: s.ward.y }; e.homeX = s.ward.x; e.homeY = s.ward.y; e.spawnT = .8 + i * .12;
+      this.enemies.push(e); s.raiders.push(e);
+      this.emit(p.x, p.y, 14, ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 140, life: .8, kind: 'smoke', size: 12 });
+    }
+    s.spawned = true; this.play('roar'); this.addShake(5);
+    this.notice(`Wave ${s.wave + 1} of ${waves.length}: here they come!`, 'warn', `Wave ${s.wave + 1}/${waves.length}`);
+  }
+  private winSiege() {
+    const s = this.siege!, q = s.q, st = this.qs(q.id); this.siege = null;
+    this.cineFx({ kind: 'douse', at: `obj:${s.ward.id}` }); this.cineFx({ kind: 'light', at: `obj:${s.ward.id}` });
+    this.notice(`${q.title}: you held!`, 'epic', 'Victory!');
+    st.progress = q.count - 1; this.advance(q, 1);
+  }
+  private failSiege(msg: string) {
+    const s = this.siege; if (!s) return;
+    this.siege = null; this.siegeCd = 8;
+    for (const e of s.raiders) if (!e.dead) { e.dead = true; e.deadT = 0; this.emit(e.x, e.y, 10, ['#1a1030', '#6a4bd6'], { speed: 120, life: .6, kind: 'smoke', size: 10 }); }
+    const st = this.qs(s.q.id); st.progress = 0; this.touchQuests(); this.play('nope');
+    this.notice(`${msg} Regroup, then come back to try again.`, 'warn', 'Siege lost');
+  }
+  private raidMove(e: Enemy, dt: number) {
+    const t = e.raid!, dx = t.x - e.x, dy = t.y - e.y, d = Math.hypot(dx, dy), sp = ENEMY_STATS[e.kind].speed * .6;
+    if (d > 70) { e.x += dx / d * sp * dt; e.y += dy / d * sp * dt; }
+    else if (Math.random() < dt * 2) { e.lunge = .15; e.kx += dx / Math.max(1, d) * 200; e.ky += dy / Math.max(1, d) * 200; }
+    e.angle += dt * 2;
+  }
+
+  // ───────────────────────────── gates between the lands
+  barrierOpen(o: WorldObject) { const st = this.quests.get(o.questId!)?.status; if (st === 'done') return true; const q = this.quest(o.questId!); return q?.kind === 'build' && st === 'ready'; }
+  private blockBarriers() {
+    const h = this.hero;
+    for (const o of this.barriers) {
+      if (Math.abs(h.y - o.y) > 230 || h.x < o.x - 70 || h.x > o.x + 40 || this.barrierOpen(o)) continue;
+      h.x = o.x - 70; h.vx = Math.min(0, h.vx);
+      if (this.elapsed - this.barrierNoticeT > 4) { this.barrierNoticeT = this.elapsed; this.notice(BARRIER_TEXT[o.variant || 'bridge'], 'warn', 'The way is blocked'); }
+    }
+  }
+
+  // ───────────────────────────── choices
+  /** The player picked an answer at the end of a conversation: finish the quest, with that answer's words and bonus. */
+  choose(id: string, pick: 'a' | 'b') {
+    const q = this.quest(id); if (!q?.choice) return;
+    const st = this.qs(q.id); if (st.status === 'done') return;
+    const opt = q.choice[pick], n = this.npcs.find(x => x.id === (this.isTalk(q) ? q.to : this.reportTo(q))) || null;
+    this.choices[id] = pick;
+    const key = `choice:${id}`, r = opt.reward;
+    if (r && !this.profile.claimed.includes(key)) {
+      this.profile.claimed.push(key);
+      if (r.hearts) this.profile.bonusHearts += r.hearts;
+      if (r.mana) this.profile.bonusMana += r.mana;
+      if (r.gold) this.gainGold(r.gold);
+      if (r.item) this.addItem(r.item);
+      if (r.xp) this.gainXp(Math.round(r.xp * this.region(q.region).xpScale));
+      if (r.regen) this.profile.regen += r.regen;
+      this.refreshStats(false);
+    }
+    this.complete(q, n, [], true);
+    const next = n && this.offerFrom(n);
+    if (n && next) this.offerQuest(next, n, opt.lines); else if (n) this.say(n.name, n.portrait, opt.lines); else { const v = this.guideVoice; this.say(v.name, v.portrait, opt.lines); }
+  }
+  choiceOf(id: string) { return this.choices[id] || null; }
+
+  // ───────────────────────────── the intro
+  /** A new adventure opens with the storybook prologue and this hero's intro cutscene. */
+  get needsIntro() { return !this.introSeen && this.quests.get('meadow:m1')?.status === 'available' && this.elapsed < 30; }
+  startIntro() {
+    this.introSeen = true;
+    this.queueCine('intro', {}, () => { const v = this.guideVoice; this.say(v.name, v.portrait, [INTRO_LINE[this.heroId]]); });
+  }
+  skipIntro() { this.introSeen = true; const v = this.guideVoice; this.say(v.name, v.portrait, [INTRO_LINE[this.heroId]]); }
+  private cineCtx(q: QuestDef): Record<string, Point> {
+    const ward = this.wardOf(q.id), site = this.world.objects.find(o => o.kind === 'site' && o.questId === q.id);
+    return { ...(ward ? { $ward: { x: ward.x, y: ward.y } } : {}), ...(site ? { $site: { x: site.x, y: site.y } } : {}) };
+  }
+  /** A quest whose goal is met with no one to report to: it finishes on the spot, and whoever gave it speaks. */
+  private autoComplete(q: QuestDef, before: string[] = []) {
+    // Narration in brackets is the hero's (or Tuft's) to tell, not the far-away quest giver's.
+    const lines = [...before, ...this.tx(q).complete], giver = this.npcs.find(n => n.id === q.giver), v = giver && !lines[0]?.startsWith('(') ? giver : this.guideVoice;
+    this.complete(q, null, [], true);
+    if (lines.length) this.say(v.name, v.portrait, lines);
+  }
+  /** Chapters end with whatever the last main quest of a land is: then its achievement, a cutscene, and the next land. */
+  private endChapter(r: RegionId) {
+    const side = this.sideQuests(r), done = side.filter(q => this.qs(q.id).status === 'done').length;
+    this.statMax(`chapter:${r}`, 1);
+    this.eventHandler({ type: 'levelComplete', region: r, last: r === this.lastRegion, stats: { stars: this.earnedStars(r), time: this.elapsed - this.chapterStart.elapsed, defeated: this.defeated - this.chapterStart.defeated, quests: done, totalQuests: side.length, level: this.profile.level } });
+    this.chapterStart = { elapsed: this.elapsed, defeated: this.defeated };
+    this.queueCine(`chapter-${r}`);
+    this.foxDelay = 1.5;
   }
 
   // ───────────────────────────── rescues
@@ -1039,7 +1663,7 @@ export class GameEngine {
     this.eventHandler({ type: 'item', id, count });
   }
   useItem(id: ItemId) {
-    if (this.completeTimer > 0) return;
+    if (this.completeTimer > 0 || this.cine) return;
     const bag = this.profile.items, have = bag[id] || 0, h = this.hero, info = ITEMS[id];
     if (have <= 0) { this.play('nope'); this.notice(`You have no ${info.name} left. Buy more from a city merchant.`, 'warn', `No ${info.name}`); return; }
     if (id === 'healthPotion' && h.hp >= h.maxHp) { this.play('nope'); this.notice('Your health is already full.', 'warn', 'Health full'); return; }
@@ -1198,9 +1822,12 @@ export class GameEngine {
     if (o.kind === 'key') return !this.main.keys.includes(o.id) && this.world.quests.some(q => q.kind === 'key' && this.qs(q.id).status === 'active' && q.keys!.some(i => this.keyId(q, i) === o.id));
     if (o.kind === 'questItem') return !this.got.has(o.id) && this.qs(o.questId!)?.status === 'active';
     if (o.kind === 'cage') return !this.got.has(o.id) && this.qs(o.questId!)?.status === 'active';
+    if (o.kind === 'clue') { const st = this.quests.get(o.questId!); return !!st && st.status === 'active' && st.progress === o.step; }
+    if (o.kind === 'switch') { const s = this.quests.get(o.questId!)?.status; return s === 'active' || s === 'ready' || s === 'done'; }
+    if (o.kind === 'site' || o.kind === 'pen' || o.kind === 'ward') return this.quests.has(o.questId!);
     return true;
   }
-  private interactable(o: WorldObject) { return this.visibleObject(o) && !(o.kind === 'chest' && this.opened.has(o.id)) && !((o.kind === 'crack' || o.kind === 'waterfall') && this.secrets.has(o.id)); }
+  private interactable(o: WorldObject) { return this.visibleObject(o) && o.kind !== 'clue' && o.kind !== 'pen' && o.kind !== 'ward' && !(o.kind === 'barrier' && this.barrierOpen(o)) && !(o.kind === 'site' && this.got.has(o.id)) && !(o.kind === 'chest' && this.opened.has(o.id)) && !((o.kind === 'crack' || o.kind === 'waterfall') && this.secrets.has(o.id)); }
   secretFound(id: string) { return this.secrets.has(id); }
   /** A cracked wall bursts, or the water parts: whatever was hidden behind appears. */
   private revealSecret(o: WorldObject) {
@@ -1221,13 +1848,13 @@ export class GameEngine {
     let best: Near | null = null, bd = maxRange;
     const h = this.hero;
     // Quest pickups win over a villager standing right next to them.
-    for (const o of this.world.objects) { if (Math.abs(o.x - h.x) > maxRange + 40 || Math.abs(o.y - h.y) > maxRange + 40 || !this.interactable(o)) continue; const d = dist(h, o) - (o.kind === 'questItem' || o.kind === 'key' ? 30 : o.kind === 'cage' ? 40 : 0); if (d < bd) { bd = d; best = { kind: 'object', o }; } }
-    for (const n of this.npcs) { if (Math.abs(n.x - h.x) > maxRange || Math.abs(n.y - h.y) > maxRange || !this.npcVisible(n)) continue; const d = dist(h, n) - 12; if (d < bd) { bd = d; best = { kind: 'npc', n }; } }
+    for (const o of this.world.objects) { if (Math.abs(o.x - h.x) > maxRange + 40 || Math.abs(o.y - h.y) > maxRange + 40 || !this.interactable(o)) continue; const d = dist(h, o) - (o.kind === 'questItem' || o.kind === 'key' || o.kind === 'switch' ? 30 : o.kind === 'cage' || o.kind === 'site' ? 40 : 0); if (d < bd) { bd = d; best = { kind: 'object', o }; } }
+    for (const n of this.npcs) { if (Math.abs(n.x - h.x) > maxRange || Math.abs(n.y - h.y) > maxRange || n.role === 'thief' || n.role === 'actor' || !this.npcVisible(n)) continue; const d = dist(h, n) - 12; if (d < bd) { bd = d; best = { kind: 'npc', n }; } }
     return best;
   }
   interact() {
     sfx.unlock();
-    if (this.completeTimer > 0) return;
+    if (this.completeTimer > 0 || this.cine) return;
     const near = this.nearest(); if (!near) return;
     if (near.kind === 'npc') return this.talk(near.n);
     const o = near.o, reg = this.region(o.region), s = reg.script, h = this.hero, m = this.main, acc = reg.palette.accent;
@@ -1255,8 +1882,9 @@ export class GameEngine {
         this.got.add(o.id); this.play('chest', o); this.flash = .25;
         this.emit(o.x, o.y - 30, 50, ['#fff1b8', '#ffffff', acc], { speed: 280, life: 1.1, kind: 'star', glow: true, size: 5 });
         this.ring(o.x, o.y, 120, acc, .7);
-        if (q.captive) this.say(q.captive.name, q.captive.portrait, q.text.deliver || ['Thank you!']);
-        this.advance(q, 1);
+        if (q.captive) this.say(q.captive.name, q.captive.portrait, this.tx(q).deliver || ['Thank you!']);
+        if (q.escort) { this.spawnFollower(q, { x: o.x, y: o.y + 40 }); this.notice(`Bring ${q.captive?.name} home safely.`, 'good', 'Escort them home'); this.touchQuests(); }
+        else this.advance(q, 1);
         return;
       }
       case 'chest': {
@@ -1279,6 +1907,9 @@ export class GameEngine {
         return;
       }
       case 'sign': this.play('page'); this.say(o.name, '🪧', o.text || []); return;
+      case 'site': this.startWork(o); return;
+      case 'switch': this.lightSwitch(o); return;
+      case 'barrier': this.play('page'); this.say(o.name, o.variant === 'ice' ? '🧊' : o.variant === 'thorns' ? '🌿' : '🌉', [this.barrierOpen(o) ? BARRIER_OPEN[o.variant || 'bridge'] : BARRIER_TEXT[o.variant || 'bridge']]); return;
       case 'crack': this.play('page'); this.say(o.name, '🪨', ['Cold air seeps through the cracks in this old wall. Something is hidden behind it.', `A bomb could break it open. (Throw one close by${this.profile.items.fireBomb || this.profile.items.frostBomb || this.profile.items.thunderJar ? ' — you have some in your bag' : ' — merchants sell fire bombs'}.)`]); return;
       case 'waterfall': this.revealSecret(o); this.say(o.name, reg.ground === 'ash' ? '🔥' : '💧', reg.ground === 'ash' ? ['You edge along the rock behind the falling lava. The heat is fierce…', '…but there is a cave back here, and something glints inside!'] : ['You slip behind the falling water, soaked to the bone…', '…and find a hidden cave with something glinting inside!']); return;
       case 'well': case 'fountain': {
@@ -1319,12 +1950,14 @@ export class GameEngine {
   }
   private talk(n: Npc) {
     const m = this.main;
+    if (n.role === 'follower') { this.say(n.name, n.portrait, [n.beast ? '(The little wolf presses against your leg and wags.)' : n.scared ? 'Not while those creatures are here! Please, chase them off!' : pick(['Lead the way. I’m right behind you.', 'Is it much farther?', 'I feel safer with you here.'])]); return; }
+    if (n.role === 'thief' || n.role === 'actor') return;
     n.faceX = this.hero.x > n.x ? 1 : -1; n.waitT = Math.max(n.waitT, 3);
     if (n.role === 'guide' || n.role === 'inn') this.setCheckpoint();
     // Someone you were sent to speak with, or bring something to, comes first; then hand-ins, then new quests.
-    for (const q of this.world.quests) if (this.isTalk(q) && q.to === n.id && this.qs(q.id).status === 'active') return this.finish(q, n, q.text.deliver || ['Thank you!']);
+    for (const q of this.world.quests) if (this.isTalk(q) && q.to === n.id && this.qs(q.id).status === 'active') return this.finish(q, n, this.tx(q).deliver || ['Thank you!']);
     const ready = this.world.quests.find(q => this.qs(q.id).status === 'ready' && this.reportTo(q) === n.id);
-    if (ready) return this.finish(ready, n, ready.text.complete);
+    if (ready) return this.finish(ready, n, this.tx(ready).complete);
     const offer = this.offerFrom(n); if (offer) return this.offerQuest(offer, n);
     if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
     if (n.role === 'inn') {
@@ -1334,24 +1967,25 @@ export class GameEngine {
     }
     const mine = this.questsFor(n.id);
     const active = mine.find(q => q.main && this.qs(q.id).status === 'active') || mine.find(q => this.qs(q.id).status === 'active');
-    if (active) { const st = this.qs(active.id), counted = active.count > 1 && (active.kind === 'collect' || active.kind === 'slay' || active.kind === 'key'); return this.say(n.name, n.portrait, [...active.text.progress, counted ? `(${st.progress}/${active.count})` : ''].filter(Boolean)); }
+    if (active) { const st = this.qs(active.id), counted = active.count > 1 && (active.kind === 'collect' || active.kind === 'slay' || active.kind === 'key'); return this.say(n.name, n.portrait, [...this.tx(active).progress, counted ? `(${st.progress}/${active.count})` : ''].filter(Boolean)); }
     if (n.role === 'guide') { const cur = this.currentMain(), reg = this.region(n.region); return this.say(n.name, n.portrait, m.finales.includes(n.region) || !cur ? reg.script.guide.done : [`${cur.title}: ${cur.summary}`, `Follow the gold markers, ${HEROES[this.heroId].name}. The valley is counting on you.`]); }
     const game = this.gameOf(n);
     if (game) return this.offerGame(n, game, [pick(n.lines.length ? n.lines : ['Hello there!'])]);
     const done = mine.find(q => this.qs(q.id).status === 'done');
-    this.say(n.name, n.portrait, done && Math.random() < .5 ? done.text.after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
+    this.say(n.name, n.portrait, done && Math.random() < .5 ? this.tx(done).after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
   }
   /** Main story offers come before side quests. */
   private offerFrom(n: Npc) { const open = this.questsFor(n.id).filter(q => this.qs(q.id).status === 'available'); return open.find(q => q.main) || open[0] || null; }
   /** Hands a quest in; if the same person has the next step, it is offered right after their thanks. */
   private finish(q: QuestDef, n: Npc, lines: string[]) {
+    if (q.choice) { sfx.play('talk'); this.eventHandler({ type: 'choice', speaker: n.name, portrait: n.portrait, lines: this.personal(lines), quest: q.id, title: q.title, a: q.choice.a.label, b: q.choice.b.label }); return; }
     this.complete(q, n, lines, true);
     const next = this.offerFrom(n);
     if (next) this.offerQuest(next, n, lines); else this.say(n.name, n.portrait, lines);
   }
   /** Called by the UI once the finale dialogue closes: fireworks, then the chapter is complete and the story walks on. */
   celebrate() {
-    if (this.completeTimer > 0) return;
+    if (this.completeTimer > 0 || this.cine) return;
     this.completeTimer = 3.2; this.fireworkTimer = 0; this.flash = .8; this.addShake(8); this.play('victory');
     const f = this.finaleOf(this.completeRegion);
     if (f) { const acc = this.region(f.region).palette.accent; this.ring(f.x, f.y, 400, acc, 1.4); this.emit(f.x, f.y - 40, 120, [acc, '#ffffff', '#fff1b8'], { speed: 520, life: 1.6, kind: 'star', glow: true, size: 6, drag: 1.6 }); }
@@ -1444,7 +2078,7 @@ export class GameEngine {
   /** `amount` is in health points before level, armour and potion reductions. */
   private hurt(amount: number, from: Point, level: number) {
     const h = this.hero;
-    if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0) return;
+    if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0 || this.cine) return;
     if (h.shieldTime > 0) {
       this.ring(h.x, h.y, 50, this.heroId === 'lyra' ? '#bfeaff' : '#9fe8b0', .25); this.play('reflect');
       // Ice Barrier chills whatever strikes it.
@@ -1478,7 +2112,9 @@ export class GameEngine {
     const lost = Math.floor(this.profile.gold * .1); this.profile.gold -= lost; this.profileDirty = true;
     this.respawnFade = 1; this.clearThreats = true; this.cleanFight = false; this.bump('deaths');
     this.marks.length = 0; this.storms.length = 0; this.stealthT = 0; this.riding = false;
-    this.traps.length = 0; this.wildT = 0; this.petFocus = null;
+    this.traps.length = 0; this.wildT = 0; this.petFocus = null; this.work = null;
+    if (this.siege) this.failSiege('You fell, and the attackers overran the defence.');
+    for (const n of this.npcs) if (n.role === 'follower') { n.x = h.x + 50; n.y = h.y + 24; }
     for (let i = this.pets.length - 1; i >= 0; i--) { const p = this.pets[i]; if (p.spirit) swapRemove(this.pets, i); else { p.x = h.x - 40; p.y = h.y + 16; p.target = null; p.leapT = 0; } }
     for (const e of this.enemies) {
       if (e.dead) continue;
@@ -1500,10 +2136,20 @@ export class GameEngine {
     this.flash = Math.max(0, this.flash - dt * 2);
     this.respawnFade = Math.max(0, this.respawnFade - dt * 1.2);
     this.damageFlash = Math.max(0, this.damageFlash - dt);
+    if (!this.cine || this.cine.cutT <= 0) this.cineFade = Math.max(0, this.cineFade - dt * 2.4);
+    // A cut hides the change of light; otherwise night falls (or lifts) over a second or so.
+    this.cineDark += (this.cineNight - this.cineDark) * Math.min(1, dt * (this.cineFade > .9 ? 30 : 1.4));
   }
   update(dtRaw: number) {
     let dt = Math.min(.045, Math.max(0, dtRaw));
     this.settleFx(dt);
+    if (!this.cine && this.cineQueue.length && this.completeTimer <= 0) this.beginCine(this.cineQueue.shift()!);
+    if (this.cine) {
+      // While a cutscene plays, the world keeps breathing but nobody fights.
+      this.updateCine(dt); this.updateNpcs(dt); this.updateCritters(dt); this.updateParticles(dt); this.updateFx(dt);
+      for (const e of this.enemies) if (!e.dead) { e.hitFlash = 0; if (e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt); }
+      return;
+    }
     if (this.hitStop > 0) { this.hitStop -= dt; return; }
     if (this.slowMo > 0) { this.slowMo -= dt; dt *= .3; }
     this.elapsed += dt;
@@ -1519,6 +2165,10 @@ export class GameEngine {
     }
 
     this.updateHero(dt);
+    this.blockBarriers();
+    if (this.work) this.updateWork(dt);
+    this.updateSiege(dt);
+    this.updateFx(dt);
     this.updateEnemies(dt);
     this.updateNpcs(dt);
     this.updateCritters(dt);
@@ -1529,7 +2179,7 @@ export class GameEngine {
     if (this.finalT > 0) this.updateFinalRise(dt);
     this.slowTick -= dt;
     if (this.slowTick <= 0) {
-      this.slowTick = .25; this.updateZone(); this.markExplored(); this.updateSoundscape(); this.respawnEnemies(); this.flushFox();
+      this.slowTick = .25; this.updateZone(); this.markExplored(); this.updateSoundscape(); this.respawnEnemies(); this.flushFox(); this.checkAmbushes(); this.checkClues();
       if (++this.exploreTick % 16 === 0) this.statMax('explore', this.exploredPercent());
       if (this.profileDirty) { this.profileDirty = false; saveProfile(this.profile); }
     }
@@ -1627,7 +2277,7 @@ export class GameEngine {
         if (e.heroic && !this.bossIntroShown.has(e.id)) { this.bossIntroShown.add(e.id); this.notice(`Heroic foe: ${e.heroic}! Tough, but rich in loot.`, 'epic', `Heroic: ${e.heroic}`); this.play('roar'); this.addShake(6); this.ring(e.x, e.y, 160, '#e8a0ff', .7); }
       }
       if (e.aggro && (d > 820 || dist(e, { x: e.homeX, y: e.homeY }) > 950)) { e.aggro = false; e.windup = 0; e.lunge = 0; }
-      if (!e.aggro) { this.wander(e, dt); continue; }
+      if (!e.aggro) { if (e.raid) this.raidMove(e, dt); else this.wander(e, dt); continue; }
       if (e.stunT > 0) { e.stunT -= dt; if (Math.random() < dt * 12) this.emit(e.x + rand(-e.r, e.r), e.y - e.r, 1, '#8fd8ff', { speed: 40, life: .3, glow: true, size: 2 }); continue; }
       e.cd = Math.max(0, e.cd - edt);
       this.enemyAct(e, edt, d);
@@ -1812,6 +2462,12 @@ export class GameEngine {
     const h = this.hero;
     this.globalBarkT -= dt;
     for (const n of this.npcs) {
+      if (n.role === 'follower') { this.updateFollower(n, dt); continue; }
+      if (n.role === 'thief') { this.updateThief(n, dt); continue; }
+      if (n.role === 'actor') {
+        if (n.moving) { const dx = n.tx - n.x, dy = n.ty - n.y, d = Math.hypot(dx, dy); if (d < 4) n.moving = false; else { n.x += dx / d * 110 * dt; n.y += dy / d * 110 * dt; n.walkT += dt * 6; n.faceX = dx > 0 ? 1 : -1; } }
+        continue;
+      }
       n.barkT = Math.max(0, n.barkT - dt); n.barkCd -= dt;
       const dh = Math.abs(n.x - h.x) + Math.abs(n.y - h.y);
       if (dh > ACTIVE_RANGE * 1.4 && n.activity !== 'travel') continue;
@@ -1861,6 +2517,7 @@ export class GameEngine {
   private updateCritters(dt: number) {
     const h = this.hero, w = this.world;
     for (const c of this.critters) {
+      if (c.herd) { this.updateHerdAnimal(c, dt); continue; }
       if (Math.abs(c.x - h.x) > ACTIVE_RANGE || Math.abs(c.y - h.y) > ACTIVE_RANGE) continue;
       const d = Math.hypot(c.x - h.x, c.y - h.y), scare = c.kind === 'deer' ? 260 : c.kind === 'duck' ? 110 : c.kind === 'bird' ? 190 : 160;
       c.t -= dt; c.hop += dt;
@@ -2252,15 +2909,8 @@ export class GameEngine {
       const x = f.x + rand(-380, 380), y = f.y + rand(-340, 60), c = pick([acc, '#ff9aa8', '#9fd8ff', '#fff1b8', '#b9f29d', '#c9b6ff']);
       this.emit(x, y, 40, [c, '#ffffff'], { speed: 300, life: 1.3, kind: 'star', glow: true, size: 4, grav: 90, drag: 1.8 }); this.ring(x, y, 70, c, .5); this.play('kill', { x, y });
     }
-    if (this.completeTimer <= 0) {
-      // The chapter is complete: an achievement marks it, and the next chapter's opener starts on its own.
-      this.completeTimer = 0;
-      const r = this.completeRegion, side = this.sideQuests(r), done = side.filter(q => this.qs(q.id).status === 'done').length;
-      this.eventHandler({ type: 'levelComplete', region: r, last: r === this.lastRegion, stats: { stars: this.earnedStars(r), time: this.elapsed - this.chapterStart.elapsed, defeated: this.defeated - this.chapterStart.defeated, quests: done, totalQuests: side.length, level: this.profile.level } });
-      this.statMax(`chapter:${r}`, 1);
-      this.chapterStart = { elapsed: this.elapsed, defeated: this.defeated };
-      this.foxDelay = 6.2;
-    }
+    // The chapter itself ends with its last main quest (see endChapter), which may come later.
+    if (this.completeTimer <= 0) this.completeTimer = 0;
   }
 
   // ───────────────────────────── UI data
@@ -2271,7 +2921,26 @@ export class GameEngine {
     if (st !== 'active') return null;
     if (this.isTalk(q)) return npc(q.to);
     if (q.kind === 'visit') return this.world.pois.find(p => p.id === q.place) || null;
-    if (q.kind === 'rescue') return this.world.objects.find(o => o.kind === 'cage' && o.questId === q.id) || null;
+    if (q.kind === 'rescue' || q.kind === 'escort') {
+      const f = this.followerOf(q.id); if (f) return dist(f, this.hero) > 520 ? f : this.escortGoal(q);
+      if (q.kind === 'escort') return this.escortStart(q);
+      return this.world.objects.find(o => o.kind === 'cage' && o.questId === q.id) || null;
+    }
+    if (q.kind === 'defend') return this.wardOf(q.id);
+    if (q.kind === 'chase') return this.thiefOf(q.id) || this.poi(q.place);
+    if (q.kind === 'trail') { const step = this.qs(q.id).progress; return this.world.objects.find(o => o.kind === 'clue' && o.questId === q.id && o.step === step) || null; }
+    if (q.kind === 'herd') {
+      const pen = this.penOf(q.id); let best: Critter | null = null, bd = Infinity;
+      for (const c of this.critters) if (c.herd === q.id && !c.penned) { const d = dist(this.hero, c); if (d < bd) { bd = d; best = c; } }
+      return !best ? pen : bd < 260 ? pen : best;
+    }
+    if (q.kind === 'activate') {
+      if (q.ordered) return this.poi(q.near);
+      let best: WorldObject | null = null, bd = Infinity;
+      for (const o of this.world.objects) if (o.kind === 'switch' && o.questId === q.id && !this.got.has(o.id)) { const d = dist(this.hero, o); if (d < bd) { bd = d; best = o; } }
+      return best;
+    }
+    if (q.kind === 'build' && this.qs(q.id).progress >= q.count) return this.world.objects.find(o => o.kind === 'site' && o.questId === q.id) || null;
     if (q.kind === 'slay') {
       // Point at the nearest creature that counts, so a hunt never leaves the player guessing where to look.
       let best: Enemy | null = null, bd = Infinity;
@@ -2286,13 +2955,13 @@ export class GameEngine {
       if (b) return b;
       return this.finaleOf(q.region);
     }
-    if (q.kind === 'key' || q.kind === 'collect') {
+    if (q.kind === 'key' || q.kind === 'collect' || q.kind === 'build') {
       let best: WorldObject | null = null, bd = Infinity;
       for (const o of this.world.objects) {
         const mine = q.kind === 'key' ? o.kind === 'key' && !this.main.keys.includes(o.id) && q.keys!.some(i => this.keyId(q, i) === o.id) : o.questId === q.id && o.kind === 'questItem' && !this.got.has(o.id);
         if (mine) { const d = dist(this.hero, o); if (d < bd) { bd = d; best = o; } }
       }
-      if (q.kind === 'collect' && best && bd > 900) return this.world.pois.find(p => p.id === q.near) || best;
+      if (q.kind !== 'key' && best && bd > 900) return this.world.pois.find(p => p.id === q.near) || best;
       return best;
     }
     return null;
@@ -2307,10 +2976,17 @@ export class GameEngine {
     switch (q.kind) {
       case 'collect': return `${q.item}`;
       case 'slay': return q.enemy && q.enemy !== 'any' ? `${ENEMY_STATS[q.enemy].name}s defeated` : 'Creatures defeated';
-      case 'deliver': return `Bring the ${q.item?.toLowerCase()} to ${name(q.to)}`;
+      case 'deliver': return `Bring ${q.item && /’s/.test(q.item) ? q.item : `the ${q.item?.toLowerCase()}`} to ${name(q.to)}`;
       case 'talk': return `Speak with ${name(q.to)}`;
       case 'visit': return `Visit ${this.world.pois.find(p => p.id === q.place)?.name}`;
-      case 'rescue': { const left = this.guardsLeft(q.id); return left ? `Defeat the guards (${left} left)` : `Free ${q.captive?.name}`; }
+      case 'rescue': { const left = this.guardsLeft(q.id), f = this.followerOf(q.id); return f ? (f.scared ? `Protect ${f.name}!` : `Bring ${f.name} home`) : left ? `Defeat the guards (${left} left)` : `Free ${q.captive?.name}`; }
+      case 'escort': { const f = this.followerOf(q.id); return f ? (f.scared ? `Protect ${f.name}!` : `Lead ${f.name} to ${this.poi(q.place)?.name}`) : `Meet ${q.who?.name}`; }
+      case 'defend': { const n = q.waves?.length || 3; return this.siege?.q === q ? `Defend ${q.ward?.toLowerCase() || 'the barricade'} · wave ${Math.min(n, this.siege.wave + 1)}/${n}` : `Defend ${this.poi(q.place)?.name}`; }
+      case 'build': return st.progress >= q.count ? `Build the ${q.siteName?.toLowerCase() || 'site'}` : `${q.item}`;
+      case 'activate': return `${q.ordered ? 'In the right order: light' : 'Light'} the ${q.switches === 'rune' ? 'runes' : q.switches === 'totem' ? 'totems' : q.switches === 'vent' ? 'vents' : q.switches === 'lantern' ? 'lanterns' : 'braziers'}`;
+      case 'chase': return `Catch ${q.who?.name}`;
+      case 'trail': return 'Follow the trail';
+      case 'herd': return `${q.animal === 'goat' ? 'Goats' : 'Sheep'} in the pen`;
       case 'key': { const k = this.world.objects.find(o => o.id === this.keyId(q, q.keys![0])), at = k ? this.poiAt(k, 400)?.name : ''; return `Find the ${k?.name.toLowerCase() || 'relic'}${at ? ` · ${at}` : ''}`; }
       case 'boss': {
         const b = this.enemies.find(e => e.id === q.boss);
@@ -2323,8 +2999,8 @@ export class GameEngine {
     const st = this.qs(q.id), giver = this.npcs.find(n => n.id === q.giver), to = this.npcs.find(n => n.id === this.reportTo(q));
     const detail = st.status === 'available' ? (q.giver === 'fox' ? this.personal([q.summary])[0] : `${giver?.name} in ${giver?.poiName} has a request.`)
       : st.status === 'ready' ? `Report to ${to?.name} in ${to?.poiName}.` : st.status === 'done' ? 'Complete' : q.summary;
-    const counted = st.status === 'active' && q.count > 1 && (q.kind === 'collect' || q.kind === 'slay' || q.kind === 'key');
-    return { id: q.id, title: q.title, giver: giver?.name || this.guideVoice.name, status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: this.rewardXp(q), reward: this.rewardText(q), tracked: this.tracked === q.id, chapter: this.region(q.region).chapter };
+    const counted = st.status === 'active' && q.count > 1 && COUNTED.has(q.kind);
+    return { id: q.id, title: q.title, giver: giver?.name || this.guideVoice.name, status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: this.rewardXp(q), reward: this.rewardText(q), tracked: this.tracked === q.id, chapter: this.region(q.region).chapter, personal: !!q.hero };
   }
   private mainRow() {
     const cur = this.currentMain();
@@ -2351,7 +3027,7 @@ export class GameEngine {
     if (near?.kind === 'npc') { nearName = near.n.name; nearAction = this.nearAction(near.n); }
     else if (near) {
       const o = near.o; nearName = o.name;
-      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore' } as const)[o.kind];
+      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore', site: 'Build', switch: 'Light', barrier: 'Inspect', clue: '', pen: '', ward: '' } as const)[o.kind];
     }
     const chests = this.world.objects.filter(o => o.kind === 'chest'), lore = this.world.objects.filter(o => o.kind === 'lore');
     const sides = this.sideQuests();
@@ -2367,8 +3043,16 @@ export class GameEngine {
       gear: [...p.gear], equipped: { ...p.equipped }, bagSize: BAG_SIZE, quick: p.quick,
       stats: { regen: h.manaRegen, power: this.power, speed: this.moveSpeed, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.sp(this.spellIds[0])), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1), crit: this.critChance, elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
       boss: b ? { name: this.bossName(b), title: this.bossTitle(b), hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase, level: b.level } : null,
+      cine: this.cineState(),
+      siege: this.siege ? { title: this.siege.q.title, ward: this.siege.q.ward || 'The barricade', wave: Math.min(this.siege.q.waves?.length || 3, this.siege.wave + 1), waves: this.siege.q.waves?.length || 3, hp: Math.max(0, this.siege.hp), max: SIEGE_HP, left: this.siege.raiders.filter(e => !e.dead).length, resting: this.siege.spawned ? 0 : Math.ceil(this.siege.waveT) } : null,
+      work: this.work ? { label: `Building the ${this.work.o.name.toLowerCase()}`, t: Math.min(1, this.work.t / WORK_TIME) } : null,
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: this.opened.size, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };
+  }
+  private cineState(): CineState | null {
+    const c = this.cine; if (!c || c.i < 0 || c.i >= c.shots.length) return null;
+    const s = c.shots[c.i];
+    return { key: `${c.id}-${c.i}`, text: s.text || '', speaker: s.speaker || '', portrait: s.portrait || '', title: s.title || '', sub: s.sub || '', last: c.i === c.shots.length - 1 };
   }
   getObjects() { return this.world.objects.filter(o => this.visibleObject(o)); }
   isOpened(id: string) { return this.opened.has(id); }

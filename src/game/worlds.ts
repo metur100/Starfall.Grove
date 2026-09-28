@@ -1,5 +1,6 @@
 import { buildValley, inPond, type RegionSpec } from './worldgen';
 import { STORY, type StoryQuest } from './story';
+import { HERO_NPCS, HERO_QUESTS } from './heroStory';
 import type { Captive, NpcLook, Region, RegionId, WorldDefinition } from './types';
 
 export const LEVEL_ORDER: RegionId[] = ['meadow', 'woods', 'summit', 'ember'];
@@ -66,6 +67,7 @@ const meadow: RegionSpec = {
     { id: 'garrick', name: 'Hunter Garrick', portrait: '🏹', at: 'camp', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a', beard: true }), lines: ['Tracks everywhere. The creatures are bold this season.'], barks: ['Keep your eyes open.'] },
     { id: 'odo', name: 'Old Shepherd Odo', portrait: '🧓', at: 'shepherd', dx: -60, dy: 60, activity: 'wander', look: look('#c9a24c', 'straw', { hatColor: '#a8844a', beard: true, hair: '#e8e2d0' }), lines: ['From this hill you can see the whole valley. Mostly clouds today.'], barks: ['Baa… I mean, hello.'] },
     { id: 'cart', name: 'Trader Bex', portrait: '🧳', at: 'sunpetal', to: 'city', activity: 'travel', look: look('#c07850', 'scarf', { hatColor: '#8a3b2f' }), lines: ['Sunpetal to Goldenhearth and back, every day. Good for the legs.'], barks: ['On the road again!', 'Fine wares, fine prices!'] },
+    { id: 'holt', name: 'Bridgewright Holt', portrait: '👷', at: 'gateE', dx: -170, dy: -110, activity: 'idle', after: 'm10', look: look('#8a6a4a', 'cap', { hatColor: '#d9b45a', beard: true }), lines: ['A bridge is just a promise made of wood.', 'Every plank I lay, I say its name. Old habit.'], barks: ['Timber! I need timber!', 'Mind the gap!'] },
     { id: 'peddler', name: 'Peddler Moss', portrait: '🎒', at: 'city', to: 'willow', activity: 'travel', look: look('#7a8a5a', 'hood', { hatColor: '#4a5a3a', beard: true }), lines: ['Buttons, spoons, and a very small kettle.'], barks: ['Buttons for sale!'] },
   ],
   quests: [
@@ -92,6 +94,8 @@ const meadow: RegionSpec = {
       text: { offer: ['The big one only bites on faerie mushrooms.', 'Four of them grow near the Faerie Ring, south-east of the lake.'], progress: ['Four mushrooms. Fat ones.'], complete: ['Perfect bait! Here, a lucky fishing charm.'], after: ['Any day now. Any day.'] } }),
     q({ id: 'spores', title: 'Spores in the Flour', giver: 'tom', kind: 'slay', count: 5, enemy: 'sporecap', summary: 'Defeat sporecaps.', reward: { xp: 130 },
       text: { offer: ['Sporecaps! Walking mushrooms! They puff poison into my flour sacks.', 'Knock over five of them. When one swells up — step back!'], progress: ['Sporecaps puff a poison cloud. Don’t stand in it.'], complete: ['My flour is saved! Take a honey bun. Take two.'], after: ['Honey buns for the hero!'] } }),
+    q({ id: 'mailthief', title: 'The Mail Snatcher', giver: 'pip', kind: 'chase', count: 1, place: 'city', who: person('Jem the Pickpocket', '🧒', { robe: '#6a5a3a', hat: 'cap', hatColor: '#3a2e24', small: true }), summary: 'Catch the pickpocket who snatched Pip’s mailbag in Goldenhearth.', reward: { xp: 120, regen: .4 },
+      text: { offer: ['Somebody snatched my mailbag right off my back! In Goldenhearth, in broad daylight!', 'A kid in a brown cap, fast as a rabbit. He gets puffed out quick, though. Catch him? Please?'], progress: ['The pickpocket is somewhere in Goldenhearth.'], deliver: ['Okay, okay! I only wanted to read the letters. Nobody ever writes to me.'], complete: ['My mailbag! Every letter still sealed. Well, almost every one.', 'I think I’ll write that kid a letter. Everyone should get one.'], after: ['Pip delivers! Even to pickpockets.'] } }),
     q({ id: 'caravan', title: 'The Lost Caravan', giver: 'brannoc', kind: 'rescue', count: 1, place: 'hollow', guards: 5, summary: 'Free Trader Jory from Gloom Hollow.', captive: person('Trader Jory', '🧔', { robe: '#c07850', hat: 'scarf', hatColor: '#8a3b2f', beard: true }), reward: { xp: 160, gold: 80 },
       text: { offer: ['A merchant caravan was ambushed near Gloom Hollow. The trader, Jory, is still missing.', 'Find him, free him, and the city will pay you well.'], progress: ['Gloom Hollow is far to the south-west.'], deliver: ['Oh thank the stars! They took my wagon, my ponies, my good hat…', 'But not my life. I owe you that.'], complete: ['Jory is home. Here’s the reward the merchants promised.'], after: ['The roads need more like you.'] } }),
   ],
@@ -190,6 +194,8 @@ const woods: RegionSpec = {
       text: { offer: ['I fletch arrows with owl feathers — shed ones, of course.', 'Five lie around the Owl Watchtower to the north.'], progress: ['Soft grey feathers. Owls drop them everywhere.'], complete: ['Beautiful. Take an arrow charm.'], after: ['Swift and silent.'] } }),
     q({ id: 'nets', title: 'Silk in the Nets', giver: 'maeve', kind: 'slay', count: 6, enemy: 'webspinner', summary: 'Defeat webspinners.', reward: { xp: 150 },
       text: { offer: ['Webspinners keep stringing silk across my nets. I catch more spiders than fish!', 'Six of them, and I’ll give you my best catch.'], progress: ['Webspinners lurk in the deep woods.'], complete: ['My nets are clean! Here — a glowing fish. Don’t eat it raw.'], after: ['Fish are biting again.'] } }),
+    q({ id: 'lodgelights', title: 'Lanterns on the Lodge Road', giver: 'ysolde', kind: 'activate', count: 3, near: 'lodge', switches: 'lantern', order: ['Lodge lantern', 'Lodge lantern', 'Lodge lantern'], summary: 'Light the three lanterns around Trapper’s Lodge.', reward: { xp: 150, mana: 10 },
+      text: { offer: ['Fenn’s oil got here, but my lanterns are out on the posts around the lodge, and the shadewolves sit right under them.', 'Light all three. Wolves hate a lit lantern.'], progress: ['Three lanterns around the lodge.'], complete: ['There. Now the lodge road glows all night, and the wolves keep their distance.'], after: ['Swift and silent. And well lit.'] } }),
     q({ id: 'heartwood', title: 'Heartwood for the Bell', giver: 'forester', kind: 'collect', count: 5, near: 'ruins', item: 'Heartwood', icon: 'bundle', summary: 'Gather heartwood around the Root Ruins.', reward: { xp: 140, gold: 60 },
       text: { offer: ['The Bell’s frame is rotten. Only heartwood from the Root Ruins is strong enough.', 'Five pieces. The roots there shed them like old skin.'], progress: ['Heartwood lies around the Root Ruins.'], complete: ['Good, strong wood. The Bell will hang straight when it rings again.'], after: ['Timber!'] } }),
   ],
@@ -255,19 +261,24 @@ const summit: RegionSpec = {
     { id: 'ren', name: 'Pilgrim Ren', portrait: '🧳', at: 'hamlet', to: 'observatory', activity: 'travel', look: look('#b07a9a', 'scarf', { hatColor: '#8a4f6a' }), lines: ['I walk to the observatory and back, every day, for luck.'], barks: ['One more step…'] },
     { id: 'corvin', name: 'Abbot Corvin', portrait: '🧙', at: 'city', dx: -60, dy: -200, activity: 'idle', look: look('#e8e2d0', 'hood', { hatColor: '#c9a24c', beard: true, hair: '#e8e2d0' }), lines: ['Skyhold has stood a thousand winters. It will stand one more.'], barks: ['Blessings.'] },
     { id: 'sella', name: 'Monk Sella', portrait: '🧘', at: 'city', dx: 200, dy: 150, activity: 'sweep', look: look('#c9a24c', 'hood', { hatColor: '#a8844a' }), lines: ['We pray for the star every hour.'], barks: ['Peace be with you.'] },
-    { id: 'orrin', name: 'Master Orrin', portrait: '🧙‍♂️', at: 'city', dx: -260, dy: 200, activity: 'idle', after: 'm10', look: look('#5b5480', 'wizard', { hatColor: '#3f3a70', beard: true, hair: '#e8e2d0' }), lines: ['I have much to make right, Mira.'], barks: ['My brave girl.'] },
+    { id: 'sable2', name: 'Sable', portrait: '🌑', at: 'gateE', dx: -150, dy: -90, activity: 'idle', after: 'm19', until: 'm20', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['The ice is Umbra’s. It knows my shadow. That’s why it can be broken by it.'], barks: ['Orrin is late. He is always late.'] },
+    { id: 'orrin2', name: 'Master Orrin', portrait: '🧙‍♂️', at: 'gateE', dx: -190, dy: 60, activity: 'idle', after: 'm20', look: look('#5b5480', 'wizard', { hatColor: '#3f3a70', beard: true, hair: '#e8e2d0' }), lines: ['Go on. The Wastes are waiting, and so is the last light.', 'Sable and I will hold this gate. Nothing follows you through it.'], barks: ['Go, and be careful.'] },
+    { id: 'sable3', name: 'Sable', portrait: '🌑', at: 'gateE', dx: -130, dy: -80, activity: 'idle', after: 'm20', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['Light and shadow, together. Who knew?', 'Bring back the dawn. I would like to see one again.'], barks: ['…Thank you.'] },
+    { id: 'orrin', name: 'Master Orrin', portrait: '🧙‍♂️', at: 'city', dx: -260, dy: 200, activity: 'idle', after: 'm10', until: 'm20', look: look('#5b5480', 'wizard', { hatColor: '#3f3a70', beard: true, hair: '#e8e2d0' }), lines: ['I have much to make right, Mira.'], barks: ['I have much to make right.'] },
     { id: 'orla', name: 'Tinker Orla', portrait: '🔧', at: 'city', dx: 380, dy: 180, activity: 'hammer', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: ['Starsilver sings when you strike it.'], barks: ['Tink tink!'] },
     { id: 'merchant', name: 'Merchant Sol', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#4a4a8a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Warming tonics!'] },
     { id: 'smith', name: 'Master-smith Ingrid', portrait: '⚒️', at: 'city', dx: 340, dy: -80, activity: 'hammer', role: 'smith', look: look('#5a4a5a', 'cap', { hatColor: '#2a2a3a' }), lines: shopLines.smith, barks: ['Starsteel!'] },
     { id: 'armorer', name: 'Armourer Sigrun', portrait: '🛡️', at: 'city', dx: 160, dy: -150, activity: 'idle', role: 'armorer', look: look('#4a4a7a', 'helm', { hatColor: '#c9cfe8' }), lines: shopLines.armorer, barks: ['Starsilver, for those who can pay.'] },
     { id: 'inn', name: 'Innkeeper Mott', portrait: '🛏️', at: 'city', dx: -340, dy: -40, activity: 'idle', role: 'inn', look: look('#7a6a9a', 'hood', { hatColor: '#5a4a7a', beard: true }), lines: shopLines.inn, barks: ['Hot cocoa by the fire!'] },
     { id: 'dov', name: 'Quartermaster Dov', portrait: '💂', at: 'pass', dx: 80, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a', beard: true }), lines: ['Nobody crosses the pass without my say-so. Except wisps. They don’t ask.'], barks: ['Halt! Oh, it’s you.'] },
-    { id: 'sable', name: 'Sable', portrait: '🌑', at: 'spire', dx: -120, dy: 90, activity: 'idle', after: 'm15', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['I remember lighting lanterns with him. Before the shadow hurt.'], barks: ['…'] },
+    { id: 'sable', name: 'Sable', portrait: '🌑', at: 'spire', dx: -120, dy: 90, activity: 'idle', after: 'm15', until: 'm19', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['I remember lighting lanterns with him. Before the shadow hurt.'], barks: ['…'] },
   ],
   quests: [
     ...STORY.summit,
     q({ id: 'wisps', title: 'Wisps for the Telescope', giver: 'vale', kind: 'collect', count: 5, near: 'tarn', item: 'Star wisp', icon: 'bug', summary: 'Catch star wisps around Mirrorsky Tarn.', reward: { xp: 110, hearts: 1 },
       text: { offer: ['Five star wisps escaped my telescope. They drift around Mirrorsky Tarn.', 'Without them I cannot chart the sky.'], progress: ['Glittering little things, by the tarn.'], complete: ['Wonderful! The constellations make sense again.', 'Wear this starsilver cloak.'], after: ['The stars align nicely tonight.'] } }),
+    q({ id: 'goats', title: 'Goats Gone Astray', giver: 'brun', kind: 'herd', count: 6, animal: 'goat', near: 'terrace', place: 'terrace', summary: 'Herd six of Brun’s goats back into their pen on the terrace.', reward: { xp: 150, hearts: 1 },
+      text: { offer: ['The wisps spooked the whole herd out of the pen. Six goats, loose on the terrace!', 'Walk up behind a goat and it runs the other way. Steer them in. Don’t chase them off the cliff.'], progress: ['Walk behind a goat to push it toward the pen.'], complete: ['All six! And nobody fell off anything. Have some goat cheese. It’s… strong.'], after: ['Maaa!'] } }),
     q({ id: 'lens', title: 'Bramble’s Brass Lens', giver: 'bramble', kind: 'collect', count: 1, near: 'crystal', item: 'Brass lens', icon: 'gem', summary: 'Find Bramble’s lens in Crystal Hollow.', reward: { xp: 100, regen: .8 },
       text: { offer: ['I climbed all this way and dropped my brass lens!', 'It rolled toward Crystal Hollow, to the north.'], progress: ['Crystal Hollow is north.'], complete: ['My lens! Now I can see the whole valley!', 'Last biscuit, just for you.'], after: ['Everything looks so tiny from up here.'] } }),
     q({ id: 'herd', title: 'Wisps in the Herd', giver: 'brun', kind: 'slay', count: 8, enemy: 'wisp', summary: 'Defeat void wisps.', reward: { xp: 130 },
@@ -362,6 +373,8 @@ const ember: RegionSpec = {
     ...STORY.ember,
     q({ id: 'stingers', title: 'Stingers in the Kiln', giver: 'hessa', kind: 'slay', count: 8, enemy: 'ashScorpion', summary: 'Defeat ash scorpions.', reward: { xp: 160, hearts: 1 },
       text: { offer: ['Scorpions dig into my kilns at night for the warmth. Then they sting my glassblowers.', 'Eight of them, please.'], progress: ['Scorpions burrow. Watch the sand for moving mounds.'], complete: ['Eight! My glassblowers can work in peace.', 'Take this — kiln-hardened leather.'], after: ['The kilns hum happily.'] } }),
+    q({ id: 'well', title: 'A Well for Kilnhollow', giver: 'hessa', kind: 'build', count: 4, near: 'farm', item: 'Cool stone', icon: 'gem', place: 'kiln', site: 'well', siteName: 'Kilnhollow well', summary: 'Gather cool stones around Saltglass Farm and build a well in Kilnhollow.', reward: { xp: 180, gold: 80 },
+      text: { offer: ['Our glassblowers drink more than the kilns do, and the nearest water is a day away.', 'Cool stones from around Saltglass Farm keep water sweet in the heat. Bring four, and we will build a well right here.'], progress: ['Four cool stones around Saltglass Farm, then build the well in Kilnhollow.'], complete: ['Water! In Kilnhollow! The children are already splashing in it.', 'Take this. Every family in the hollow put in a coin.'], after: ['The well sings when the wind blows.'] } }),
     q({ id: 'marble', title: 'Tam’s Glass Marble', giver: 'tam', kind: 'collect', count: 1, near: 'mere', item: 'Glass marble', icon: 'gem', summary: 'Find Tam’s marble near the Molten Mere.', reward: { xp: 120 },
       text: { offer: ['I made my first marble and it rolled all the way to the Molten Mere!', 'It’s blue inside. Like water. Please?'], progress: ['It’s near the lava lake, north of here!'], complete: ['My marble! It didn’t even melt!'], after: ['Want to see it catch the light?'] } }),
     q({ id: 'bellows', title: 'Imps in the Bellows', giver: 'tovan', kind: 'slay', count: 8, enemy: 'emberImp', summary: 'Defeat ember imps.', reward: { xp: 170 },
@@ -399,6 +412,11 @@ const ember: RegionSpec = {
   },
 };
 
+// The heroes' own stories, and the crossings the story has to open.
+for (const spec of [meadow, woods, summit, ember]) { spec.quests.push(...HERO_QUESTS[spec.id]); spec.npcs.push(...HERO_NPCS[spec.id]); }
+meadow.barrier = { kind: 'bridge', quest: 'm12', name: 'Gloomwater Bridge' };
+woods.barrier = { kind: 'thorns', quest: 'm17', name: 'Thorn wall' };
+summit.barrier = { kind: 'ice', quest: 'm20', name: 'Black ice seal' };
 const SPECS: RegionSpec[] = [meadow, woods, summit, ember];
 let valley: WorldDefinition | null = null;
 /**

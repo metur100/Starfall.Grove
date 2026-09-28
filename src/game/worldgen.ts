@@ -4,7 +4,7 @@
 import { Grid } from './spatial';
 import type { StoryQuest } from './story';
 import type {
-  Ambient, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
+  Ambient, BarrierKind, HeroId, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
   Palette, Point, Poi, Pond, QuestDef, RegionId, WorldDefinition, WorldObject, WorldScript,
 } from './types';
 
@@ -15,7 +15,7 @@ export const GATE_Y = 3300;
 
 export type NpcSpec = {
   id: string; name: string; portrait: string; at: string; activity: NpcActivity; look?: Partial<NpcLook>;
-  role?: NpcRole; dx?: number; dy?: number; to?: string; lines: string[]; barks: string[]; after?: string;
+  role?: NpcRole; dx?: number; dy?: number; to?: string; lines: string[]; barks: string[]; after?: string; until?: string; hero?: HeroId;
 };
 export type LoreSpec = { at: string; name: string; text: string[] };
 export type RegionSpec = {
@@ -27,6 +27,8 @@ export type RegionSpec = {
   enemyKinds: Array<[EnemyKind, number]>; boss: EnemyKind; bossLevel: number; critters: Array<[CritterKind, number]>;
   npcs: NpcSpec[]; lore: LoreSpec[]; chatter: string[]; barks: string[]; villagerNames: string[];
   quests: StoryQuest[]; script: WorldScript;
+  /** What blocks the road east until the quest `quest` is done. */
+  barrier?: { kind: BarrierKind; quest: string; name: string };
 };
 
 // ───────────────────────────── deterministic helpers
@@ -327,7 +329,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
     let route: Point[] | undefined;
     if (n.activity === 'travel' && n.to) route = edgePaths.get(`${n.at}|${n.to}`) || [{ x, y }, poi(n.to)];
     if (n.activity === 'chop') put({ x: x + 34, y: y + 4, r: 14, kind: 'stump', seed: rand() }, 16);
-    npcs.push({ id: n.id, name: n.name, portrait: n.portrait, look: lk, activity: n.activity, x, y, region: spec.id, role: n.role || 'villager', route, lines: n.lines, barks: n.barks, after: n.after });
+    npcs.push({ id: n.id, name: n.name, portrait: n.portrait, look: lk, activity: n.activity, x, y, region: spec.id, role: n.role || 'villager', route, lines: n.lines, barks: n.barks, after: n.after, until: n.until, hero: n.hero });
     solid.insert({ x, y, r: 30 });
   }
 
@@ -335,7 +337,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
   spec.keyAt.forEach((pid, i) => { const p = poi(pid), s = spot(p.x, p.y, 20, 160, 30) || { x: p.x, y: p.y + 60 }; obj({ id: `key-${i}`, kind: 'key', x: s.x, y: s.y, name: spec.keyName }); });
   spec.lore.forEach((l, i) => { const p = poi(l.at), s = spot(p.x, p.y, p.r * .3, p.r * .9, 30) || { x: p.x + 100, y: p.y }; obj({ id: `lore-${i}`, kind: 'lore', x: s.x, y: s.y, name: l.name, text: l.text }); });
   for (const q of spec.quests) if (q.kind === 'rescue') {
-    const p = poi(q.place!), s = spot(p.x, p.y, 60, 200, 50) || { x: p.x + 90, y: p.y + 40 };
+    const p = poi(q.place!), s = spot(p.x, p.y, 60, 200, 50) || spot(p.x, p.y, 60, 800, 50, 0, 200) || { x: p.x + 90, y: p.y + 40 };
     obj({ id: `${q.id}-cage`, kind: 'cage', x: s.x, y: s.y, name: `${q.captive!.name}’s cage`, questId: q.id, captive: q.captive }, 60);
   }
   for (let i = 0, made = 0; i < 500 && made < 9; i++) {
@@ -344,8 +346,24 @@ function buildRegion(spec: RegionSpec): RegionPart {
     obj({ id: `chest-wild-${made++}`, kind: 'chest', x, y, name: 'Forgotten chest' });
   }
   const questItemName: Partial<Record<ItemIcon, string>> = {};
+  // Quest places: build sites, switches to light, a trail of clues, sheep pens and what a siege attacks.
   for (const q of spec.quests) {
-    if (q.kind !== 'collect') continue;
+    const p = q.place ? poi(q.place) : null, near = q.near ? poi(q.near) : null;
+    if (q.kind === 'build' && p) { const s = spot(p.x, p.y, 30, 170, 50) || spot(p.x, p.y, 30, 800, 50, 0, 200) || { x: p.x + 70, y: p.y + 40 }; obj({ id: `${q.id}-site`, kind: 'site', x: s.x, y: s.y, name: q.siteName || 'Building site', questId: q.id, variant: q.site }, 70); }
+    if (q.kind === 'activate' && near) (q.order || []).forEach((name, i, all) => {
+      const a = i / all.length * 6.28 + .4, s = spot(near.x + Math.cos(a) * 190, near.y + Math.sin(a) * 150, 0, 90, 34) || spot(near.x, near.y, 150, 800, 34, 0, 200) || { x: near.x + Math.cos(a) * 190, y: near.y + Math.sin(a) * 150 };
+      obj({ id: `${q.id}-switch-${i}`, kind: 'switch', x: s.x, y: s.y, name, questId: q.id, variant: q.switches || 'brazier', step: i }, 40);
+    });
+    if (q.kind === 'trail' && near && p) (q.clues || []).forEach((_, i, all) => {
+      const f = (i + 1) / all.length, cx = near.x + (p.x - near.x) * f, cy = near.y + (p.y - near.y) * f;
+      const s = spot(cx, cy, 0, i === all.length - 1 ? 90 : 160, 24, 0, 80) || spot(cx, cy, 0, 800, 24, 0, 200) || { x: cx, y: cy };
+      obj({ id: `${q.id}-clue-${i}`, kind: 'clue', x: s.x, y: s.y, name: 'Clue', questId: q.id, step: i }, 10);
+    });
+    if (q.kind === 'herd' && p) { const s = spot(p.x, p.y, 40, 200, 120) || spot(p.x, p.y, 40, 800, 120, 0, 200) || { x: p.x, y: p.y + 120 }; obj({ id: `${q.id}-pen`, kind: 'pen', x: s.x, y: s.y, name: `${q.animal === 'goat' ? 'Goat' : 'Sheep'} pen`, questId: q.id }, 110); }
+    if (q.kind === 'defend' && p) { const s = spot(p.x, p.y, 40, 180, 60) || spot(p.x, p.y, 40, 800, 60, 0, 200) || { x: p.x, y: p.y + 80 }; obj({ id: `${q.id}-ward`, kind: 'ward', x: s.x, y: s.y, name: q.ward || 'Barricade', questId: q.id }, 60); }
+  }
+  for (const q of spec.quests) {
+    if (q.kind !== 'collect' && q.kind !== 'build') continue;
     const p = poi(q.near!), far = q.count === 1;
     if (q.icon) questItemName[q.icon] = q.item;
     for (let i = 0; i < q.count; i++) {
@@ -433,9 +451,9 @@ function buildRegion(spec: RegionSpec): RegionPart {
   // Everything gets the region prefix so ids stay unique across the valley.
   const P = (s: string) => s.includes(':') || s === 'fox' ? s : `${spec.id}:${s}`;
   const quests: QuestDef[] = spec.quests.map(sq => {
-    const main = /^m\d+$/.test(sq.id);
+    const main = /^m\d+$/.test(sq.id) || !!sq.hero;
     return {
-      ...sq, id: P(sq.id), region: spec.id, main: main || undefined, giver: P(sq.giver),
+      ...sq, id: P(sq.id), region: spec.id, main: main || undefined, giver: P(sq.giver), after: sq.after && P(sq.after), from: sq.from && P(sq.from),
       to: sq.to && P(sq.to), turnIn: sq.turnIn && P(sq.turnIn), place: sq.place && P(sq.place), near: sq.near && P(sq.near),
       requires: sq.requires && P(sq.requires), boss: sq.boss && P(sq.boss),
     };
@@ -445,7 +463,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
     start: { x: start.x + 60, y: start.y + 90 },
     pois: pois.map(p => ({ ...p, id: P(p.id) })), roads, obstacles, decor, pods, ponds,
     enemies: enemies.map(e => ({ ...e, id: P(e.id) })), critters,
-    npcs: npcs.map(n => ({ ...n, id: P(n.id), after: n.after && P(n.after) })),
+    npcs: npcs.map(n => ({ ...n, id: P(n.id), after: n.after && P(n.after), until: n.until && P(n.until) })),
     objects: objects.map(o => ({ ...o, id: P(o.id), questId: o.questId && P(o.questId) })),
     quests,
   };
@@ -471,6 +489,13 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
     for (let y = 40; y < WORLD_H - 20; y += 56) {
       if (Math.abs(y - GATE_Y) < 200) continue;
       out.obstacles.push({ x: bx + (rand() - .5) * 40, y, r: 40 + rand() * 12, kind: 'cliff', seed: rand() });
+    }
+    // A collapsed bridge, a wall of thorns or a seal of ice closes the gate until the story opens it.
+    const b = specs[k - 1].barrier, id = specs[k - 1].id;
+    if (b) {
+      const x = bx - 80;
+      out.obstacles = out.obstacles.filter(o => o.kind === 'cliff' || Math.abs(o.x - x) > 200 || Math.abs(o.y - GATE_Y) > 260);
+      out.objects.push({ id: `${id}:barrier`, kind: 'barrier', x, y: GATE_Y, name: b.name, region: id, questId: `${id}:${b.quest}`, variant: b.kind });
     }
   }
   out.decor.sort((a, b) => a.y - b.y);

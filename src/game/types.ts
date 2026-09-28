@@ -45,31 +45,54 @@ export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; lev
   /** A heroic creature: a named little boss that leads a lair's pack (it also counts as an elite). */
   heroic?: string };
 
-export type CritterKind = 'rabbit' | 'deer' | 'bird' | 'duck' | 'frog' | 'goat' | 'squirrel';
+export type CritterKind = 'rabbit' | 'deer' | 'bird' | 'duck' | 'frog' | 'goat' | 'squirrel' | 'sheep';
 export type CritterSeed = { kind: CritterKind; x: number; y: number };
 
 export type NpcHat = 'none' | 'straw' | 'hood' | 'cap' | 'wizard' | 'bonnet' | 'helm' | 'ears' | 'scarf';
 export type NpcLook = { skin: string; robe: string; hat: NpcHat; hatColor: string; hair: string; beard?: boolean; small?: boolean };
 export type NpcActivity = 'idle' | 'wander' | 'patrol' | 'travel' | 'chop' | 'farm' | 'fish' | 'sweep' | 'hammer' | 'play';
 /** Merchants sell potions, smiths forge upgrades, armourers sell equipment, innkeepers let Mira rest. */
-export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer';
+export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer'
+  /** Quest people: someone walking with the hero, someone running away, and people in a cutscene. */
+  | 'follower' | 'thief' | 'actor';
 export type NpcDef = {
   id: string; name: string; portrait: string; look: NpcLook; activity: NpcActivity; x: number; y: number; region: RegionId;
   role?: NpcRole; route?: Point[]; lines: string[]; barks: string[];
-  /** The person only appears once this quest is done. */
-  after?: string;
+  /** The person only appears once this quest is done, and is gone once `until` is under way. */
+  after?: string; until?: string;
+  /** Someone in one hero's own story only. */
+  hero?: HeroId;
 };
 
-export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | 'sign' | 'lore' | 'well' | 'fountain' | 'campfire' | 'cage' | 'crack' | 'waterfall';
+export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | 'sign' | 'lore' | 'well' | 'fountain' | 'campfire' | 'cage' | 'crack' | 'waterfall'
+  /** Quest places: something to build, things to light in turn, clues on a trail, a sheep pen, what a siege attacks,
+   *  and the broken crossing between two lands. */
+  | 'site' | 'switch' | 'clue' | 'pen' | 'ward' | 'barrier';
+/** What a build site becomes; how a switch looks; what blocks a land's eastern gate. */
+export type SiteKind = 'bridge' | 'tower' | 'barricade' | 'well' | 'lantern' | 'bellows';
+export type SwitchKind = 'brazier' | 'lantern' | 'rune' | 'totem' | 'vent';
+export type BarrierKind = 'bridge' | 'thorns' | 'ice';
 export type ItemIcon = 'herb' | 'flower' | 'bottle' | 'bundle' | 'gem' | 'letter' | 'mushroom' | 'feather' | 'toy' | 'bug';
 export type Captive = { name: string; portrait: string; look: NpcLook };
 /** Secrets: a `crack` (a cracked wall, broken with a bomb) or a `waterfall` (a cave behind it) hides the object whose
  *  `hiddenBy` names it. `rich` chests hold better loot. */
-export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; name: string; region: RegionId; text?: string[]; questId?: string; icon?: ItemIcon; captive?: Captive; hiddenBy?: string; rich?: boolean };
+export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; name: string; region: RegionId; text?: string[]; questId?: string; icon?: ItemIcon; captive?: Captive; hiddenBy?: string; rich?: boolean;
+  /** Sites, switches and barriers: which kind. `step` is a switch's or clue's place in its quest. */
+  variant?: string; step?: number };
 
 // ───────────────────────────── quests
-/** talk: speak with `to` · key: find the relic `keys` · boss: defeat `boss` (and restore the finale if `finale`) · rescue: free the captive at `place`. */
-export type QuestKind = 'collect' | 'slay' | 'deliver' | 'visit' | 'talk' | 'key' | 'boss' | 'rescue';
+/**
+ * talk: speak with `to` · key: find the relic `keys` · boss: defeat `boss` (and restore the finale if `finale`) · rescue: free the captive at `place`
+ * escort: walk `who` from `from` to `place` · defend: hold `place` against `waves` · build: gather `count` materials near `near`, then build at `place`
+ * activate: light the switches near `near` (in order if `ordered`) · chase: catch `who` near `place` · trail: follow `clues` from `near` to `place`
+ * herd: drive `count` animals from `near` into the pen at `place`.
+ */
+export type QuestKind = 'collect' | 'slay' | 'deliver' | 'visit' | 'talk' | 'key' | 'boss' | 'rescue' | 'escort' | 'defend' | 'build' | 'activate' | 'chase' | 'trail' | 'herd';
+export type QuestText = { offer: string[]; progress: string[]; complete: string[]; after: string[]; deliver?: string[]; arrive?: string[] };
+/** One side of a choice at the end of a conversation: what the button says, what is said after, and a bonus. */
+export type ChoiceOption = { label: string; lines: string[]; reward?: Partial<QuestReward> };
+/** Cutscenes a quest plays: when accepted (for a siege, when it begins), when its goal is met, and once it is done. */
+export type QuestCines = { start?: string; ready?: string; done?: string; caught?: string };
 /** `hearts` is a permanent max-health bonus (one heart = 20 HP). */
 export type QuestReward = { xp: number; gold?: number; hearts?: number; mana?: number; regen?: number; item?: ItemId };
 export type QuestDef = {
@@ -79,7 +102,25 @@ export type QuestDef = {
   main?: boolean; turnIn?: string; keys?: number[];
   boss?: string; finale?: boolean; captive?: Captive; guards?: number;
   reward: QuestReward;
-  text: { offer: string[]; progress: string[]; complete: string[]; after: string[]; deliver?: string[] };
+  text: QuestText;
+  /** One hero's own story: only that hero gets the quest, and it slots into the main story right after `after`. */
+  hero?: HeroId; after?: string;
+  /** Other heroes' versions of the lines. */
+  textFor?: Partial<Record<HeroId, Partial<QuestText>>>;
+  /** Rescue: the freed captive then walks home with you. Escort and chase: who. */
+  escort?: boolean; who?: Captive; from?: string; ambush?: EnemyKind[];
+  /** A follower drawn as a beast instead of a person. */
+  beast?: 'wolf';
+  /** Defend: creatures in each wave, which kinds, and what they attack. */
+  waves?: number[]; foes?: EnemyKind[]; ward?: string;
+  /** Build: what gets built. Activate: what the switches are, their names (in the right order), and whether order matters. */
+  site?: SiteKind; siteName?: string; switches?: SwitchKind; order?: string[]; ordered?: boolean;
+  clues?: string[]; animal?: 'sheep' | 'goat';
+  /** Chase: the one you catch slips away in a puff of shadow. */
+  escapes?: boolean;
+  /** Done the moment its goal is met, with no one to report to. */
+  auto?: boolean;
+  cine?: QuestCines; choice?: { a: ChoiceOption; b: ChoiceOption };
 };
 export type QuestStatus = 'locked' | 'available' | 'active' | 'ready' | 'done';
 export type QuestState = { status: QuestStatus; progress: number };
@@ -120,7 +161,9 @@ export type MainQuest = { keys: string[]; bosses: string[]; finales: RegionId[] 
 export type SpellRank = { rank: number; max: number; bonus: string; next: string | null; cost: number; needLevel: number; canBuy: boolean };
 export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number; rank: SpellRank; cd: number };
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number; level: number };
-export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number };
+export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number;
+  /** One of the hero's own quests. */
+  personal?: boolean };
 export type ItemStack = { id: ItemId; count: number };
 export type BuffState = { id: ItemId; time: number; max: number };
 export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; crit: number; elapsed: number; questsDone: number; totalQuests: number };
@@ -137,7 +180,11 @@ export type GameSnapshot = {
   /** The mount the hero rides (or would summon), or null before one is earned. */
   mount: { id: MountId; name: string; riding: boolean } | null;
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
+  /** A cutscene playing, a siege under way, and something being built. */
+  cine: CineState | null; siege: SiegeState | null; work: { label: string; t: number } | null;
 };
+export type CineState = { key: string; text: string; speaker: string; portrait: string; title: string; sub: string; last: boolean };
+export type SiegeState = { title: string; ward: string; wave: number; waves: number; hp: number; max: number; left: number; resting: number };
 
 export type LevelStats = { stars: number; time: number; defeated: number; quests: number; totalQuests: number; level: number };
 export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
@@ -153,6 +200,8 @@ export type ShopKind = 'merchant' | 'smith' | 'armorer';
 export type ShopGear = { item: GearItem; price: number; needLevel: number; sold: boolean };
 export type EngineEvent =
   | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete'; offer?: QuestOffer }
+  /** A conversation that ends with two answers to pick from. */
+  | { type: 'choice'; speaker: string; portrait: string; lines: string[]; quest: string; title: string; a: string; b: string }
   | { type: 'item'; id: ItemId; count: number }
   | { type: 'loot'; item: GearItem; equipped?: boolean }
   /** A chapter's light is restored: the adventure simply carries on east. `last` is the end of the whole story. */

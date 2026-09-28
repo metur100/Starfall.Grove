@@ -40,9 +40,44 @@ Things to find: chests (potions, bombs, gear, gold, XP), runestones with lore, w
 
 Master Orrin vanished the night the star fell. Mira and her fox Tuft follow his trail across the valley and learn that the Beacon, the Bell and the Star were lit to seal away **Umbra, the Eclipse**. Orrin's lost pupil **Sable** is putting the lights out because Umbra promised to end her pain. On the Summit, Mira frees Orrin, learns that he pulled the star down trying to heal Sable, and wins Sable back. When the Hollow Star breaks and returns to its Cradle, Umbra slips out of the shell and flees east into the Ember Wastes. There Pyrrhus, the Cinder Tyrant, guards the cold Dawn Forge; once he falls, Umbra rises from all four lands at once. It uses every guardian's attacks. Lighting the Dawn Forge ends the story.
 
-The main story (in `story.ts`) has **10 quests in Chapter I, 15 in Chapter II, 19 in Chapter III and 13 in Chapter IV**. The other heroes get the same story with their own name, and without Tuft.
+The shared main story (in `story.ts`) has **12 quests in Chapter I, 17 in Chapter II, 20 in Chapter III and 15 in Chapter IV**.
 
-**No chapter screen:** when a chapter's light is restored, a *Chapter complete* banner plays over the game for a few seconds (story line, stars, time, side quests and the chapter's achievement), then the next chapter's title appears and its first quest starts by itself. After the last chapter the ending follows. Older saves that were left waiting on the old chapter screen (where the next quest had no arrow and could not be finished) are repaired when they load.
+**Every hero has a story of their own** (`heroStory.ts`), woven into the main one: their quests slot into the main chain and are marked *<Hero>'s story* in the journal.
+- **Mira, the Apprentice:** Tuft follows Orrin's scent to the Old Stone Garden. She passes the Apprentice's Test at the Moss Shrine, tells Orrin whether she forgives him, and finally builds a star lantern of her own at the Phoenix Spring.
+- **Kael, the Oathsworn:** a squire of the Wardens. He follows the tracks of Ser Aldric's warhorse, has Aldric's split shield mended, chases a black knight who knows his name, and lights the Warden fires at Silver Pass. At Ashfall Watch he chooses how to free Aldric from the shadow.
+- **Lyra, Winter's Daughter:** follows her sister Nessa's scattered letters and catches the boy selling them. She learns from Courier Nutkin where the frost wraiths took Nessa, frees her at the Old Observatory and walks her to Frostpine Hamlet. Later she freezes Brasshaven's overheating forge vents.
+- **Riven, the Foundling:** raised by the Hushed, a thieves' guild paid in black feathers. Riven confronts their guildmistress Magpie and runs down the runner carrying the buyer's letter. Riven wakes Sable's shadow-runes in their old childhood order, answers Sable's question, and unmasks the Ashen Broker.
+- **Wren, the Pack:** hears Moonfang's howl and wakes the hunter's totems. She tracks Moonfang to a den and walks Moonfang's moon-white pup, Snowpaw, to safety, herds Kiri's goats, and at last finds Moonfang at The Last Green.
+
+Each hero also has their own intro and their own lines at key moments, and their own thoughts voice the story's nudges between quests (Tuft does it for Mira).
+
+**The intro:** a new adventure opens with a storybook prologue: the four lights, the valley, the falling star and the dark (animated pages; tap or Enter to turn, Skip to leave). A card then introduces the hero. The camera flies down into the valley for the hero's intro cutscene: the star streaks across a night sky, the Beacon dies in a burst of shadow, gloomlings rise out of the grass, and then comes the hero's own night:
+- Orrin walking into the dark (Mira)
+- Aldric facing the shadow (Kael)
+- Nessa running from the gloom (Lyra)
+- the Hushed taking the contract (Riven)
+- the wolf pack turning (Wren)
+
+**Cutscenes** (`cutscenes.ts`) play at the story's big moments, 24 in all (five of them hero intros). The camera leaves the hero, pans or cuts to what happened, and letterbox bars and captions (narration or a speaker) tell it. World effects show the change:
+- a falling star
+- bursts of shadow
+- creatures rising from the ground
+- burning roofs
+- a collapsing bridge
+- light sweeping the land
+- Umbra's smoke fleeing east
+- black ice shattering
+- thorns withering
+- memories of the past, with people from long ago on stage
+
+Night scenes darken the world, so lamps and fires glow. Tap or Enter moves to the next shot, and Skip (or Esc) ends the scene; its effects still happen. The fighting pauses and the hero can't be hurt while a cutscene plays.
+
+**Chapters don't have to end with a guardian.** A chapter ends with its last main quest, and each land's Eastern Gate is closed until the story opens it:
+- **Chapter I** ends by rebuilding the collapsed Gloomwater Bridge.
+- **Chapter II** ends by lighting the Bell-lanterns that wither a wall of thorns, after holding Lanternmarket against the shadow's counterattack.
+- **Chapter III** ends by walking Orrin to the gate, where he and Sable break Umbra's black-ice seal together.
+
+The last chapter ends with Umbra, then an epilogue shows every light shining. There is no chapter-complete screen: the chapter's achievement pops up, its closing cutscene plays (ending on the next chapter's title), and the next land's first quest begins. Older saves are carried onto the longer chains: quests added before the point a save has reached count as done.
 
 ## Levels, spells and quests
 
@@ -71,7 +106,9 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Sunfire Elixir and Barkskin Brew (keys 1–5), plus Fire Bomb, Frost Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Bomb (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
 
-**Achievements (Y, or the quest log's Achievements tab):** 53 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 985 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
+**Journal:** the book button in the top bar (O, U or Y) opens the journal, with its three tabs: quests, spellbook and achievements.
+
+**Achievements (Y, or the journal's Achievements tab):** 53 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 985 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
 
 **World map (M):** the whole valley at once, all four lands side by side, with the fog lifted wherever the hero has been. It opens zoomed on the current land; drag to pan, pinch or scroll to zoom, or jump with the buttons (Whole valley or one land).
 
@@ -79,7 +116,18 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions and bombs, and buy anything you don't need: gear, potions, bombs and charms (for 40% of their price). **Armourers** (⛨, one in every city) sell equipment, but it is not easy to get: six pieces per shelf (one uncommon, three rare, two epic, sometimes a legendary), at 8–12 times what a merchant would pay for them. The best pieces are above your level and stay locked until you reach it. Each piece can be bought once, and the shelf is restocked when you level up. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
 
-**Quests:** gold main quests and blue side quests (47 side quests in total). Quest kinds are collect, slay, deliver, visit, talk, relic and boss, plus **rescue**: defeat the guards around a cage, then open it to free the captive. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident.
+**Quests:** gold main quests (with the hero's own quests among them) and blue side quests (51 in total). The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident. Quest kinds:
+- **Collect, slay, deliver, visit, talk, relic and boss.**
+- **Rescue:** defeat the guards around a cage, then open it. Many captives then have to be **walked home**.
+- **Escort:** someone walks with you (green ring and ♥ over their head). They won't move while creatures are near (the ring turns red), wait if you run too far ahead, and two ambushes lie in wait along the road.
+- **Defend:** a siege. Stand by a barricade while three waves march on it. A bar at the top shows its health, the wave and how many attackers are left; if it falls, you can regroup and try again.
+- **Build:** gather materials, then stand still at the site while you build (a progress bar, hammering and dust). The plan glows faintly until it's built.
+- **Light:** braziers, lanterns, runes, totems or vents. Some are puzzles that must be lit in the right order (the clue is in the quest's words); a wrong one puts them all out.
+- **Chase:** a thief runs from you, circling back toward their hideout. They tire every few seconds, which is your chance to catch them.
+- **Follow the trail:** glowing footprints lead from clue to clue, and each clue tells a piece of the story.
+- **Herd:** walk up behind sheep or goats to drive them into their pen.
+
+Some conversations end with **a choice** of two answers. The answer changes what is said and the bonus reward, and it is remembered.
 
 **Creatures:** gloomlings, thornlings, void wisps, bristleboars (telegraphed charge), sporecaps (poison clouds), shadewolves (circling packs), webspinners (slowing silk), frost wraiths (blink and ice shards), crag golems (ground slam), ember imps, ash scorpions and magma hulks. Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 4 minutes**.
 
@@ -93,7 +141,7 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Mounts:** earned through achievements and kept by that hero: Sunpetal Pony (Wanderer: discover 10 places, +50% speed), Tusked Bristleboar (Heroic Deed, +55%), Whisperroot Stag (finish Chapter II, +65%), Frostmane Wolf (finish Chapter III, +75%), Cinder Drake (finish Chapter IV, +85%) and Starlit Unicorn (defeat Umbra, +100%). Press R or the saddle button in the top bar to ride; you can't call a mount while creatures are after you, and attacking, casting, throwing a bomb or being hit puts you back on your feet. The Achievements tab starts with the stable, where you pick which mount to ride.
 
-**Phones:** the prompt just says **Talk** (or Trade, Rest…), notifications are one or two words, and every screen, including the chapter-complete screen, fits a landscape phone without scrolling.
+**Phones:** the prompt just says **Talk** (or Trade, Rest…), notifications are one or two words, and every screen, including the prologue and cutscenes, fits a landscape phone without scrolling.
 
 ## Sound and music
 
@@ -142,7 +190,9 @@ src/
     types.ts           Shared game types
     spells.ts          Heroes, their abilities and unlock levels
     progression.ts     Levels, XP curve and the hero profile that carries between chapters
-    story.ts           The main story: 57 quests across four chapters
+    story.ts           The shared main story: 64 quests across four chapters
+    heroStory.ts       Each hero's own quests and the people in them
+    cutscenes.ts       The cutscenes: shots, captions, world effects and the hero intros
     achievements.ts    The achievements, their categories, goals and points
     worlds.ts          Region layouts: places, people, side quests, lore and scripts
     worldgen.ts        Builds each region and stitches them into one valley: roads, cities, villages, forests, creatures, loot
@@ -159,6 +209,7 @@ src/
     backup.ts          Save backup export and import
   pwa.ts               Offline service worker registration and the update notice
   ui/MiniGames.tsx     Starfall Dice and the archery range
+  ui/Story.tsx         The storybook prologue, the cutscene letterbox and captions, and the siege bar
 ```
 
 ## Save data
