@@ -487,27 +487,26 @@ function App() {
   </div>;
 }
 
-/** Title: the logo and one big Play button. Choosing a hero happens on the next screen. */
+/** Title: the logo and one big Play button, centred on screen. Choosing a hero happens on the next screen. */
 function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
-  const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || 'summit';
+  const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || 'summit', last = heroStarted(hero) ? heroSummary(hero) : null;
   return <main className="menu-page title-page">
     <TitleBackdrop level={next} />
     <header className="title-top">
-      <div className="brand"><span className="brand-gem">✦</span><span><strong>Starfall Grove</strong><small>A storybook action RPG</small></span></div>
       <div className="title-tools">
         <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
         <button className="icon-button" onClick={() => { onSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>
       </div>
     </header>
     <section className="title-hero">
-      <small className="eyebrow">One vast valley · three lands · two heroes</small>
+      <small className="eyebrow">A storybook action RPG</small>
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
-      <p>A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods and the silver summit. Help the valley folk, gather loot, grow stronger — and learn what hides inside the Hollow Star.</p>
+      <p className="title-tag">Three lands · two heroes · one fallen star</p>
+      <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods and the silver summit. Help the valley folk, gather loot, grow stronger — and learn what hides inside the Hollow Star.</p>
       <button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button>
+      {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
-    {touch
-      ? <footer className="title-foot"><span>Drag on the left to move</span><span>Tap the round buttons to fight</span><span>Tap the prompt to talk</span></footer>
-      : <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> attack</span><span><kbd>E</kbd> dash / charge</span><span><kbd>K J H</kbd> abilities</span><span><kbd>Space</kbd> interact</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
+    {!touch && <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> attack</span><span><kbd>E</kbd> dash / charge</span><span><kbd>K J H</kbd> abilities</span><span><kbd>Space</kbd> interact</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
     {settings && <div className="overlay" onClick={() => onSettings(false)}><div onClick={e => e.stopPropagation()} className="panel pause-panel settings-panel">
       <SettingsBody graphics={graphics} onGraphics={onGraphics} />
       <button className="btn primary" onClick={() => onSettings(false)}>Done <b>←</b></button>

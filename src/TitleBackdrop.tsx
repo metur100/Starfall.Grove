@@ -47,7 +47,9 @@ export default function TitleBackdrop({ level = 'meadow' }: { level?: LevelId })
       }
       ctx.restore();
       // moon
-      const moonX = w * .78 - mx * 14, moonY = h * .2 - my * 10;
+      // On tall screens the moon moves up and to the left so it never sits behind the title.
+      const tall = h > w * 1.2;
+      const moonX = w * (tall ? .2 : .78) - mx * 14, moonY = h * (tall ? .085 : .2) - my * 10;
       const mg = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, 180); mg.addColorStop(0, 'rgba(255,240,200,.45)'); mg.addColorStop(1, 'rgba(255,240,200,0)');
       ctx.fillStyle = mg; ctx.fillRect(moonX - 180, moonY - 180, 360, 360);
       ctx.fillStyle = '#fff3cf'; ctx.beginPath(); ctx.arc(moonX, moonY, 44, 0, 6.28); ctx.fill();
