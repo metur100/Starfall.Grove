@@ -610,7 +610,7 @@ function BackupPanel({ onBeforeExport }: { onBeforeExport?: () => void }) {
   return <section className="backup-panel">
     <div className="dz-row"><span><b>Back up your saves</b><em>Your progress lives only in this browser. Download a backup file with every hero, and load it here again — or on another device — if anything is lost.</em></span>
       <div className="backup-actions">
-        <button className="btn ghost" onClick={() => { onBeforeExport?.(); const n = exportBackup(); setMsg({ text: `Backup saved (${n} entries). Keep the file somewhere safe.`, tone: 'good' }); sfx.play('pickup'); }}>⬇ Export</button>
+        <button className="btn ghost" onClick={() => { onBeforeExport?.(); const r = exportBackup(); if (!r.ok) { setMsg({ text: 'The backup could not be saved on this device.', tone: 'warn' }); sfx.play('nope'); return; } setMsg({ text: r.native ? `Backup saved to your Downloads folder (${r.count} entries).` : `Backup saved (${r.count} entries). Keep the file somewhere safe.`, tone: 'good' }); sfx.play('pickup'); }}>⬇ Export</button>
         <button className="btn ghost" onClick={() => input.current?.click()}>⬆ Import</button>
         <input ref={input} type="file" accept=".json,application/json" hidden onChange={e => pick(e.target.files?.[0])} />
       </div>
