@@ -1690,9 +1690,9 @@ export class GameEngine {
   choiceOf(id: string) { return this.choices[id] || null; }
 
   // ───────────────────────────── the intro
-  /** A new adventure opens with the storybook prologue and this hero's intro cutscene. */
+  /** A new adventure opens with the hero's intro film and then a short arrival cutscene. */
   get needsIntro() { return !this.introSeen && this.quests.get('meadow:m1')?.status === 'available' && this.elapsed < 30; }
-  /** After the hero's intro film a short arrival scene is enough; without it (offline, or it failed) the full intro plays. */
+  /** After the hero's intro film a short arrival scene is enough; if the film could not play, the full intro cutscene does. */
   startIntro(afterFilm = false) {
     this.introSeen = true;
     this.queueCine(afterFilm ? 'arrive' : 'intro', {}, () => { const v = this.guideVoice; this.say(v.name, v.portrait, [INTRO_LINE[this.heroId]]); });

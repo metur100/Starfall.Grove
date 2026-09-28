@@ -58,7 +58,7 @@ Each hero also has their own intro and their own lines at key moments, and their
 - **Riven:** the Hushed's last contract and its black feathers, the run over the rooftops, the shadow Riven knows, and the leap out of the window.
 - **Wren:** the pack at the campfire, the howl at the falling star, the shadow taking the wolves, Moonfang's last look, and the tracks at dawn.
 
-Each score was composed for its film and timed to what happens on screen: music box, strings, choir, horns and drums, with sound effects on the beats of the action (the falling star, the Beacon dying, sword on shield, a heartbeat, wolf howls, rooftop footsteps, a shing as Kael raises his sword). The films are compressed to 2–4.5 MB each and stream as they play. The game's own music and ambience go quiet while one plays, and its volume follows the master, music and effects settings. If the browser won't start it with sound, it plays muted with a *Tap for sound* button. **Skip** (or Esc / Enter) ends it. A short arrival cutscene follows: the dead Beacon, the gloom in the grass, then the hero where they woke. Offline, or if the film can't load within a few seconds, the storybook prologue below plays instead (films aren't kept for offline play, to keep the offline download small).
+Each score was composed for its film and timed to what happens on screen: music box, strings, choir, horns and drums, with sound effects on the beats of the action (the falling star, the Beacon dying, sword on shield, a heartbeat, wolf howls, rooftop footsteps, a shing as Kael raises his sword). The films are compressed to 2–4.5 MB each and stream as they play. The game's own music and ambience go quiet while one plays, and its volume follows the master, music and effects settings. If the browser won't start it with sound, it plays muted with a *Tap for sound* button. **Skip** (or Esc / Enter) ends it. A short arrival cutscene follows: the dead Beacon, the gloom in the grass, then the hero where they woke. Offline, or if the film can't load within a few seconds, the game goes straight to the hero's full in-game intro cutscene instead (films aren't kept for offline play, to keep the offline download small).
 
 **Where each hero starts:** every hero wakes in a different corner of the first land, and their first quest takes a different road into the story before it joins at Elder Rowan in Sunpetal:
 - **Mira** at the Bridgekeeper's Rest: Bridgekeeper Tamsin sends her to Rowan.
@@ -69,7 +69,7 @@ Each score was composed for its film and timed to what happens on screen: music 
 
 Creatures near each start are no stronger than those around the Rest, so no hero starts among tougher foes.
 
-**The storybook** (offline): a storybook prologue: the four lights, the valley, the falling star and the dark (animated pages; tap or Enter to turn, Skip to leave). A card then introduces the hero. The camera flies down into the valley for the hero's intro cutscene: the star streaks across a night sky, the Beacon dies in a burst of shadow, gloomlings rise out of the grass, and then comes the hero's own night:
+**The in-game intro cutscene** (when the film can't play): the camera flies down into the valley at night: the star streaks across the sky, the Beacon dies in a burst of shadow, gloomlings rise out of the grass, and then comes the hero's own night:
 - Orrin walking into the dark (Mira)
 - Aldric facing the shadow (Kael)
 - Nessa running from the gloom (Lyra)
@@ -235,7 +235,7 @@ src/
     backup.ts          Save backup export and import
   pwa.ts               Offline service worker registration and the update notice
   ui/MiniGames.tsx     Starfall Dice and the archery range
-  ui/Story.tsx         The intro film player, the storybook prologue, the cutscene letterbox and captions, and the siege bar
+  ui/Story.tsx         The intro film player, the cutscene letterbox and captions, and the siege bar
 ```
 
 ## Save data

@@ -2,62 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { sfx } from '../game/audio';
 import { HEROES } from '../game/spells';
 import type { CineState, HeroId, SiegeState } from '../game/types';
-import { HeroFace } from './icons';
-
-/** The storybook pages that open a new adventure, before the camera flies down into the valley. */
-const PAGES: Array<{ scene: string; text: string }> = [
-  { scene: 'lights', text: 'Long ago, four lights were lit over Starfall Valley: the Beacon, the Bell, the Star and the Forge. In their glow, the dark had nowhere to sleep.' },
-  { scene: 'valley', text: 'For a hundred years the valley lived in that glow. Farms and cities, fairs and lanterns, and nights full of stars.' },
-  { scene: 'fall', text: 'Then, one quiet night, a star fell.' },
-  { scene: 'dark', text: 'The Beacon went dark. Shadows crept out of the grass. And somewhere in the east, something old woke up, hungry.' },
-];
-const HOOK: Record<HeroId, string> = {
-  mira: 'Mira is a young star warlock, apprentice to Master Orrin. On the night the star fell, Orrin walked out into the dark and told her to stay behind. She didn’t.',
-  kael: 'Kael is a squire of the Wardens, the old knights who guard the Beacon. He was on watch at the Rise with his teacher, Ser Aldric, when the shadow came.',
-  lyra: 'Lyra is a frost mage from the Silver Heights. Her little sister Nessa carries the post on the meadow roads, and on the night the star fell, Nessa never came home.',
-  riven: 'Riven grew up in a foundling house, born with a shadow that hurts, and was raised by the Hushed, the valley’s quietest thieves. That night they took a job paid in black feathers.',
-  wren: 'Wren is a beast hunter who grew up among wolves. When the star fell her whole pack turned to shadow, all but young Fenn.',
-};
-
-const START_AT: Record<HeroId, string> = { mira: 'the Bridgekeeper’s Rest', kael: 'Millbrook Farm', lyra: 'Mirror Lake', riven: 'Goldenhearth', wren: 'the Old Stone Garden' };
-
-export function Prologue({ hero, onDone, onSkip }: { hero: HeroId; onDone: () => void; onSkip: () => void }) {
-  const [page, setPage] = useState(0);
-  const last = page >= PAGES.length;
-  const next = () => { sfx.play('page'); if (last) onDone(); else setPage(p => p + 1); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { const t = window.setTimeout(next, last ? 9000 : page === 2 ? 5200 : 7000); return () => window.clearTimeout(t); }, [page]);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onSkip(); } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); next(); } };
-    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
-  const p = PAGES[page];
-  return <div className="prologue" onClick={next} role="dialog" aria-label="Prologue">
-    <div className={`pro-scene scene-${last ? 'hero' : p.scene}`} key={page}>
-      <div className="pro-sky">{Array.from({ length: 40 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 100}%`, top: `${(i * 53) % 70}%`, animationDelay: `${(i % 7) * .4}s` }} />)}</div>
-      <div className="pro-hills"><span /><span /><span /></div>
-      {!last && p.scene === 'lights' && <div className="pro-lights"><b>☀</b><b>🔔</b><b>★</b><b>🔥</b></div>}
-      {!last && p.scene === 'valley' && <div className="pro-village">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ left: `${10 + i * 9}%`, animationDelay: `${i * .3}s` }} />)}</div>}
-      {!last && p.scene === 'fall' && <><div className="pro-meteor" /><div className="pro-flash" /></>}
-      {!last && p.scene === 'dark' && <div className="pro-mist" />}
-      {last && <div className="pro-hero"><span className="pro-face"><HeroFace hero={hero} /></span><small>{HEROES[hero].title}</small><h2>{HEROES[hero].name}</h2></div>}
-    </div>
-    <div className="pro-text" key={`t${page}`}>
-      <p>{last ? HOOK[hero] : p.text}</p>
-      <em>{last ? `Your story begins at ${START_AT[hero]}.` : ''}</em>
-    </div>
-    <div className="pro-foot" onClick={e => e.stopPropagation()}>
-      <span className="pro-dots">{[...PAGES, null].map((_, i) => <i key={i} className={i === page ? 'on' : ''} />)}</span>
-      <button className="btn ghost" onClick={() => { sfx.play('ui'); onSkip(); }}>Skip intro ⏭</button>
-      <button className="btn primary" onClick={next}>{last ? 'Begin' : 'Next'} <b>→</b></button>
-    </div>
-  </div>;
-}
 
 /**
- * The hero's intro film (public/intro/<hero>.mp4, 30 seconds with its own score). Tap or Esc skips it. It needs the
- * network (films are not kept for offline play), so offline, or when it cannot load, `onFail` falls back to the storybook.
+ * The hero's intro film (public/intro/<hero>.mp4, 30 seconds with its own score), played when a new adventure starts.
+ * Skip or Esc ends it. If it cannot load (offline, say), `onFail` goes straight on to the hero's in-game intro.
  */
 export function IntroFilm({ hero, onDone, onFail }: { hero: HeroId; onDone: () => void; onFail: () => void }) {
   const ref = useRef<HTMLVideoElement>(null), done = useRef(false);
@@ -65,12 +13,11 @@ export function IntroFilm({ hero, onDone, onFail }: { hero: HeroId; onDone: () =
   const finish = (ok: boolean) => { if (done.current) return; done.current = true; ref.current?.pause(); (ok ? onDone : onFail)(); };
   useEffect(() => {
     const v = ref.current; if (!v) return;
-    if (!navigator.onLine) { finish(false); return; }
     sfx.setDucked(true);
     v.volume = sfx.filmVolume(); v.muted = sfx.isMuted();
     // Browsers may refuse to start a film with sound; then it plays muted, with a button to turn the sound on.
     v.play().catch(() => { v.muted = true; setMuted(true); v.play().catch(() => finish(false)); });
-    const slow = window.setTimeout(() => { if (v.currentTime < .1) finish(false); }, 9000);
+    const slow = window.setTimeout(() => { if (v.currentTime < .1) finish(false); }, 12000);
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); finish(true); } };
     window.addEventListener('keydown', key);
     return () => { window.clearTimeout(slow); window.removeEventListener('keydown', key); sfx.setDucked(false); };

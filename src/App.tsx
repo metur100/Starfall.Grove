@@ -21,7 +21,7 @@ import type { EngineEvent, GameSnapshot, HeroId, ItemId, NoticeTone, QuestOffer,
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
 import { GearIcon, HeroFace, ItemIcon, JournalIcon } from './ui/icons';
-import { CineOverlay, IntroFilm, Prologue, SiegeBar } from './ui/Story';
+import { CineOverlay, IntroFilm, SiegeBar } from './ui/Story';
 import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
 import { TRAILS, TRAIL_ORDER } from './game/trails';
 
@@ -122,11 +122,9 @@ function App() {
   const [bossBanner, setBossBanner] = useState<{ name: string; title: string } | null>(null);
   /** After the last chapter's closing cutscene, the ending screen follows. */
   const [endingPending, setEndingPending] = useState(false);
-  /** The storybook prologue that opens a new adventure. */
-  const [prologue, setPrologue] = useState(false);
-  /** The hero's intro film, shown instead of the storybook when it can be streamed. */
+  /** The hero's intro film, which opens a new adventure. */
   const [film, setFilm] = useState(false);
-  const prologueChecked = useRef(-1);
+  const introChecked = useRef(-1);
   const [achQueue, setAchQueue] = useState<AchPop[]>([]);
   /** A mini-game a villager offered and the player accepted. */
   const [miniGame, setMiniGame] = useState<NonNullable<QuestOffer['game']> | null>(null);
@@ -204,7 +202,7 @@ function App() {
   const startGame = (fresh = false, as: HeroId = hero) => {
     sfx.unlock();
     if (fresh) clearSession(as);
-    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setPrologue(false); setFilm(false); setAchQueue([]); resetStick();
+    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setFilm(false); setAchQueue([]); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('play');
   };
   /** Erases the adventure, the hero's level, gold, bag and quest progress. Sound and graphics settings are kept. */
@@ -216,13 +214,13 @@ function App() {
     engineRef.current = null; wipeHero(h); if (h !== hero) chooseHero(h); setSettingsOpen(false); startGame(true, h);
   };
   const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setEndingPending(false); setMode('title'); };
-  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setPrologue(false); setFilm(false); setMode('title'); };
+  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setFilm(false); setMode('title'); };
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
   const changeGraphics = (patch: Partial<GraphicsSettings>) => { const g = { ...graphics, ...patch }; setGraphics(g); saveGraphics(g); sfx.play('ui'); };
-  // New spells and level-ups wait until a cutscene or the prologue is over.
-  const showSpell = spellQueue.length && !dialogue && !snapshot?.cine && !prologue && !film ? spellQueue[0] : null;
+  // New spells and level-ups wait until a cutscene or the intro film is over.
+  const showSpell = spellQueue.length && !dialogue && !snapshot?.cine && !film ? spellQueue[0] : null;
   const cine = snapshot?.cine ?? null;
-  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!miniGame || !!cine || prologue || film;
+  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!miniGame || !!cine || film;
   const cast = (id: SpellId) => { if (!blocked) engineRef.current?.cast(id); };
   const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen && !cine) engineRef.current?.useItem(id); };
   /** Opens the quest log on a tab, or closes it if that tab is already showing. */
@@ -232,9 +230,9 @@ function App() {
   const dismissSpell = () => setSpellQueue(q => q.slice(1));
 
   // The chapter title plays when a run starts, once the first snapshot says which chapter it is.
-  useEffect(() => { if (mode === 'play' && snapshot && !chapterBanner && !prologue && !film && !snapshot.cine && !engineRef.current?.needsIntro) setChapterBanner({ chapter: snapshot.chapter, key: 1 }); }, [mode, snapshot, chapterBanner, prologue]);
-  // A brand-new adventure opens with the storybook prologue, then the hero's intro cutscene.
-  useEffect(() => { if (mode !== 'play' || !snapshot || prologueChecked.current === runKey || snapshot.hero !== hero || engineRef.current?.heroId !== hero) return; prologueChecked.current = runKey; if (engineRef.current?.needsIntro) { engineRef.current.setMovement(0, 0); if (navigator.onLine) setFilm(true); else setPrologue(true); } }, [mode, snapshot, runKey]);
+  useEffect(() => { if (mode === 'play' && snapshot && !chapterBanner && !film && !snapshot.cine && !engineRef.current?.needsIntro) setChapterBanner({ chapter: snapshot.chapter, key: 1 }); }, [mode, snapshot, chapterBanner, film]);
+  // A brand-new adventure opens with the hero's intro film, then a short arrival cutscene.
+  useEffect(() => { if (mode !== 'play' || !snapshot || introChecked.current === runKey || snapshot.hero !== hero || engineRef.current?.heroId !== hero) return; introChecked.current = runKey; if (engineRef.current?.needsIntro) { engineRef.current.setMovement(0, 0); setFilm(true); } }, [mode, snapshot, runKey]);
   const cineOn = !!cine;
   useEffect(() => { if (cineOn) { keys.current.clear(); engineRef.current?.setMovement(0, 0); resetStick(); } }, [cineOn]);
   useEffect(() => { if (!endingPending || cineOn) return; const t = window.setTimeout(() => { setEndingPending(false); setMode('ending'); }, 1800); return () => window.clearTimeout(t); }, [endingPending, cineOn]);
@@ -297,7 +295,7 @@ function App() {
     if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     const k = e.key.toLowerCase(), act = actionOf(k);
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
-    if (miniGame || prologue || film) return;
+    if (miniGame || film) return;
     if (cine) {
       if (k === 'escape') engineRef.current?.skipCine(); else if (k === 'enter' || k === ' ' || act === 'interact') engineRef.current?.advanceCine();
       e.preventDefault(); return;
@@ -353,7 +351,6 @@ function App() {
     if (showSpell) { dismissSpell(); return; }
     if (miniGame) { endGame({ won: false, gold: 0 }); return; }
     if (film) { setFilm(false); engineRef.current?.startIntro(true); return; }
-    if (prologue) { setPrologue(false); engineRef.current?.skipIntro(); return; }
     if (cine) { engineRef.current?.skipCine(); return; }
     if (dialogue) { if (dialogue.then !== 'complete' && !dialogue.choice) setDialogue(null); return; }
     if (mapOpen) { setMapOpen(false); return; }
@@ -384,7 +381,7 @@ function App() {
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || prologue || film || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || film || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
@@ -416,7 +413,7 @@ function App() {
     </div></div>}
     {mode === 'select' && <CharacterSelect hero={hero} summary={heroSummary} touch={touch} onHero={chooseHero} onEnter={() => startGame()} onBack={() => setMode('title')} />}
 
-    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero} ${cine || prologue || film ? 'cine-on' : ''}`}>
+    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero} ${cine || film ? 'cine-on' : ''}`}>
       <section className="game-stage">
         <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
@@ -515,9 +512,8 @@ function App() {
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
         {cine && <CineOverlay cine={cine} touch={touch} onNext={() => engineRef.current?.advanceCine()} onSkip={() => engineRef.current?.skipCine()} />}
-        {film && <IntroFilm hero={hero} onDone={() => { setFilm(false); engineRef.current?.startIntro(true); }} onFail={() => { setFilm(false); setPrologue(true); }} />}
-        {prologue && <Prologue hero={hero} onDone={() => { setPrologue(false); engineRef.current?.startIntro(); }} onSkip={() => { setPrologue(false); engineRef.current?.skipIntro(); }} />}
-        {achPop && !cine && !prologue && !film && <div className="ach-pop" key={achPop.key}>
+        {film && <IntroFilm hero={hero} onDone={() => { setFilm(false); engineRef.current?.startIntro(true); }} onFail={() => { setFilm(false); engineRef.current?.startIntro(false); }} />}
+        {achPop && !cine && !film && <div className="ach-pop" key={achPop.key}>
           <span className="ach-shield"><b>{achPop.icon}</b></span>
           <span className="ach-text"><small>Achievement earned</small><strong>{achPop.name}</strong>{!touch && <em>{achPop.description}</em>}</span>
           <span className="ach-points"><b>{achPop.points}</b></span>
