@@ -1,6 +1,6 @@
 # Starfall Grove
 
-A responsive single-player 2D action RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API, and React handles the menus, HUD, touch controls, dialogue, journal and map. All music and sound are synthesized live with Web Audio, so there are no asset files.
+A responsive single-player 2D action RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API, and React handles the menus, HUD, touch controls, dialogue, journal and map. All in-game music and sound are synthesized live with Web Audio. The only media files are the five hero intro films (`public/intro/`).
 
 **Plays offline and installs like an app.** A service worker (made by `vite-plugin-pwa`) keeps every game file on the device after the first visit, so the game opens with no connection and loads faster. The app manifest lets phones and PCs install it to the home screen, where it opens full screen with its own icon. A new version downloads quietly in the background; the title screen then shows **A new version is ready · Restart**, so it never reloads in the middle of a fight. The fonts (Cinzel Decorative, Cinzel, Nunito) ship with the game, latin letters and used weights only, so text never jumps when a font arrives late. Until the code has loaded, `index.html` shows its own loading screen (logo, a spinning star and rising sparks), which fades once the fonts are in.
 
@@ -51,7 +51,25 @@ The shared main story (in `story.ts`) has **12 quests in Chapter I, 17 in Chapte
 
 Each hero also has their own intro and their own lines at key moments, and their own thoughts voice the story's nudges between quests (Tuft does it for Mira).
 
-**The intro:** a new adventure opens with a storybook prologue: the four lights, the valley, the falling star and the dark (animated pages; tap or Enter to turn, Skip to leave). A card then introduces the hero. The camera flies down into the valley for the hero's intro cutscene: the star streaks across a night sky, the Beacon dies in a burst of shadow, gloomlings rise out of the grass, and then comes the hero's own night:
+**The intro film:** a new adventure opens with the hero's own 30-second animated film (`public/intro/<hero>.mp4`, 1280×720, with its own score):
+- **Mira:** the star falls past the cottage window, Orrin walks into the dark with his lantern, and at dawn she and Tuft set out.
+- **Kael:** the night watch with Ser Aldric, the Beacon bursting into shadow, Aldric's last stand, and Kael's oath at sunrise.
+- **Lyra:** the ice shrine under the aurora, Nessa running on the lake road, Lyra's eyes opening, and her walk down the mountain.
+- **Riven:** the Hushed's last contract and its black feathers, the run over the rooftops, the shadow Riven knows, and the leap out of the window.
+- **Wren:** the pack at the campfire, the howl at the falling star, the shadow taking the wolves, Moonfang's last look, and the tracks at dawn.
+
+Each score was composed for its film and timed to what happens on screen: music box, strings, choir, horns and drums, with sound effects on the beats of the action (the falling star, the Beacon dying, sword on shield, a heartbeat, wolf howls, rooftop footsteps, a shing as Kael raises his sword). The films are compressed to 2–4.5 MB each and stream as they play. The game's own music and ambience go quiet while one plays, and its volume follows the master, music and effects settings. If the browser won't start it with sound, it plays muted with a *Tap for sound* button. **Skip** (or Esc / Enter) ends it. A short arrival cutscene follows: the dead Beacon, the gloom in the grass, then the hero where they woke. Offline, or if the film can't load within a few seconds, the storybook prologue below plays instead (films aren't kept for offline play, to keep the offline download small).
+
+**Where each hero starts:** every hero wakes in a different corner of the first land, and their first quest takes a different road into the story before it joins at Elder Rowan in Sunpetal:
+- **Mira** at the Bridgekeeper's Rest: Bridgekeeper Tamsin sends her to Rowan.
+- **Kael** at Millbrook Farm, where Farmer Bram found him in the hay: Bram sends him to warn Captain Brannoc in Goldenhearth, and Brannoc sends him on to Rowan.
+- **Lyra** on the shore of Mirror Lake, on Nessa's road: Fisher Lou saw a courier girl run past, and sends her to Postmistress Wynne in Sunpetal.
+- **Riven** in Goldenhearth: Baker Tom hands over a honey bun and points Riven to Rowan.
+- **Wren** at the Old Stone Garden, on her pack's tracks, which lead her west to Sunpetal.
+
+Creatures near each start are no stronger than those around the Rest, so no hero starts among tougher foes.
+
+**The storybook** (offline): a storybook prologue: the four lights, the valley, the falling star and the dark (animated pages; tap or Enter to turn, Skip to leave). A card then introduces the hero. The camera flies down into the valley for the hero's intro cutscene: the star streaks across a night sky, the Beacon dies in a burst of shadow, gloomlings rise out of the grass, and then comes the hero's own night:
 - Orrin walking into the dark (Mira)
 - Aldric facing the shadow (Kael)
 - Nessa running from the gloom (Lyra)
@@ -94,7 +112,9 @@ The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, w
 
 **Wren, beast hunter (ranged), with Fenn the wolf:** Quick Shot (L): an arrow that pierces the first creature it hits · Tumble (E): an untouchable roll, and Fenn pounces on the nearest foe and stuns it · Volley (K, level 3): seven arrows in a fan · Snare Trap (J, level 6): a trap at her feet that catches and hurts the first creatures to step on it for 3 s (up to three traps, 20 s each) · Call of the Wild (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. In 3D he sits beside her on the pedestal.
 
-Mira fights from range and is fragile. Kael fights up close, has more health and takes about 35% less damage; his Charge is a short rush (about 230 px) that stops at the foe it aims for. Lyra controls fights: chilled creatures move and act at 55% speed, frozen ones stand still. Riven is the fastest hero and hits hardest, but is lightly armoured. On touch screens the shield sits right next to the attack button. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
+Mira fights from range and is fragile. Kael fights up close, has more health and takes about 35% less damage; his Charge is a short rush (about 230 px) that stops at the foe it aims for. Lyra controls fights: chilled creatures move and act at 55% speed, frozen ones stand still. Riven is the fastest hero and hits hardest, but is lightly armoured. On touch screens the shield sits right next to the attack button.
+
+**Balance:** the heroes are tuned to be about equally strong, though some are harder to play well. A simulation (`.sim/bal.ts`, run with esbuild) runs each hero, with no gear or spell stars, under a simple bot. At levels 3 to 25 it fights a creature pack of each land and measures the time to clear it and the health lost. Against each guardian it measures the share of the guardian's health taken in 40 seconds and the damage received. After tuning, every hero clears a pack within about 20% of the others (Lyra had been 60–90% slower). Kael is the toughest. Riven deals the most damage but takes the most, so Riven is the one to play carefully. Mira and Lyra are safer at range. The tuning: Lyra's Frost Bolt 12 → 18 (cooldown 0.42 → 0.4 s), Blink 10 → 12, Frost Nova 28 → 40, Blizzard 13 → 18; Mira's Spark 10 → 12, Sunfire 40 → 44, Starfall 34 → 38; Wren's Quick Shot 11 → 10 and Volley 20 → 18; Riven now takes 78% of a hit instead of 82%, and gains 10 health per level instead of 9. Ability damage now comes from one table (`spells.ts`), which the engine and the spellbook both read. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
 
 Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.
 
@@ -125,7 +145,9 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 - **Light:** braziers, lanterns, runes, totems or vents. Some are puzzles that must be lit in the right order (the clue is in the quest's words); a wrong one puts them all out.
 - **Chase:** a thief runs from you, circling back toward their hideout. They tire every few seconds, which is your chance to catch them.
 - **Follow the trail:** glowing footprints lead from clue to clue, and each clue tells a piece of the story.
-- **Herd:** walk up behind sheep or goats to drive them into their pen.
+- **Herd:** walk up behind sheep or goats to drive them into their pen. Every herd has two spare animals, and they can't leave their land or stray far from the herd's ground (one pushed to the edge wanders back), so a lost animal never blocks the quest.
+
+**Abandoning a quest:** the journal has an **Abandon quest** button under the current main quest and each side quest under way (it asks once more). The quest goes back to whoever gave it: followers, thieves and herds go home, rescue guards and siege attackers melt away, and lanterns, runes, clues and cages are reset. Things already gathered for a collect or build quest are kept and count again. An abandoned quest shows **Take up again** in the journal, or you can ask its giver again. A guardian's fight, a siege in progress and a build in progress can't be abandoned.
 
 Some conversations end with **a choice** of two answers. The answer changes what is said and the bonus reward, and it is remembered.
 
@@ -145,7 +167,11 @@ Some conversations end with **a choice** of two answers. The answer changes what
 
 ## Sound and music
 
-- **Music:** composed themes for the menu, each chapter, boss fights and victory (`music.ts`). They crossfade, and chapter themes add a percussion layer when creatures are near.
+- **Music:** composed themes for the menu, each chapter and victory (`music.ts`). They crossfade, and chapter themes add a percussion layer when creatures are near.
+- **Battle music:** each fight that matters has its own dramatic theme:
+  - **Guardians** (Mossback, the Bramble Warden, the Hollow Star, the Cinder Tyrant): a driving D-minor battle theme with brass stabs.
+  - **Umbra, the Eclipse:** a theme of its own in C harmonic minor, with double-time drums, tolling bells, dark pads and a climbing brass line. It starts the moment Umbra begins to rise.
+  - **Sieges:** *Hold the Line*, an A-minor march with snare rolls and brass calls, while a barricade is under attack.
 - **Custom music files:** to use recorded tracks instead, add them under `public/music/` with a `manifest.json` such as `{ "meadow": "meadow.mp3" }`.
 - **Sound effects:** layered and positional, so they pan and fade with distance, with a shared reverb.
 - **Ambience:** birds, crickets, owls, dripping water, wind and crystal chimes per chapter. Water and campfires get louder as you walk near them.
@@ -175,7 +201,7 @@ Some conversations end with **a choice** of two answers. The answer changes what
 
 **Remapping keys:** Settings → Controls lists every action; click one and press the new key. A key that is already in use swaps places with it, so nothing is left unbound, and Reset brings back the defaults. The arrow keys always move, 1–0 stay on the potion slots, and Esc, Tab and Enter keep their jobs. Every key hint in the game (spell buttons, pause menu, spellbook, title screen) shows the keys you chose. The bindings are saved in `starfall-grove-keys-v1`.
 
-**Settings:** the ⚙ button on the title screen (and ⚙ Settings in the pause menu) has all graphics and sound settings, plus **Back up your saves** (below), **Start over** (erases only the chosen hero and starts a new adventure) and **Delete all saves** (erases every hero). Both ask for a second tap. Sound and graphics settings are kept.
+**Settings:** the ⚙ button on the title screen (and ⚙ Settings in the pause menu) has all graphics and sound settings, plus **Back up your saves** (below), **Start over as** with a list of the five heroes (erases only the hero picked and starts a new adventure as them; if that is a different hero from the one being played, the current one's adventure is saved first) and **Delete all saves** (erases every hero). Both ask for a second tap. Sound and graphics settings are kept.
 
 **Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices, and prompts say "Tap" instead of showing keyboard keys.
 
@@ -209,7 +235,7 @@ src/
     backup.ts          Save backup export and import
   pwa.ts               Offline service worker registration and the update notice
   ui/MiniGames.tsx     Starfall Dice and the archery range
-  ui/Story.tsx         The storybook prologue, the cutscene letterbox and captions, and the siege bar
+  ui/Story.tsx         The intro film player, the storybook prologue, the cutscene letterbox and captions, and the siege bar
 ```
 
 ## Save data

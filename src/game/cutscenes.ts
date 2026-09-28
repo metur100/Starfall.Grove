@@ -35,7 +35,19 @@ const opening: Shot[] = [
   { at: 'meadow:sunpetal', dx: -420, dy: 300, cut: true, text: 'And out of the tall grass, the gloom came creeping.', fx: [{ kind: 'gloom', n: 5, delay: .4 }], dur: 4 },
 ];
 
+/** After a hero's intro film: a short look at the valley as it is now, then the hero where they woke. */
+const arrival = (text: string, name: string, sub: string): Shot[] => [
+  { at: 'meadow:rise', cut: true, dy: -70, night: .6, text: 'The Beacon Rise. Last night its light went out, and the dark came up out of the stones.', fx: [{ kind: 'shadow', dy: -80, delay: .5 }], dur: 4 },
+  { at: 'meadow:sunpetal', dx: -420, dy: 300, cut: true, text: 'Now gloomlings creep through the tall grass, closer every dusk.', fx: [{ kind: 'gloom', n: 5, delay: .3 }], dur: 3.8 },
+  { at: 'hero', cut: true, night: 0, text, dur: 4.2 },
+  title(name, sub)];
+
 export const CINES: Record<string, Shot[]> = {
+  'arrive@mira': arrival('Morning at the Bridgekeeper’s Rest. Orrin’s lantern is gone, and Tuft is pointing east.', 'Mira', 'The Apprentice'),
+  'arrive@kael': arrival('Morning at Millbrook Farm. Kael wakes in the hay, with Aldric’s last words still ringing.', 'Kael', 'The Oathsworn'),
+  'arrive@lyra': arrival('Morning on the shore of Mirror Lake, where Nessa’s road ran. The reeds are white with Lyra’s frost.', 'Lyra', 'Winter’s Daughter'),
+  'arrive@riven': arrival('Morning in Goldenhearth. Riven walks away from the Hushed for good, and into the crowd.', 'Riven', 'The Foundling'),
+  'arrive@wren': arrival('Morning at the Old Stone Garden. The pack’s tracks run west, and Fenn won’t leave Wren’s side.', 'Wren', 'The Pack'),
   // ─────────────── intros, one per hero
   'intro@mira': [...opening,
     { at: 'meadow:rest', cut: true, text: 'At the Bridgekeeper’s Rest, Master Orrin took up his lantern and walked out into the dark.', actors: [{ id: 'orrin', name: 'Master Orrin', look: LOOKS.orrin, dx: -40, dy: 50, walk: { dx: 560, dy: 170 } }], dur: 5 },
@@ -46,12 +58,12 @@ export const CINES: Record<string, Shot[]> = {
     { at: 'meadow:rise', cut: true, text: 'Kael stood the night watch at the Rise beside Ser Aldric, Warden of the Rise, his teacher.', actors: [{ id: 'aldric', name: 'Ser Aldric', look: LOOKS.aldric, dx: -70, dy: 100 }, { id: 'kael', name: 'Kael', look: LOOKS.kael, dx: 50, dy: 120, face: -1 }], dur: 4.6 },
     { text: 'When the shadow burst out of the stones, Aldric threw himself in front of it…', fx: [{ kind: 'shadow', dx: -70, dy: 70 }, { kind: 'quake', delay: .3 }], dur: 3.8 },
     { speaker: 'Ser Aldric', portrait: '🛡️', text: '“Run, lad! Warn the valley! Hold the line where I can’t!”', dur: 4 },
-    { at: 'hero', cut: true, night: 0, text: 'Kael woke at the Bridgekeeper’s Rest with those words still ringing. The Warden never came down the hill.', dur: 4.6 },
+    { at: 'hero', cut: true, night: 0, text: 'Kael woke at dawn in the hay at Millbrook Farm, with those words still ringing. The Warden never came down the hill.', dur: 4.6 },
     title('Kael', 'The Oathsworn')],
   'intro@lyra': [...opening,
     { at: 'meadow:mirror', dx: 200, dy: -560, cut: true, text: 'On the lake road, a courier ran through the dark with a satchel of letters. Nessa, Lyra’s little sister.', actors: [{ id: 'nessa', name: 'Nessa', look: LOOKS.nessa, dx: -240, dy: 30, walk: { dx: 460, dy: 30 } }], dur: 4.8 },
     { text: 'The gloom rose all around her, and her letters scattered like leaves.', fx: [{ kind: 'gloom', n: 4, dx: 240 }], dur: 4 },
-    { at: 'hero', cut: true, night: 0, text: 'Far up in the Silver Heights, Lyra felt it: a cold that was not the weather. By dawn she had come down the mountain to find her sister.', dur: 5.2 },
+    { at: 'hero', cut: true, night: 0, text: 'Far up in the Silver Heights, Lyra felt it: a cold that was not the weather. By dawn she stood on the shore of Mirror Lake, on her sister’s road.', dur: 5.2 },
     title('Lyra', 'Winter’s Daughter')],
   'intro@riven': [...opening,
     { at: 'meadow:city', cut: true, dy: -60, text: 'In Goldenhearth, in a room above the tannery, the Hushed took a strange contract: steal the Beacon’s sun-crystals. The pay: a pouch of black feathers.', actors: [{ id: 'magpie', name: 'Magpie', look: LOOKS.magpie, dx: -40, dy: 40 }, { id: 'riven', name: 'Riven', look: LOOKS.riven, dx: 44, dy: 40, face: -1 }], dur: 5.6 },
@@ -62,7 +74,7 @@ export const CINES: Record<string, Shot[]> = {
   'intro@wren': [...opening,
     { at: 'meadow:camp', cut: true, text: 'At the Hunter’s Camp, Wren’s wolves lifted their heads and howled at the falling star.', actors: [{ id: 'fenn', beast: true, dx: 40, dy: 70, face: -1 }], dur: 4.4 },
     { text: 'The shadow answered. One by one the pack’s eyes went black, and they ran into the night.', fx: [{ kind: 'shadow', dx: 220 }, { kind: 'wolves', n: 4, dx: 240, delay: .3 }], dur: 4.6 },
-    { at: 'hero', cut: true, night: 0, text: 'Only Fenn, the youngest, stayed at her side. Wren followed the tracks as far as the Bridgekeeper’s Rest.', dur: 4.6 },
+    { at: 'hero', cut: true, night: 0, text: 'Only Fenn, the youngest, stayed at her side. Wren followed the tracks as far as the Old Stone Garden.', dur: 4.6 },
     title('Wren', 'The Pack')],
 
   // ─────────────── Chapter I

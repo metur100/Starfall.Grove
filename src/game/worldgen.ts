@@ -456,6 +456,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
       ...sq, id: P(sq.id), region: spec.id, main: main || undefined, giver: P(sq.giver), after: sq.after && P(sq.after), from: sq.from && P(sq.from),
       to: sq.to && P(sq.to), turnIn: sq.turnIn && P(sq.turnIn), place: sq.place && P(sq.place), near: sq.near && P(sq.near),
       requires: sq.requires && P(sq.requires), boss: sq.boss && P(sq.boss),
+      forHero: sq.forHero && Object.fromEntries(Object.entries(sq.forHero).map(([h, o]) => [h, { ...o, ...(o?.giver ? { giver: P(o.giver) } : {}), ...(o?.to ? { to: P(o.to) } : {}) }])),
     };
   });
   const start = pois.find(p => p.kind === 'start') || pois[0];

@@ -61,13 +61,15 @@ export function audioCore(): Core | null {
   if (core.ac.state === 'suspended') void core.ac.resume();
   return core;
 }
+/** While a film with its own soundtrack plays, the game's music and ambience are silent. */
+let ducked = false;
 function applyVolumes() {
   if (!core) return;
   const t = core.ac.currentTime, m = settings.muted ? 0 : settings.master;
   core.master.gain.setTargetAtTime(m, t, .05);
   core.sfx.gain.setTargetAtTime(settings.sfx, t, .05);
-  core.ambience.gain.setTargetAtTime(settings.sfx * .9, t, .05);
-  core.music.gain.setTargetAtTime(settings.music, t, .05);
+  core.ambience.gain.setTargetAtTime(ducked ? 0 : settings.sfx * .9, t, .05);
+  core.music.gain.setTargetAtTime(ducked ? 0 : settings.music, t, .05);
 }
 
 // ───────────────────────────── building blocks
@@ -201,6 +203,9 @@ export const sfx = {
   isMuted: () => settings.muted,
   setMuted(value: boolean) { settings.muted = value; persist(); applyVolumes(); },
   settings: () => ({ ...settings }),
+  setDucked(value: boolean) { ducked = value; applyVolumes(); },
+  /** How loud a video should play (0 to 1) to sit with the game's own sound. */
+  filmVolume: () => (settings.muted ? 0 : Math.min(1, settings.master * Math.max(settings.music, settings.sfx) * 1.1)),
   setVolume(kind: 'master' | 'music' | 'sfx', value: number) { settings[kind] = Math.max(0, Math.min(1, value)); persist(); applyVolumes(); },
 };
 

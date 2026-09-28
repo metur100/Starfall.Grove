@@ -3,3 +3,6 @@ dist
 *.tsbuildinfo
 .DS_Store
 .sim/
+
+# Uncompressed source films for the hero intros (the game uses the compressed copies in public/intro)
+media/

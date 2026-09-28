@@ -3,7 +3,7 @@
 // optional audio-file overrides via public/music/manifest.json. Shares the context and mixer of audio.ts.
 import { audioCore } from './audio';
 
-export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'ember' | 'boss' | 'victory';
+export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'ember' | 'boss' | 'finale' | 'siege' | 'victory';
 type Core = NonNullable<ReturnType<typeof audioCore>>;
 
 // ───────────────────────────── notes, chords, melodies
@@ -334,6 +334,60 @@ const TRACKS: Record<TrackId, Def> = {
       padBar(b, 50, .35);
       const stab = (q: number, len: number, v: number) => b.at(q, t => { for (const m of tones(b.ch(q), 55)) brass(br, t, hz(m), len * b.spb, v, 1800); });
       if (b.sec === 'B') { stab(0, 2, .7); stab(2.5, .4, .8); stab(3, .4, .8); } else { stab(0, .4, .9); stab(1.5, .4, .8); }
+    },
+  },
+  // "Umbra, the Eclipse": the last battle. C harmonic minor, a pounding double-time beat, tolling bells, dark pads and a
+  // brass line that climbs higher each time round.
+  finale: {
+    bpm: 150, scale: [0, 2, 3, 5, 7, 8, 11], lead: 'brass', oct: -12, form: 'AABB', mix: { pad: 1.1, bell: 1.4 },
+    sec: {
+      A: {
+        ch: ['Cm', 'Cm', 'Ab', 'Ab', 'Fm', 'G', 'Cm', 'G'],
+        mel: ['C5:1.5 D5:.5 Eb5:1 G5:1', 'F5:1 Eb5:1 D5:2', 'Eb5:1.5 F5:.5 G5:1 C6:1', 'Bb5:2 Ab5:1 G5:1', 'Ab5:1 G5:1 F5:1 Ab5:1', 'G5:1 F5:.5 Eb5:.5 D5:2',
+          'C5:.5 D5:.5 Eb5:.5 G5:1.5 F5:.5 Eb5:.5', ['D5:2 B4:2', 'G5:2 B4:1 D5:1']],
+      },
+      B: {
+        ch: ['Ab', 'Bb', 'Gm', 'Cm', 'Ab', 'Fm', 'Db', 'G7'],
+        mel: ['Ab5:2 C6:1 Eb6:1', 'D6:2 Bb5:2', 'G5:1.5 Bb5:.5 D6:2', ['C6:3 r:1', 'C6:2 Eb6:2'], 'Ab5:1 C6:1 Eb6:1.5 D6:.5', 'C6:1 Ab5:1 F5:2', 'Db6:2 Ab5:1 F5:1', 'D6:1 B5:1 G5:1 F5:1'],
+      },
+    },
+    parts: b => {
+      const { drum, shk, clap: cl, brass: br, bell: bl } = b.x.bus;
+      [0, .75, 1.5, 2, 2.75, 3.5].forEach(q => b.at(q, t => kick(drum, t, 1)));
+      [1, 3].forEach(q => b.at(q, t => clap(cl, t, .9)));
+      for (let q = 0; q < 4; q += .25) { const v = q % 1 === .5 ? .9 : q % .5 ? .35 : .55; b.at(q, t => shaker(shk, t, v, .035)); }
+      if (b.i % 2 === 1) [3, 3.25, 3.5, 3.75].forEach((q, j) => b.at(q, t => tom(drum, t, 150 - j * 22, .75 + j * .06)));
+      if (b.i % 2 === 0) b.at(0, t => { bell(bl, t, hz(root(b.ch(0), 48)), 4, .55); bell(bl, t, hz(root(b.ch(0), 60)), 3, .3); });
+      bassLine(b, [0, 12, 0, 12, 0, 12, 7, 12].map((s, j) => [j * .5, s, .4] as [number, number, number]), 36, .9);
+      padBar(b, 48, .45);
+      const stab = (q: number, len: number, v: number) => b.at(q, t => { for (const m of tones(b.ch(q), 55)) brass(br, t, hz(m), len * b.spb, v, 1500); });
+      if (b.sec === 'B') { stab(0, 1.5, .75); stab(2, .35, .85); stab(2.5, .35, .85); stab(3, 1, .8); } else { stab(0, .35, .9); stab(.75, .35, .7); stab(2, .35, .9); }
+    },
+  },
+  // "Hold the Line": a siege march in A minor. Marching drums and rolls, a brass call and answer, a walking bass.
+  siege: {
+    bpm: 120, scale: [9, 11, 0, 2, 4, 5, 7, 8], lead: 'brass', oct: -12, form: 'AABA', mix: { pad: .9 },
+    sec: {
+      A: {
+        ch: ['Am', 'F', 'G', 'Am', 'Am', 'F', 'E', 'E'],
+        mel: ['A4:1 C5:.5 D5:.5 E5:1 A4:1', 'F5:1 E5:.5 D5:.5 C5:2', 'D5:1 E5:.5 D5:.5 B4:1 G4:1', ['A4:3 r:1', 'A4:2 E5:2'], 'A4:1 C5:.5 D5:.5 E5:1 A5:1',
+          'A5:1 G5:.5 F5:.5 E5:1 C5:1', 'B4:1 C5:.5 D5:.5 E5:1 G#4:1', 'B4:2 E5:2'],
+      },
+      B: {
+        ch: ['F', 'G', 'C', 'Am', 'F', 'G', 'E', 'E7'],
+        mel: ['C5:1.5 A4:.5 C5:1 F5:1', 'D5:1.5 B4:.5 D5:1 G5:1', 'E5:1 G5:1 C6:1.5 B5:.5', 'A5:3 r:1', 'F5:1 A5:1 C6:1 A5:1', 'G5:1 B5:1 D6:1 B5:1', 'G#5:2 E5:1 G#5:1', 'B5:2 G#5:1 E5:1'],
+      },
+    },
+    parts: b => {
+      const { drum, shk, clap: cl, brass: br } = b.x.bus;
+      [0, 2].forEach(q => b.at(q, t => kick(drum, t, .95)));
+      [1, 3].forEach(q => b.at(q, t => clap(cl, t, .75)));
+      [.75, 2.75].forEach(q => b.at(q, t => clap(cl, t, .35)));
+      for (let q = 0; q < 4; q += .5) b.at(q, t => shaker(shk, t, q % 1 ? .8 : .5, .05));
+      if (b.i % 4 === 3) for (let j = 0; j < 8; j++) b.at(2 + j * .25, t => tom(drum, t, 190, .35 + j * .07));
+      bassLine(b, [[0, 0, .9], [1, 7, .9], [2, 12, .9], [3, 7, .9]], 33, .8);
+      padBar(b, 52, .35);
+      if (b.i % 2 === 0) b.at(0, t => { for (const m of tones(b.ch(0), 57)) brass(br, t, hz(m), b.spb * .9, .7, 2200); });
     },
   },
   // Victory fanfare: plays once (about 10s), then hands off to the menu theme.

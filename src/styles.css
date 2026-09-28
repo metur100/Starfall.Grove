@@ -1133,3 +1133,28 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .journal-head strong { display: inline-flex; align-items: center; gap: 8px; }
 .story li.personal { color: #d9c6ff; }
 .story li .own { margin-left: 8px; font: 800 9px var(--ui); letter-spacing: .12em; text-transform: uppercase; color: #b69cff; font-style: normal; }
+
+/* ── giving up a quest and taking it up again */
+.side-wrap { margin-top: 8px; }
+.side-wrap .side { margin-top: 0; }
+.q-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 4px 0 2px; }
+.q-actions em { margin-right: auto; font-size: 12px; color: var(--muted); font-style: italic; }
+.btn.small { padding: 5px 12px; min-height: 0; font-size: 12px; border-radius: 10px; }
+
+/* ── the hero's intro film: fills the screen at 16:9, black bars wherever the screen is another shape */
+.film { position: fixed; inset: 0; z-index: 60; background: #000; display: grid; place-items: center; overflow: hidden; }
+.film video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.film-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; color: #f4ecd8; font: italic 500 clamp(15px, 2.4vw, 22px) / 1.4 var(--story); }
+.film-wait i { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(244, 236, 216, .2); border-top-color: var(--main-q); animation: film-spin .9s linear infinite; }
+@keyframes film-spin { to { transform: rotate(360deg); } }
+.film-skip { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .28); background: rgba(0, 0, 0, .45); color: #f4ecd8; font: 700 14px var(--ui); cursor: pointer; opacity: .8; }
+.film-skip:hover { opacity: 1; background: rgba(0, 0, 0, .65); }
+.film-sound { position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 999px; border: 1px solid rgba(255, 211, 92, .5); background: rgba(0, 0, 0, .6); color: #ffe7a0; font: 700 15px var(--ui); cursor: pointer; animation: film-pulse 1.6s ease-in-out infinite; }
+@keyframes film-pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 211, 92, .15); } }
+
+/* ── "Start over as" with a hero list */
+.dz-pick { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dz-pick select { padding: 5px 28px 5px 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(10, 14, 36, .85); color: var(--text, #f4ecd8); font: 700 13px var(--ui); cursor: pointer; }
+.dz-pick select:focus-visible { outline: 2px solid var(--main-q); outline-offset: 1px; }
+.q-actions .btn.danger { background: rgba(200, 50, 50, .32); border: 1px solid #ff7a6e; color: #fff; }
+.q-actions .btn.danger:hover { background: rgba(220, 60, 60, .5); }

@@ -81,7 +81,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, onRe
         fpsFrames = 0; fpsSince = now;
       }
       if (now - lastUi > 100) { callbacks.current.onSnapshot(engine.snapshot()); lastUi = now; }
-      if (now - lastMusic > 250) { lastMusic = now; music.play(engine.bossFight ? 'boss' : engine.regionTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
+      if (now - lastMusic > 250) { lastMusic = now; music.play(engine.musicTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
       if (!pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
     };
     raf = requestAnimationFrame(frame);

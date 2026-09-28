@@ -21,7 +21,7 @@ import type { EngineEvent, GameSnapshot, HeroId, ItemId, NoticeTone, QuestOffer,
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
 import { GearIcon, HeroFace, ItemIcon, JournalIcon } from './ui/icons';
-import { CineOverlay, Prologue, SiegeBar } from './ui/Story';
+import { CineOverlay, IntroFilm, Prologue, SiegeBar } from './ui/Story';
 import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
 import { TRAILS, TRAIL_ORDER } from './game/trails';
 
@@ -124,6 +124,8 @@ function App() {
   const [endingPending, setEndingPending] = useState(false);
   /** The storybook prologue that opens a new adventure. */
   const [prologue, setPrologue] = useState(false);
+  /** The hero's intro film, shown instead of the storybook when it can be streamed. */
+  const [film, setFilm] = useState(false);
   const prologueChecked = useRef(-1);
   const [achQueue, setAchQueue] = useState<AchPop[]>([]);
   /** A mini-game a villager offered and the player accepted. */
@@ -199,24 +201,28 @@ function App() {
     }
   }, [notify]);
 
-  const startGame = (fresh = false) => {
+  const startGame = (fresh = false, as: HeroId = hero) => {
     sfx.unlock();
-    if (fresh) clearSession(hero);
-    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setPrologue(false); setAchQueue([]); resetStick();
+    if (fresh) clearSession(as);
+    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setPrologue(false); setFilm(false); setAchQueue([]); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('play');
   };
   /** Erases the adventure, the hero's level, gold, bag and quest progress. Sound and graphics settings are kept. */
   /** Erases one hero's adventure, level, gold, bag and quest progress. Sound and graphics settings are kept. */
   const wipeHero = (h: HeroId) => { clearSession(h); resetProfile(h); const s = blankSave(); saveNow(h, s); if (h === hero) setSave(s); };
-  const startOver = () => { engineRef.current = null; wipeHero(hero); setSettingsOpen(false); startGame(true); };
+  /** Starts a brand-new adventure as `h`, erasing only that hero's progress. The hero being played is saved first. */
+  const startOver = (h: HeroId = hero) => {
+    const e = engineRef.current; if (e && mode === 'play' && h !== hero) saveSession(hero, e.exportSave());
+    engineRef.current = null; wipeHero(h); if (h !== hero) chooseHero(h); setSettingsOpen(false); startGame(true, h);
+  };
   const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setEndingPending(false); setMode('title'); };
-  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setPrologue(false); setMode('title'); };
+  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setPrologue(false); setFilm(false); setMode('title'); };
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
   const changeGraphics = (patch: Partial<GraphicsSettings>) => { const g = { ...graphics, ...patch }; setGraphics(g); saveGraphics(g); sfx.play('ui'); };
   // New spells and level-ups wait until a cutscene or the prologue is over.
-  const showSpell = spellQueue.length && !dialogue && !snapshot?.cine && !prologue ? spellQueue[0] : null;
+  const showSpell = spellQueue.length && !dialogue && !snapshot?.cine && !prologue && !film ? spellQueue[0] : null;
   const cine = snapshot?.cine ?? null;
-  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!miniGame || !!cine || prologue;
+  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!miniGame || !!cine || prologue || film;
   const cast = (id: SpellId) => { if (!blocked) engineRef.current?.cast(id); };
   const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen && !cine) engineRef.current?.useItem(id); };
   /** Opens the quest log on a tab, or closes it if that tab is already showing. */
@@ -226,9 +232,9 @@ function App() {
   const dismissSpell = () => setSpellQueue(q => q.slice(1));
 
   // The chapter title plays when a run starts, once the first snapshot says which chapter it is.
-  useEffect(() => { if (mode === 'play' && snapshot && !chapterBanner && !prologue && !snapshot.cine && !engineRef.current?.needsIntro) setChapterBanner({ chapter: snapshot.chapter, key: 1 }); }, [mode, snapshot, chapterBanner, prologue]);
+  useEffect(() => { if (mode === 'play' && snapshot && !chapterBanner && !prologue && !film && !snapshot.cine && !engineRef.current?.needsIntro) setChapterBanner({ chapter: snapshot.chapter, key: 1 }); }, [mode, snapshot, chapterBanner, prologue]);
   // A brand-new adventure opens with the storybook prologue, then the hero's intro cutscene.
-  useEffect(() => { if (mode !== 'play' || !snapshot || prologueChecked.current === runKey) return; prologueChecked.current = runKey; if (engineRef.current?.needsIntro) { engineRef.current.setMovement(0, 0); setPrologue(true); } }, [mode, snapshot, runKey]);
+  useEffect(() => { if (mode !== 'play' || !snapshot || prologueChecked.current === runKey || snapshot.hero !== hero || engineRef.current?.heroId !== hero) return; prologueChecked.current = runKey; if (engineRef.current?.needsIntro) { engineRef.current.setMovement(0, 0); if (navigator.onLine) setFilm(true); else setPrologue(true); } }, [mode, snapshot, runKey]);
   const cineOn = !!cine;
   useEffect(() => { if (cineOn) { keys.current.clear(); engineRef.current?.setMovement(0, 0); resetStick(); } }, [cineOn]);
   useEffect(() => { if (!endingPending || cineOn) return; const t = window.setTimeout(() => { setEndingPending(false); setMode('ending'); }, 1800); return () => window.clearTimeout(t); }, [endingPending, cineOn]);
@@ -291,7 +297,7 @@ function App() {
     if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     const k = e.key.toLowerCase(), act = actionOf(k);
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
-    if (miniGame || prologue) return;
+    if (miniGame || prologue || film) return;
     if (cine) {
       if (k === 'escape') engineRef.current?.skipCine(); else if (k === 'enter' || k === ' ' || act === 'interact') engineRef.current?.advanceCine();
       e.preventDefault(); return;
@@ -346,6 +352,7 @@ function App() {
     if (mode === 'select' || mode === 'ending') { setMode('title'); return; }
     if (showSpell) { dismissSpell(); return; }
     if (miniGame) { endGame({ won: false, gold: 0 }); return; }
+    if (film) { setFilm(false); engineRef.current?.startIntro(true); return; }
     if (prologue) { setPrologue(false); engineRef.current?.skipIntro(); return; }
     if (cine) { engineRef.current?.skipCine(); return; }
     if (dialogue) { if (dialogue.then !== 'complete' && !dialogue.choice) setDialogue(null); return; }
@@ -377,7 +384,7 @@ function App() {
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || prologue || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || prologue || film || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
@@ -402,14 +409,14 @@ function App() {
   const flushSave = () => { const e = engineRef.current; if (e && mode === 'play') { saveSession(hero, e.exportSave()); saveProfile(e.profile); } };
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
-    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={() => { wipeHero(hero); startGame(true); }} onDeleteAll={deleteAll} />}
+    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={startOver} onDeleteAll={deleteAll} />}
     {mode === 'title' && exitAsk && <div className="overlay exit-overlay" onClick={() => setExitAsk(null)}><div className="panel pause-panel exit-panel" onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true">
       <small className="eyebrow">Leave Starfall Grove</small><h2>Do you really want to leave the game?</h2><p>Your adventure is saved. The valley will wait for you.</p>
       <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); }} autoFocus>Stay</button><button className="btn primary" onClick={leaveGame}>Leave game</button></div>
     </div></div>}
     {mode === 'select' && <CharacterSelect hero={hero} summary={heroSummary} touch={touch} onHero={chooseHero} onEnter={() => startGame()} onBack={() => setMode('title')} />}
 
-    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero} ${cine || prologue ? 'cine-on' : ''}`}>
+    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero} ${cine || prologue || film ? 'cine-on' : ''}`}>
       <section className="game-stage">
         <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
@@ -508,8 +515,9 @@ function App() {
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
         {cine && <CineOverlay cine={cine} touch={touch} onNext={() => engineRef.current?.advanceCine()} onSkip={() => engineRef.current?.skipCine()} />}
+        {film && <IntroFilm hero={hero} onDone={() => { setFilm(false); engineRef.current?.startIntro(true); }} onFail={() => { setFilm(false); setPrologue(true); }} />}
         {prologue && <Prologue hero={hero} onDone={() => { setPrologue(false); engineRef.current?.startIntro(); }} onSkip={() => { setPrologue(false); engineRef.current?.skipIntro(); }} />}
-        {achPop && !cine && !prologue && <div className="ach-pop" key={achPop.key}>
+        {achPop && !cine && !prologue && !film && <div className="ach-pop" key={achPop.key}>
           <span className="ach-shield"><b>{achPop.icon}</b></span>
           <span className="ach-text"><small>Achievement earned</small><strong>{achPop.name}</strong>{!touch && <em>{achPop.description}</em>}</span>
           <span className="ach-points"><b>{achPop.points}</b></span>
@@ -657,11 +665,12 @@ function BackupPanel({ onBeforeExport }: { onBeforeExport?: () => void }) {
   </section>;
 }
 
-/** "Start over" wipes only the chosen hero; "Delete all saves" wipes every hero. Both ask twice. */
-function DangerZone({ hero, onStartOver, onDeleteAll }: { hero: HeroId; onStartOver: () => void; onDeleteAll: () => void }) {
-  const name = HEROES[hero].name;
+/** "Start over as" wipes only the hero picked in the list and starts a new adventure as them; "Delete all saves" wipes every hero. Both ask twice. */
+function DangerZone({ hero, onStartOver, onDeleteAll }: { hero: HeroId; onStartOver: (h: HeroId) => void; onDeleteAll: () => void }) {
+  const [pick, setPick] = useState<HeroId>(hero), name = HEROES[pick].name;
   return <div className="danger-zone">
-    <div className="dz-row"><span><b>Start over as {name}</b><em>Erases {name}’s level, gold, bag and quests, then starts a new adventure. Other heroes are kept.</em></span><ConfirmButton label="Start over" onConfirm={onStartOver} /></div>
+    <div className="dz-row"><span><b className="dz-pick">Start over as <select value={pick} onChange={e => setPick(e.target.value as HeroId)} aria-label="Hero to start over as">{HERO_ORDER.map(h => <option key={h} value={h}>{HEROES[h].name} · {HEROES[h].title}</option>)}</select></b>
+      <em>Erases {name}’s level, gold, bag and quests, then starts a new adventure as {name}. Other heroes are kept{pick !== hero ? `, and ${HEROES[hero].name}’s adventure is saved` : ''}.</em></span><ConfirmButton key={pick} label="Start over" onConfirm={() => onStartOver(pick)} /></div>
     <div className="dz-row"><span><b>Delete all saves</b><em>Erases every hero’s progress and returns to the title. Settings are kept.</em></span><ConfirmButton label="Delete all" onConfirm={onDeleteAll} /></div>
   </div>;
 }
@@ -824,21 +833,33 @@ function BookSpell({ s, snapshot, touch, onUpgrade }: { s: SpellState; snapshot:
 }
 
 const STATUS_ICON: Record<QuestRow['status'], string> ={ available: '!', active: '○', ready: '?', done: '✓', locked: '·' };
+/** Give a quest up (asking once more first), or take an abandoned one up again. */
+function QuestActions({ q, engine, onChange }: { q: QuestRow; engine: GameEngine | null; onChange: () => void }) {
+  const [sure, setSure] = useState(false);
+  if (!engine || (!q.canAbandon && !q.abandoned)) return null;
+  if (q.abandoned) return <div className="q-actions"><em>Abandoned</em><button className="btn primary small" onClick={() => { engine.resumeQuest(q.id); sfx.play('ui'); onChange(); }}>Take up again</button></div>;
+  return <div className="q-actions">{sure
+    ? <><em>Give up this quest? Progress is lost.</em><button className="btn ghost small" onClick={() => setSure(false)}>Keep it</button><button className="btn danger small" onClick={() => { engine.abandonQuest(q.id); setSure(false); onChange(); }}>Abandon</button></>
+    : <button className="btn ghost small" onClick={() => { setSure(true); sfx.play('ui'); }}>Abandon quest</button>}</div>;
+}
 function Journal({ snapshot, engine, achievements, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; engine: GameEngine | null; achievements: AchRow[]; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
   const w = WORLDS[snapshot?.region ?? 'meadow'];
   const [tab, setTab] = useState<JournalTab>(initial);
+  const [, bump] = useState(0), changed = () => bump(n => n + 1);
+  const cur = snapshot?.mainQuests.find(q => q.canAbandon || q.abandoned);
   return <aside className="journal">
     <div className="journal-head"><strong><JournalIcon size={22} /> Journal</strong><button className="icon-button" onClick={onClose} aria-label="Close journal">✕</button></div>
     <div className="journal-tabs">{(['quests', 'spells', 'achievements'] as const).map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'quests' ? 'Quests' : t === 'spells' ? 'Spellbook' : 'Achievements'}</button>)}</div>
     {snapshot && tab === 'quests' && <>
       <section className="q-main"><small>Chapter {ROMAN[Math.min(LEVEL_ORDER.length, snapshot.chapter)]} · main quest {snapshot.main.index} of {snapshot.main.total}</small><p className="main-q">{snapshot.main.title}</p><p className="sub-q">{snapshot.main.step}{snapshot.main.count > 0 && <em> {snapshot.main.progress}/{snapshot.main.count}</em>}</p>
+        {cur && <QuestActions key={cur.id} q={cur} engine={engine} onChange={changed} />}
         <ol className="story">{snapshot.mainQuests.map(q => <li key={q.id} className={`${q.status === 'done' ? 'done' : 'now'} ${q.personal ? 'personal' : ''}`}><span>{q.status === 'done' ? '✓' : q.personal ? '✦' : '◆'}</span>{q.title}{q.personal && <i className="own">{HEROES[snapshot.hero].name}’s story</i>}</li>)}</ol>
       </section>
       <section className="q-sides"><small>Side quests · {touch ? 'tap' : 'click'} one to follow it</small>
         {snapshot.quests.length === 0 && <p className="sub-q">Villagers with a blue ! have work for you.</p>}
-        {snapshot.quests.map(q => <button key={q.id} className={`side status-${q.status} ${q.tracked ? 'tracked' : ''}`} onClick={() => q.status !== 'done' && q.status !== 'available' && onTrack(q.id)}>
+        {snapshot.quests.map(q => <div key={q.id} className="side-wrap"><button className={`side status-${q.status} ${q.tracked ? 'tracked' : ''}`} onClick={() => q.status !== 'done' && q.status !== 'available' && onTrack(q.id)}>
           <span>{STATUS_ICON[q.status]}</span><div><b>{q.title}<i className="ch">{ROMAN[q.chapter]}</i></b><em>{q.detail}</em>{q.status !== 'done' && <em className="reward">Reward: {q.reward}</em>}</div>
-        </button>)}
+        </button><QuestActions q={q} engine={engine} onChange={changed} /></div>)}
       </section>
     </>}
     {snapshot && tab === 'spells' && <>

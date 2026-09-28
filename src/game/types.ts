@@ -107,6 +107,8 @@ export type QuestDef = {
   hero?: HeroId; after?: string;
   /** Other heroes' versions of the lines. */
   textFor?: Partial<Record<HeroId, Partial<QuestText>>>;
+  /** Other heroes' version of who gives the quest and who it sends them to (heroes start in different places). */
+  forHero?: Partial<Record<HeroId, Partial<Pick<QuestDef, 'giver' | 'to' | 'summary'>>>>;
   /** Rescue: the freed captive then walks home with you. Escort and chase: who. */
   escort?: boolean; who?: Captive; from?: string; ambush?: EnemyKind[];
   /** A follower drawn as a beast instead of a person. */
@@ -163,7 +165,9 @@ export type SpellState = { id: SpellId; name: string; key: string; icon: string;
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number; level: number };
 export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number;
   /** One of the hero's own quests. */
-  personal?: boolean };
+  personal?: boolean;
+  /** It can be given up from the journal; `abandoned` ones can be taken up again there. */
+  canAbandon?: boolean; abandoned?: boolean };
 export type ItemStack = { id: ItemId; count: number };
 export type BuffState = { id: ItemId; time: number; max: number };
 export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; crit: number; elapsed: number; questsDone: number; totalQuests: number };
@@ -211,7 +215,7 @@ export type EngineEvent =
   | { type: 'notice'; text: string; tone: NoticeTone; short?: string }
   | { type: 'spellLearned'; spell: SpellId }
   | { type: 'levelUp'; level: number }
-  | { type: 'quest'; title: string; state: 'accepted' | 'ready' | 'completed'; xp?: number }
+  | { type: 'quest'; title: string; state: 'accepted' | 'ready' | 'completed' | 'abandoned'; xp?: number }
   | { type: 'bossIntro'; name: string; title: string }
   | { type: 'zone'; name: string; discovered: boolean }
   | { type: 'region'; region: RegionId; danger: boolean }
