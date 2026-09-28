@@ -26,7 +26,7 @@ export default function CharacterSelect({ hero, summary, touch, onHero, onEnter,
       <span />
     </header>
     <section className="select-info" key={`info-${hero}`}>
-      <small>{info.title}</small>
+      <small>Level {me.level} · {info.title}</small>
       <h1>{info.name}</h1>
       <p>{info.description}</p>
       <dl className="traits">{TRAITS[hero].map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{[1, 2, 3, 4, 5].map(n => <i key={n} className={n <= v ? 'on' : ''} />)}</dd></div>)}</dl>
@@ -38,8 +38,8 @@ export default function CharacterSelect({ hero, summary, touch, onHero, onEnter,
       {HERO_ORDER.map(id => {
         const h = HEROES[id], sm = summary(id);
         return <button key={id} className={`roster-card ${id === hero ? 'on' : ''}`} onClick={() => { if (id !== hero) { onHero(id); sfx.play('ui'); } }}>
-          <span className="rc-face portrait"><HeroFace hero={id} />{sm.started && <b className="level-badge">{sm.level}</b>}</span>
-          <span className="rc-text"><b>{h.name}</b><em>{sm.started ? `Level ${sm.level} ${h.title}` : h.title}</em><small>{sm.started ? sm.where : 'A new adventure'}</small></span>
+          <span className="rc-face portrait"><HeroFace hero={id} /><b className="level-badge">{sm.level}</b></span>
+          <span className="rc-text"><b>{h.name}</b><em>Level {sm.level} {h.title}</em><small>{sm.started ? sm.where : 'A new adventure'}</small></span>
         </button>;
       })}
     </aside>

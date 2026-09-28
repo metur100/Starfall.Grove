@@ -841,3 +841,12 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .last-played { margin-top: 10px; padding: 4px 14px 4px 4px; }
   .last-played .portrait { width: 30px; height: 30px; font-size: 17px; }
 }
+/* Desktop title: one balanced column with star ornaments, the key hints in a glass strip. */
+@media (min-width: 900px) and (min-height: 521px) {
+  .title-page .title-hero { padding: 64px 0 40px; }
+  .title-page .title-hero::before { width: 120%; height: 120%; background: radial-gradient(closest-side, rgba(8, 10, 26, .72), rgba(8, 10, 26, .35) 60%, rgba(8, 10, 26, 0)); }
+  .title-page .title-hero > p.title-tag { display: inline-flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .title-page .title-hero > p.title-tag::before, .title-page .title-hero > p.title-tag::after { content: '✦'; font: normal 12px var(--ui); color: var(--gold); opacity: .8; }
+  .title-page .title-hero > p.title-blurb { max-width: 540px; margin: 0 0 32px; padding-top: 20px; border-top: 1px solid rgba(245, 210, 122, .22); }
+  .title-page .title-foot { align-self: center; margin-bottom: max(22px, 3vh); padding: 10px 22px; gap: 8px 20px; border-radius: 999px; border: 1px solid var(--line); background: rgba(10, 13, 30, .62); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+}

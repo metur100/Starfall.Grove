@@ -48,8 +48,8 @@ export default function TitleBackdrop({ level = 'meadow' }: { level?: LevelId })
       ctx.restore();
       // moon
       // On tall screens the moon moves up and to the left so it never sits behind the title.
-      const tall = h > w * 1.2;
-      const moonX = w * (tall ? .2 : .78) - mx * 14, moonY = h * (tall ? .085 : .2) - my * 10;
+      const tall = h > w * 1.2, wide = w >= 900 && w > h * 1.2;
+      const moonX = w * (tall ? .2 : wide ? .86 : .78) - mx * 14, moonY = h * (tall ? .085 : wide ? .17 : .2) - my * 10;
       const mg = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, 180); mg.addColorStop(0, 'rgba(255,240,200,.45)'); mg.addColorStop(1, 'rgba(255,240,200,0)');
       ctx.fillStyle = mg; ctx.fillRect(moonX - 180, moonY - 180, 360, 360);
       ctx.fillStyle = '#fff3cf'; ctx.beginPath(); ctx.arc(moonX, moonY, 44, 0, 6.28); ctx.fill();
@@ -75,8 +75,8 @@ export default function TitleBackdrop({ level = 'meadow' }: { level?: LevelId })
           else { ctx.fillRect(x - size * .06, base - size * .6, size * .12, size * .6); ctx.beginPath(); ctx.arc(x + sway, base - size * .9, size * .5, 0, 6.28); ctx.arc(x + sway * .7 - size * .3, base - size * .7, size * .35, 0, 6.28); ctx.arc(x + sway * .7 + size * .3, base - size * .72, size * .36, 0, 6.28); ctx.fill(); }
         }
         if (layer === 1) {
-          // Beacon on the middle hill.
-          const bx = w * .66 + px, by = hillY(1, .66) + py;
+          // Beacon on the middle hill; on wide screens it balances the moon from the left.
+          const bxf = wide ? .2 : .66, bx = w * bxf + px, by = hillY(1, bxf) + py;
           ctx.fillStyle = theme.hills[1]; ctx.fillRect(bx - 9, by - 70, 18, 72);
           const pulse = .6 + Math.sin(t * 2.2) * .25;
           const bg = ctx.createRadialGradient(bx, by - 76, 2, bx, by - 76, 120); bg.addColorStop(0, theme.glow); bg.addColorStop(1, 'rgba(0,0,0,0)');
