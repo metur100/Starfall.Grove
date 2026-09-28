@@ -2,6 +2,8 @@
 
 A responsive single-player 2D action RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API, and React handles the menus, HUD, touch controls, dialogue, journal and map. All music and sound are synthesized live with Web Audio, so there are no asset files.
 
+**Plays offline and installs like an app.** A service worker (made by `vite-plugin-pwa`) keeps every game file on the device after the first visit, so the game opens with no connection and loads faster. The app manifest lets phones and PCs install it to the home screen, where it opens full screen with its own icon. A new version downloads quietly in the background; the title screen then shows **A new version is ready · Restart**, so it never reloads in the middle of a fight. The fonts (Cinzel Decorative, Cinzel, Nunito) ship with the game, latin letters and used weights only, so text never jumps when a font arrives late. Until the code has loaded, `index.html` shows its own loading screen (logo, a spinning star and rising sparks), which fades once the fonts are in.
+
 ## Run the project
 
 Requirements: Node.js 18+ and npm.
@@ -44,7 +46,7 @@ The main story (in `story.ts`) has **10 quests in Chapter I, 15 in Chapter II, 1
 
 ## Levels, spells and quests
 
-There are four heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands in 3D on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox; the others travel alone, and the story's nudges come from their own thoughts.
+There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands in 3D on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
 
 The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, which is loaded only when a 3D view is first shown. Without WebGL a large portrait is shown instead.
 
@@ -55,6 +57,8 @@ The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, w
 | 6 | Moss Shield (J) | Earthsplitter (J): stunning shockwave | Ice Barrier (J): blocks all harm, chills attackers | Smoke Veil (J): vanish for 4 s, first strike deals triple damage |
 | 10 | Starfall (H) | Bladestorm (H): 3 s whirlwind, half damage taken | Blizzard (H): 4 s of ice raining on a pack | Death Mark (H): the toughest foe near you bursts after 2 s |
 
+**Wren, beast hunter (ranged), with Fenn the wolf:** Quick Shot (L): an arrow that pierces the first creature it hits · Tumble (E): an untouchable roll, and Fenn pounces on the nearest foe and stuns it · Volley (K, level 3): seven arrows in a fan · Snare Trap (J, level 6): a trap at her feet that catches and hurts the first creatures to step on it for 3 s (up to three traps, 20 s each) · Call of the Wild (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. In 3D he sits beside her on the pedestal.
+
 Mira fights from range and is fragile. Kael fights up close, has more health and takes about 35% less damage; his Charge is a short rush (about 230 px) that stops at the foe it aims for. Lyra controls fights: chilled creatures move and act at 55% speed, frozen ones stand still. Riven is the fastest hero and hits hardest, but is lightly armoured. On touch screens the shield sits right next to the attack button. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
 
 Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.
@@ -63,11 +67,11 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Equipment and loot:** eight slots: head, shoulders, back, chest, hands, waist, legs and feet. Worn gear changes how the hero looks, in the game and in 3D: each piece dyes its body part (hat or helm, robe or armour, cape, gloves, belt, boots) in a colour picked from its land and rarity, shoulder pads and leg guards appear when worn, and epic and legendary pieces glow. Pieces come in five rarities (common, uncommon, rare, epic, legendary) and roll armour, power, health, magic, regeneration, speed or critical chance from a budget set by item level and rarity. Creatures sometimes drop a glowing loot bag, elites and chests often do, guardians always drop an epic. Every side quest rewards a rare piece (shown in the offer), and guardian quests an epic one. A piece for a slot that is still empty is put on straight away; everything else goes into the bag. Worn gear is capped at 40% armour, 25% speed and 30% critical chance in total.
 
-**Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands in 3D in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece and compare it with what you wear (a green ▲ marks upgrades). Merchants buy spare gear.
+**Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands in 3D in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece. **Loot comparison:** bag slots carry a green ▲ when a piece is better than what you wear in that slot and a red ▼ when it is weaker; on PC, hovering a piece shows a tooltip with every stat compared (green ▲ / red ▼ per stat), the overall verdict ("▲ Upgrade · +22 item score") and the worn piece below. The same comparison is on the tapped card, at the armourer, and in the loot notice ("▲ upgrade"). Merchants buy spare gear.
 
 **Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Sunfire Elixir and Barkskin Brew (keys 1–5), plus Fire Bomb, Frost Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Bomb (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
 
-**Achievements (Y, or the quest log's Achievements tab):** 47 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 870 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
+**Achievements (Y, or the quest log's Achievements tab):** 49 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 905 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
 
 **World map (M):** the whole valley at once, all four lands side by side, with the fog lifted wherever the hero has been. It opens zoomed on the current land; drag to pan, pinch or scroll to zoom, or jump with the buttons (Whole valley or one land).
 
@@ -78,6 +82,10 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 **Quests:** gold main quests and blue side quests (47 side quests in total). Quest kinds are collect, slay, deliver, visit, talk, relic and boss, plus **rescue**: defeat the guards around a cage, then open it to free the captive. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident.
 
 **Creatures:** gloomlings, thornlings, void wisps, bristleboars (telegraphed charge), sporecaps (poison clouds), shadewolves (circling packs), webspinners (slowing silk), frost wraiths (blink and ice shards), crag golems (ground slam), ember imps, ash scorpions and magma hulks. Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 4 minutes**.
+
+**Heroic creatures:** the leader of each lair is a named little boss, two per land: Murkmaw the Gloom King and Old Tusker (Meadow), Mother Briar and Silkshade the Weaver (Woods), Frostfang the Unbroken and Nulleye (Summit), Sandreaper and Slagjaw (Ember Wastes). They are bigger, stand in a violet rune ring with a crown, their name and a long health bar, and have nine times an ordinary creature's health. Besides their kind's own attacks they slam the ground every few seconds (a warning ring under them and under you; lava in the Ember Wastes), and at half health they enrage and call two of their kin. They always drop a rare or better piece (often epic, sometimes legendary) plus a second piece, two consumables, lots of gold and nine times the XP. They come back after 10 minutes and show as violet dots on the world map. Achievements: Heroic Deed (the first one) and Bane of the Lairs (eight).
+
+**Mounts:** earned through achievements and kept by that hero: Sunpetal Pony (Wanderer: discover 10 places, +50% speed), Tusked Bristleboar (Heroic Deed, +55%), Whisperroot Stag (finish Chapter II, +65%), Frostmane Wolf (finish Chapter III, +75%), Cinder Drake (finish Chapter IV, +85%) and Starlit Unicorn (defeat Umbra, +100%). Press R or the saddle button in the top bar to ride; you can't call a mount while creatures are after you, and attacking, casting, throwing a bomb or being hit puts you back on your feet. The Achievements tab starts with the stable, where you pick which mount to ride.
 
 **Phones:** the prompt just says **Talk** (or Trade, Rest…), notifications are one or two words, and every screen, including the chapter-complete screen, fits a landscape phone without scrolling.
 
@@ -103,15 +111,17 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 ## Controls
 
-**Keyboard:**
+**Keyboard (default keys, all of them can be changed):**
 
 - Move: WASD / arrows
-- Left hand: WASD move · E Dash
-- Right hand, home row: L attack (F also works), then leftward in learning order: K · J · H (see the table above)
+- Left hand: WASD move · E Dash · R ride
+- Right hand, home row: L attack (F also works while it is unbound), then leftward in learning order: K · J · H (see the table above)
 - Right hand, menus (row above): U spellbook · I inventory · O quest log · P character · Y achievements
-- Space / Enter talk, open or use · 1–5 potions · M map · Tab quest log · N mute · Esc pause
+- Space / Enter talk, open or use · 1–0 potions and bombs · M map · Tab quest log · N mute · Esc pause
 
-**Settings:** the ⚙ button on the title screen (and ⚙ Settings in the pause menu) has all graphics and sound settings, plus **Start over** (erases only the chosen hero and starts a new adventure) and **Delete all saves** (erases every hero). Both ask for a second tap. Sound and graphics settings are kept.
+**Remapping keys:** Settings → Controls lists every action; click one and press the new key. A key that is already in use swaps places with it, so nothing is left unbound, and Reset brings back the defaults. The arrow keys always move, 1–0 stay on the potion slots, and Esc, Tab and Enter keep their jobs. Every key hint in the game (spell buttons, pause menu, spellbook, title screen) shows the keys you chose. The bindings are saved in `starfall-grove-keys-v1`.
+
+**Settings:** the ⚙ button on the title screen (and ⚙ Settings in the pause menu) has all graphics and sound settings, plus **Back up your saves** (below), **Start over** (erases only the chosen hero and starts a new adventure) and **Delete all saves** (erases every hero). Both ask for a second tap. Sound and graphics settings are kept.
 
 **Touch:** a floating joystick that appears wherever you put your thumb on the left side, plus a spell wheel on the right. The layout switches automatically on touch devices, and prompts say "Tap" instead of showing keyboard keys.
 
@@ -137,6 +147,10 @@ src/
     music.ts           Music sequencer and composed themes
     GameCanvas.tsx     Game loop, pixel budget, adaptive quality, music switching, autosave
     storage.ts         In-chapter save helpers
+    mounts.ts          The mounts, their speeds and the achievements that earn them
+    keys.ts            Remappable key bindings
+    backup.ts          Save backup export and import
+  pwa.ts               Offline service worker registration and the update notice
 ```
 
 ## Save data
@@ -144,8 +158,10 @@ src/
 Progress is stored in browser storage on the current device:
 
 - `starfall-grove-save-v2`, `starfall-grove-hero-v1`, `starfall-grove-valley-v1`: Mira's chapter stars, profile (level, XP, gold, upgrades, bag) and adventure in progress.
-- The same keys with `-kael`, `-lyra` or `-riven` in the name hold the other heroes' progress, including their achievements.
+- The same keys with `-kael`, `-lyra`, `-riven` or `-wren` in the name hold the other heroes' progress, including their achievements and the chosen mount.
 - Armourer pieces already bought are kept in the profile (`bought`).
 - `starfall-grove-hero-choice`: the hero picked on the title screen.
+
+**Backups:** Settings → **Back up your saves** → **Export** downloads one file (`starfall-grove-backup-<date>.json`) with every `starfall-grove-` entry: all heroes, their adventures, achievements, key bindings and settings. **Import** reads such a file, says when it was made and how many heroes it holds, and after a second tap replaces every save on this device with it and reloads. Files that aren't backups are refused. Use it before clearing browser data, or to move your heroes to another device.
 
 Saves from the older three-map version start a fresh adventure. The hero's level and bag are kept.

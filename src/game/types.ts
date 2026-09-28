@@ -2,9 +2,12 @@ export type Point = { x: number; y: number };
 /** The valley is one continuous world made of four regions, one per story chapter. */
 export type RegionId = 'meadow' | 'woods' | 'summit' | 'ember';
 export type LevelId = RegionId;
-export type HeroId = 'mira' | 'kael' | 'lyra' | 'riven';
+export type HeroId = 'mira' | 'kael' | 'lyra' | 'riven' | 'wren';
+/** Mounts are earned through achievements; riding one makes crossing the valley much faster. */
+export type MountId = 'pony' | 'boar' | 'stag' | 'frostwolf' | 'drake' | 'unicorn';
 export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm'
-  | 'frostbolt' | 'blink' | 'frostnova' | 'iceBarrier' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'veil' | 'deathmark';
+  | 'frostbolt' | 'blink' | 'frostnova' | 'iceBarrier' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'veil' | 'deathmark'
+  | 'arrow' | 'tumble' | 'volley' | 'snare' | 'wildcall';
 export type ItemId =
   | 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin'
   | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
@@ -37,7 +40,9 @@ export type EnemyKind =
   | 'emberImp' | 'ashScorpion' | 'magmaHulk'
   | 'mossback' | 'brambleWarden' | 'hollowStar' | 'cinderTyrant' | 'eclipse';
 /** `guard` names the rescue quest whose captive this creature keeps caged. */
-export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; level: number; region: RegionId; boss?: boolean; elite?: boolean; guard?: string };
+export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; level: number; region: RegionId; boss?: boolean; elite?: boolean; guard?: string;
+  /** A heroic creature: a named little boss that leads a lair's pack (it also counts as an elite). */
+  heroic?: string };
 
 export type CritterKind = 'rabbit' | 'deer' | 'bird' | 'duck' | 'frog' | 'goat' | 'squirrel';
 export type CritterSeed = { kind: CritterKind; x: number; y: number };
@@ -126,6 +131,8 @@ export type GameSnapshot = {
   /** Equipment in the bag, what is worn, the bag's size and the item on the second quick button. */
   gear: GearItem[]; equipped: Partial<Record<GearSlot, GearItem>>; bagSize: number; quick: ItemId;
   defeated: number; combo: number; boss: BossState | null;
+  /** The mount the hero rides (or would summon), or null before one is earned. */
+  mount: { id: MountId; name: string; riding: boolean } | null;
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
 };
 

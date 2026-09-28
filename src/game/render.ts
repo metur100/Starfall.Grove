@@ -1,4 +1,5 @@
-import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle } from './engine';
+import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap } from './engine';
+import { MOUNTS } from './mounts';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
 import { REGION_W, fbm } from './worldgen';
@@ -187,6 +188,7 @@ export class Renderer {
     this.drawDecor(ctx, e, view);
     this.drawPlaceNames(ctx, e, view);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
+    for (const tr of e.traps) this.drawTrap(ctx, tr);
     this.drawChargeLines(ctx, e);
 
     const draws = this.draws; draws.length = 0;
@@ -200,6 +202,7 @@ export class Renderer {
     for (const en of e.enemies) if (!en.dead && inView(en.x, en.y)) draws.push({ y: en.y + en.r * .7, run: () => this.drawEnemy(ctx, en, e) });
     // Tuft trots beside Mira; Kael travels alone.
     if (e.hasPet) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
+    for (const p of e.pets) if (inView(p.x, p.y)) draws.push({ y: p.y + 14, run: () => this.drawPet(ctx, p, e) });
     draws.push({ y: hero.y + 22, run: () => this.drawHeroScaled(ctx, e) });
     draws.sort((a, b) => a.y - b.y);
     for (const d of draws) d.run();
@@ -1186,19 +1189,28 @@ export class Renderer {
   }
   /** Giant's Brew grows the hero from the feet up; a Smoke Bomb or Smoke Veil leaves them half see-through. */
   private drawHeroScaled(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined || e.stealthT > 0;
-    if (s === 1 && !hidden) return this.drawHero(ctx, e);
+    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined || e.stealthT > 0, riding = e.riding && !!e.mountId;
+    if (s === 1 && !hidden && !riding) return this.drawHero(ctx, e);
     ctx.save();
     if (hidden) ctx.globalAlpha = .45 + Math.sin(this.time * 6) * .1;
     ctx.translate(h.x, h.y + 20); ctx.scale(s, s); ctx.translate(-h.x, -h.y - 20);
     if (s > 1.05) glow(ctx, h.x, h.y - 10, 60 * s, '#c98aff', .35);
-    this.drawHero(ctx, e);
+    if (riding) {
+      // The rider sits in the saddle: the mount behind, the hero raised and cut off at the hips, then the mount's head.
+      const moving = Math.hypot(h.vx, h.vy) > 30, bob = moving ? Math.abs(Math.sin(h.walkTime)) * 2.5 : 0, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
+      this.drawMount(ctx, e, false);
+      ctx.save(); ctx.beginPath(); ctx.rect(h.x - 120, h.y - 220, 240, 208); ctx.clip();
+      ctx.translate(0, -22 - bob); this.drawHero(ctx, e); ctx.restore();
+      rect(ctx, h.x + flip * 1 - 3, h.y - 14 - bob, 6, 12, L.legs?.color ?? '#4a3a44'); ellipse(ctx, h.x + flip * 3, h.y - 1 - bob, 5, 2.8, L.feet?.color ?? '#3a2a24');
+      this.drawMount(ctx, e, true);
+    } else this.drawHero(ctx, e);
     ctx.restore();
   }
   private drawHero(ctx: CanvasRenderingContext2D, e: GameEngine) {
     if (e.heroId === 'kael') return this.drawWarrior(ctx, e);
     if (e.heroId === 'lyra') return this.drawFrostMage(ctx, e);
     if (e.heroId === 'riven') return this.drawAssassin(ctx, e);
+    if (e.heroId === 'wren') return this.drawHunter(ctx, e);
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
     for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfe8ff'); circle(ctx, a.x, a.y - 18, 12, '#e6f7ff'); }
     ctx.globalAlpha = 1;
@@ -1417,20 +1429,159 @@ export class Renderer {
     if (e.nextCrit && Math.random() < .4) this.pushAmbient({ x: h.x + flip * 18 + rand(-4, 4), y: h.y - 4, vx: rand(-8, 8), vy: rand(-30, -10), life: .5, max: .5, size: 1.6, rot: 0, vr: 0, kind: 'mote', color: '#e0c8ff', phase: 0 });
     this.lights.push({ x: h.x, y: h.y - 10, r: e.stealthT > 0 ? 200 : 300, a: 1 });
   }
+  /** Wren: a green hooded cloak over leather, an auburn braid, a quiver on her back and a longbow she draws to shoot. */
+  private drawHunter(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
+    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 22, '#c8e6a0'); circle(ctx, a.x, a.y - 18, 11, '#e6f4d0'); }
+    ctx.globalAlpha = 1;
+    const rolling = h.dashTime > 0;
+    const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3.5 : Math.sin(t * 2.2) * 1.1;
+    shadow(ctx, h.x, h.y + 20, 19, 6.5, .3);
+    const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
+    ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
+    if (rolling) { ctx.translate(0, 6); ctx.rotate((1 - h.dashTime / .2) * TAU * .9); ctx.translate(0, -6); }
+    const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 275), wave = Math.sin(t * 7) * (2 + speed * 4);
+    // Hooded cloak behind, with the quiver poking over the shoulder.
+    ctx.fillStyle = L.back?.color ?? '#3f6a3a'; ctx.beginPath(); ctx.moveTo(-10, -10); ctx.quadraticCurveTo(-21 - speed * 10, 4 + wave, -20 - speed * 14, 21 + wave * .6); ctx.lineTo(-2, 20); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.translate(-8, -6); ctx.rotate(-.35); rect(ctx, -4, -16, 8, 22, '#6a4a30'); for (let i = 0; i < 3; i++) { rect(ctx, -3 + i * 2.6, -22, 1.4, 7, '#e8e0c8'); ctx.fillStyle = '#c0392b'; ctx.fillRect(-3.4 + i * 2.6, -24, 2.2, 3); } ctx.restore();
+    const step = moving ? Math.sin(h.walkTime) * 5.5 : 0, legs = L.legs?.color ?? '#5a4a36';
+    rect(ctx, -7 + step, 8, 5.5, 12, legs); rect(ctx, 2 - step, 8, 5.5, 12, legs);
+    ellipse(ctx, -4.5 + step, 21, 5.5, 2.8, L.feet?.color ?? '#4b3025'); ellipse(ctx, 4.5 - step, 21, 5.5, 2.8, L.feet?.color ?? '#4b3025');
+    // Leather tunic with a belt of pouches.
+    ctx.fillStyle = hurtFlash ? '#ffffff' : L.chest?.color ?? '#8a6a44'; ctx.beginPath(); ctx.moveTo(-11, -8); ctx.lineTo(11, -8); ctx.lineTo(12, 12); ctx.quadraticCurveTo(0, 16, -12, 12); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,40,24,.55)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 11); ctx.stroke();
+    rect(ctx, -12, 4, 24, 3.4, L.waist?.color ?? '#5a3a24'); rect(ctx, 5, 5, 5, 5, '#6a4a30');
+    if (L.shoulders) { ellipse(ctx, -11, -7, 6.5, 4.2, L.shoulders.color); ellipse(ctx, 11, -7, 6.5, 4.2, L.shoulders.color); }
+    this.gearGlow(ctx, L, { chest: [0, 2], shoulders: [11, -7], waist: [0, 6], legs: [0, 14], feet: [0, 21], back: [-15, 6] });
+    // Head: auburn braid, freckles and the hood.
+    ctx.strokeStyle = '#a8502e'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-8, -16); ctx.quadraticCurveTo(-15, -6, -12 - wave * .3, 4); ctx.stroke();
+    circle(ctx, 0, -18, 11.5, hurtFlash ? '#ffffff' : '#f0c8a2');
+    ctx.fillStyle = '#a8502e'; ctx.beginPath(); ctx.arc(0, -20, 11.8, Math.PI * 1.05, Math.PI * 1.95); ctx.quadraticCurveTo(4, -22, -2, -21); ctx.closePath(); ctx.fill();
+    const blink = (t % 4.1) < .12;
+    if (blink) { ctx.fillStyle = '#2d3a20'; ctx.fillRect(3, -18, 5, 1.4); } else { circle(ctx, 5.5, -17.5, 2, '#2d3a20'); circle(ctx, 6.2, -18.3, .7, '#fff'); }
+    for (const [fx, fy] of [[3, -13], [5.5, -12.4], [8, -13.2]]) circle(ctx, fx, fy, .7, 'rgba(160,90,50,.6)');
+    ctx.fillStyle = hurtFlash ? '#ffffff' : L.head?.color ?? '#4a7a44';
+    ctx.beginPath(); ctx.moveTo(-12, -12); ctx.quadraticCurveTo(-14, -31, 0, -33); ctx.quadraticCurveTo(12, -32, 13, -20); ctx.quadraticCurveTo(9, -27, 1, -27); ctx.quadraticCurveTo(-8, -26, -9, -12); ctx.closePath(); ctx.fill();
+    this.gearGlow(ctx, L, { head: [0, -28] });
+    // Longbow in the front hand; it is drawn back while shooting.
+    const draw = h.castTime > 0 ? Math.sin((1 - h.castTime / .3) * Math.PI) : 0;
+    ctx.save(); ctx.translate(13, -2);
+    ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -24); ctx.quadraticCurveTo(10 + draw * 2, 0, 0, 24); ctx.stroke();
+    ctx.strokeStyle = '#e8e0c8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -24); ctx.lineTo(-draw * 9, 0); ctx.lineTo(0, 24); ctx.stroke();
+    if (draw > .15) { rect(ctx, -draw * 9, -.7, 20 + draw * 8, 1.4, '#e8e0c8'); ctx.fillStyle = '#c8c8d0'; ctx.beginPath(); ctx.moveTo(12 + draw * 2, -3); ctx.lineTo(17 + draw * 2, 0); ctx.lineTo(12 + draw * 2, 3); ctx.fill(); }
+    ctx.restore();
+    circle(ctx, 13, 0, 3.8, L.hands?.color ?? '#6a4a30');
+    ctx.restore();
+    this.lights.push({ x: h.x, y: h.y - 10, r: 320, a: 1 });
+  }
+  /** Fenn (a grey wolf with a green scarf) and Call of the Wild's glowing spirit wolves. */
+  private drawPet(ctx: CanvasRenderingContext2D, p: Pet, e: GameEngine) {
+    const t = this.time, r = p.spirit ? 16 : 18, run = p.moving ? Math.sin(p.walk) : Math.sin(t * 3) * .15, leap = p.leapT > 0;
+    const fade = p.spirit ? Math.min(1, p.life * 2) : 1;
+    ctx.save(); ctx.globalAlpha = fade * (p.spirit ? .8 : 1);
+    shadow(ctx, p.x, p.y + r * .75, r * 1.2, r * .38, leap ? .12 : .25);
+    ctx.translate(p.x, p.y - (leap ? 14 : Math.abs(run) * 2)); ctx.scale(p.face, 1); if (leap) ctx.rotate(-.25); else if (p.bite > 0) ctx.rotate(.12);
+    const wild = e.wildT > 0 && !p.spirit, fur = p.spirit ? '#9fe8b0' : '#8a8a96', dark = p.spirit ? '#5fae7a' : '#5a5a66';
+    if (p.spirit || wild) glow(ctx, 0, -4, r * 2.4, p.spirit ? '#9fe8b0' : '#ffd35c', .5);
+    ctx.strokeStyle = dark; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    for (const [lx, ph] of [[-.6, 1], [-.3, -1], [.35, -1], [.62, 1]] as Array<[number, number]>) { ctx.beginPath(); ctx.moveTo(lx * r, r * .2); ctx.lineTo(lx * r + run * ph * 6, r * .74); ctx.stroke(); }
+    ctx.strokeStyle = fur; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-r * .9, -r * .1); ctx.quadraticCurveTo(-r * 1.4, -r * .6 + Math.sin(t * 9) * 5, -r * 1.55, -r * .25); ctx.stroke();
+    ellipse(ctx, 0, 0, r, r * .52, fur); ellipse(ctx, r * .1, r * .18, r * .6, r * .22, p.spirit ? 'rgba(255,255,255,.3)' : '#d8d8e0');
+    ellipse(ctx, r * .85, -r * .32, r * .42, r * .34, fur);
+    ctx.fillStyle = fur; ctx.beginPath(); ctx.moveTo(r * 1.05, -r * .38); ctx.lineTo(r * 1.5, -r * .2); ctx.lineTo(r * 1.05, -r * .1); ctx.fill();
+    for (const ex of [.62, .92]) { ctx.beginPath(); ctx.moveTo(r * ex - 5, -r * .55); ctx.lineTo(r * ex, -r * .98); ctx.lineTo(r * ex + 5, -r * .55); ctx.fill(); }
+    circle(ctx, r * 1.47, -r * .22, 2, '#2a2a30');
+    circle(ctx, r * 1.02, -r * .42, 2.2, p.spirit ? '#ffffff' : wild ? '#ffd35c' : '#2a2a30');
+    if (!p.spirit) { ctx.fillStyle = '#4f8a3a'; ctx.beginPath(); ctx.moveTo(r * .5, -r * .5); ctx.lineTo(r * .7, r * .05); ctx.lineTo(r * .45, r * .05); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(r * .55, -r * .2); ctx.lineTo(r * .15, r * .4); ctx.lineTo(r * .4, r * .45); ctx.closePath(); ctx.fill(); }
+    if (p.bite > 0) { ctx.fillStyle = '#fff'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(r * (1.12 + i * .1), -r * .16); ctx.lineTo(r * (1.16 + i * .1), -r * .04); ctx.lineTo(r * (1.2 + i * .1), -r * .16); ctx.fill(); } }
+    ctx.restore();
+    if (p.spirit && Math.random() < .2) this.pushAmbient({ x: p.x + rand(-10, 10), y: p.y - 10, vx: rand(-10, 10), vy: rand(-30, -10), life: .6, max: .6, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#b9f2c9', phase: 0 });
+    if (p.spirit) this.lights.push({ x: p.x, y: p.y, r: 80, color: '#9fe8b0', a: .7 });
+  }
+  /** A Snare Trap: iron jaws half-hidden in leaves, snapping shut when sprung. */
+  private drawTrap(ctx: CanvasRenderingContext2D, tr: Trap) {
+    const k = tr.sprung ? Math.min(1, tr.t / .7) : Math.min(1, tr.t * 2), shut = tr.sprung ? 1 : 0;
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(tr.x, tr.y); ctx.scale(1, .55);
+    ctx.strokeStyle = 'rgba(185,226,122,.55)'; ctx.lineWidth = 2; ctx.setLineDash([5, 6]); ctx.lineDashOffset = -this.time * 20; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = '#6a6a74'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#b8bcc8';
+    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, r0 = 18, r1 = 18 - 9 * (1 - shut * .9); ctx.beginPath(); ctx.moveTo(Math.cos(a - .15) * r0, Math.sin(a - .15) * r0); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a + .15) * r0, Math.sin(a + .15) * r0); ctx.fill(); }
+    circle(ctx, 0, 0, 4, '#8a6a4a');
+    for (let i = 0; i < 4; i++) ellipse(ctx, Math.cos(i * 1.7) * 22, Math.sin(i * 1.7) * 14, 6, 3, i % 2 ? '#6f9a4a' : '#a3c46a', i);
+    ctx.restore();
+  }
+  /** The mount under the hero: a pony, boar, stag, wolf, drake or unicorn, drawn side-on at the hero's feet. */
+  private drawMount(ctx: CanvasRenderingContext2D, e: GameEngine, front: boolean) {
+    const id = e.mountId; if (!id) return;
+    const m = MOUNTS[id], h = e.hero, t = this.time, flip = h.faceX < -.05 ? -1 : 1, moving = Math.hypot(h.vx, h.vy) > 30;
+    const gait = moving ? h.walkTime : t * .8, bob = moving ? Math.abs(Math.sin(gait)) * 2.5 : 0, s = .7 + .3 * e.mountFx;
+    ctx.save(); ctx.translate(h.x, h.y - bob); ctx.scale(flip * s, s);
+    const body = m.body, dark = shade(body, -.3), mane = m.mane, lizard = id === 'drake', wolf = id === 'frostwolf', boar = id === 'boar';
+    if (!front) {
+      shadow(ctx, 0, 20 + bob, 38, 8, .3);
+      if (m.glow) glow(ctx, 0, 0, 60, m.glow, .35);
+      // Far legs, the tail, then the body.
+      ctx.strokeStyle = dark; ctx.lineWidth = boar || lizard ? 6 : 5; ctx.lineCap = 'round';
+      const leg = (x: number, ph: number) => { const sw = moving ? Math.sin(gait + ph) * 7 : 0; ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x + sw, lizard ? 16 : 20); ctx.stroke(); };
+      leg(-18, 0); leg(16, Math.PI);
+      ctx.strokeStyle = lizard ? body : mane; ctx.lineWidth = lizard ? 7 : wolf ? 8 : 5;
+      ctx.beginPath(); ctx.moveTo(-28, -4); ctx.quadraticCurveTo(-40, lizard ? 4 : -2 + Math.sin(t * 5) * 3, -46, lizard ? 12 : 10); ctx.stroke();
+      if (lizard) { circle(ctx, -46, 12, 3, m.glow!); glow(ctx, -46, 12, 14, m.glow!, .8); }
+      ellipse(ctx, 0, -3, lizard ? 32 : 30, lizard ? 10 : boar ? 14 : 12, body);
+      ellipse(ctx, 2, 3, 22, 5, 'rgba(255,255,255,.12)');
+      if (boar) { ctx.fillStyle = mane; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(-18 + i * 6, -14); ctx.lineTo(-15 + i * 6, -21); ctx.lineTo(-12 + i * 6, -14); ctx.fill(); } }
+      if (lizard) { ctx.fillStyle = mane; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(-20 + i * 9, -11); ctx.lineTo(-16 + i * 9, -18); ctx.lineTo(-12 + i * 9, -11); ctx.fill(); } }
+      // Saddle and blanket.
+      ctx.fillStyle = '#8a2a2a'; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, -12); ctx.lineTo(14, 2); ctx.lineTo(-14, 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e8c46a'; ctx.fillRect(-14, 0, 28, 2);
+      ellipse(ctx, 0, -12, 11, 4, '#5a3a24');
+    } else {
+      // Near legs, neck and head in front of the rider.
+      ctx.strokeStyle = shade(body, -.12); ctx.lineWidth = boar || lizard ? 6 : 5; ctx.lineCap = 'round';
+      const leg = (x: number, ph: number) => { const sw = moving ? Math.sin(gait + ph) * 7 : 0; ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x + sw, lizard ? 16 : 20); ctx.stroke(); ellipse(ctx, x + sw, lizard ? 17 : 21, 3.2, 2, lizard ? dark : '#2a2020'); };
+      leg(-12, Math.PI); leg(22, 0);
+      if (boar || lizard) {
+        ellipse(ctx, 30, -6, 13, 10, body); ellipse(ctx, 41, -3, 6, 5, lizard ? body : '#c89878');
+        circle(ctx, 33, -9, 2, lizard ? '#ffe38a' : '#1a1010'); if (lizard) glow(ctx, 33, -9, 8, '#ffb347', .8);
+        if (boar) { ctx.strokeStyle = '#fff4e0'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(40, 0); ctx.quadraticCurveTo(46, -2, 45, -8); ctx.stroke(); ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(26, -14); ctx.lineTo(30, -22); ctx.lineTo(33, -14); ctx.fill(); }
+        if (lizard && moving && Math.random() < .3) this.pushAmbient({ x: h.x + flip * 46 * s, y: h.y - 4, vx: flip * rand(20, 50), vy: rand(-30, -10), life: .5, max: .5, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 });
+      } else {
+        // Neck rising to the head: horse, stag or wolf.
+        ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(18, -12); ctx.quadraticCurveTo(28, -24, 30, -34); ctx.lineTo(38, -30); ctx.quadraticCurveTo(34, -16, 28, 0); ctx.closePath(); ctx.fill();
+        if (wolf) { ellipse(ctx, 34, -30, 11, 9, body); ctx.beginPath(); ctx.moveTo(40, -33); ctx.lineTo(52, -28); ctx.lineTo(40, -24); ctx.fill(); for (const ex of [28, 34]) { ctx.beginPath(); ctx.moveTo(ex - 3, -37); ctx.lineTo(ex, -46); ctx.lineTo(ex + 3, -37); ctx.fill(); } circle(ctx, 51, -28, 1.8, '#2a2a30'); circle(ctx, 38, -32, 2, '#6fb8ff'); }
+        else { ctx.save(); ctx.translate(36, -33); ctx.rotate(.5); ellipse(ctx, 4, 0, 13, 6.5, body); ctx.restore(); circle(ctx, 35, -35, 1.8, '#1a1010'); ellipse(ctx, 47, -26, 3, 2, shade(body, -.35)); }
+        ctx.fillStyle = mane;
+        if (id === 'pony' || id === 'unicorn') { ctx.beginPath(); ctx.moveTo(18, -14); ctx.quadraticCurveTo(22 - Math.sin(t * 6) * 2, -28, 30, -40); ctx.lineTo(27, -30); ctx.quadraticCurveTo(22, -20, 22, -10); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(28, -38); ctx.lineTo(31, -45); ctx.lineTo(33, -38); ctx.fill(); }
+        if (id === 'unicorn') { ctx.fillStyle = '#fff1b8'; ctx.beginPath(); ctx.moveTo(35, -40); ctx.lineTo(44, -56); ctx.lineTo(39, -38); ctx.closePath(); ctx.fill(); glow(ctx, 42, -50, 16, '#fff1b8', .9); }
+        if (id === 'stag') { ctx.strokeStyle = '#e8d8b0'; ctx.lineWidth = 2.4; for (const side of [0, 5]) { ctx.beginPath(); ctx.moveTo(31 + side, -39); ctx.lineTo(27 + side, -54); ctx.moveTo(29 + side, -46); ctx.lineTo(22 + side, -50); ctx.moveTo(28 + side, -51); ctx.lineTo(33 + side, -58); ctx.stroke(); } glow(ctx, 30, -50, 18, '#b9f29d', .6); }
+        if (wolf) { ctx.beginPath(); ctx.moveTo(16, -12); ctx.quadraticCurveTo(22, -30, 30, -38); ctx.lineTo(26, -20); ctx.closePath(); ctx.fill(); }
+      }
+    }
+    ctx.restore();
+    if (front && m.glow) this.lights.push({ x: h.x, y: h.y - 10, r: 140, color: m.glow, a: .6 });
+  }
   // ───────────────────────────── enemies
   private drawEnemy(ctx: CanvasRenderingContext2D, en: Enemy, e: GameEngine) {
     const t = this.time + en.homeX * .01, h = e.hero;
     const spawn = en.spawnT > 0 ? 1 - en.spawnT / .6 : 1;
     const look = { x: clamp((h.x - en.x) / 150, -1, 1), y: clamp((h.y - en.y) / 150, -1, 1) };
     const flash = en.hitFlash > 0;
+    const sc = en.heroic ? 1.6 : en.elite ? 1.3 : 1;
+    if (en.heroic && en.burrowT <= 0) {
+      // A heroic creature stands in a slow violet ring of runes.
+      ctx.save(); ctx.translate(en.x, en.y + en.r * .55); ctx.scale(1, .45);
+      glow(ctx, 0, 0, en.r * 2.2, en.enraged ? '#ff6b6b' : '#c98aff', .45);
+      ctx.strokeStyle = en.enraged ? 'rgba(255,120,110,.7)' : 'rgba(232,160,255,.65)'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -t * 30;
+      ctx.beginPath(); ctx.arc(0, 0, en.r * 1.25, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    }
     ctx.save(); ctx.translate(en.x, en.y); ctx.scale(spawn, spawn);
-    if (en.elite) ctx.scale(1.3, 1.3);
+    if (sc !== 1) ctx.scale(sc, sc);
     if (en.rage > .15) glow(ctx, 0, en.kind === 'wisp' || en.kind === 'frostwraith' ? -10 : -en.r * .15, en.r * (en.boss ? 2 : 2.5), '#ff3b2e', .5 * en.rage * (.85 + Math.sin(t * 9) * .15));
     if (en.windup > 0 && !en.boss && (en.kind === 'gloomling' || en.kind === 'shadewolf')) {
       const r = en.kind === 'shadewolf' ? 115 : 80; ctx.fillStyle = 'rgba(255,90,70,.12)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(255,140,110,.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]);
     }
     const trem = en.windup > 0 ? Math.sin(t * 60) * 1.5 : 0;
-    const base = en.elite ? { ...en, r: en.r / 1.3 } : en;
+    const base = sc !== 1 ? { ...en, r: en.r / sc } : en;
     if (en.stunT > 0) ctx.globalAlpha = .85;
     switch (en.kind) {
       case 'gloomling': this.drawGloomling(ctx, base, t, look, flash, trem); break;
@@ -1462,10 +1613,16 @@ export class Renderer {
       ctx.strokeStyle = `rgba(255,255,255,${.6 * k})`; ctx.beginPath(); ctx.moveTo(en.x - r * .8, en.y - r * 1.3); ctx.lineTo(en.x - r * .3, en.y - r * .6); ctx.stroke();
     } else if (en.chillT > 0) glow(ctx, en.x, en.y - en.r * .3, en.r * 1.6, '#9fe4ff', .35);
     if (en.stunT > 0 && en.frozenT <= 0) for (let i = 0; i < 3; i++) { const a = t * 6 + i * TAU / 3; ctx.fillStyle = '#bfefff'; star(ctx, en.x + Math.cos(a) * en.r * .9, en.y - en.r * 1.3 + Math.sin(a) * 5, 4, 4, .4, t * 4); ctx.fill(); }
-    if (en.elite) { glow(ctx, en.x, en.y - en.r * 1.6, 16, '#ffd35c', .7); ctx.fillStyle = '#ffd35c'; star(ctx, en.x, en.y - en.r * 1.6 - 6, 7, 5, .45, t); ctx.fill(); }
-    if (!en.boss && en.hp < en.maxHp) {
-      const bw = en.elite ? 50 : 34; ctx.fillStyle = 'rgba(10,15,20,.65)'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2 - 1, en.y - en.r - 20, bw + 2, 6, 3); ctx.fill();
-      ctx.fillStyle = en.elite ? '#ffb347' : '#ff8f7a'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2, en.y - en.r - 19, bw * Math.max(0, en.hp / en.maxHp), 4, 2); ctx.fill();
+    if (en.heroic) {
+      // A little crown instead of the elite star.
+      const cy = en.y - en.r * 1.45 - 8; glow(ctx, en.x, cy, 22, '#e8a0ff', .8);
+      ctx.fillStyle = '#ffd35c'; ctx.beginPath(); ctx.moveTo(en.x - 10, cy + 5); ctx.lineTo(en.x - 11, cy - 5); ctx.lineTo(en.x - 5, cy); ctx.lineTo(en.x, cy - 8); ctx.lineTo(en.x + 5, cy); ctx.lineTo(en.x + 11, cy - 5); ctx.lineTo(en.x + 10, cy + 5); ctx.closePath(); ctx.fill();
+      circle(ctx, en.x, cy + 1, 2, '#c98aff');
+      this.lights.push({ x: en.x, y: en.y, r: 150, color: '#c98aff', a: .7 });
+    } else if (en.elite) { glow(ctx, en.x, en.y - en.r * 1.6, 16, '#ffd35c', .7); ctx.fillStyle = '#ffd35c'; star(ctx, en.x, en.y - en.r * 1.6 - 6, 7, 5, .45, t); ctx.fill(); }
+    if (!en.boss && (en.hp < en.maxHp || en.heroic)) {
+      const bw = en.heroic ? 76 : en.elite ? 50 : 34, by = en.y - en.r - (en.heroic ? 12 : 20); ctx.fillStyle = 'rgba(10,15,20,.65)'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2 - 1, by, bw + 2, en.heroic ? 8 : 6, 3); ctx.fill();
+      ctx.fillStyle = en.heroic ? (en.enraged ? '#ff6b6b' : '#c98aff') : en.elite ? '#ffb347' : '#ff8f7a'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2, by + 1, bw * Math.max(0, en.hp / en.maxHp), en.heroic ? 6 : 4, 2); ctx.fill();
     }
     if (en.boss && !e.bossUnlocked(en)) this.drawSeal(ctx, en, t, e);
     if (en.kind === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: '#a78bfa', a: .8 });
@@ -1481,8 +1638,9 @@ export class Renderer {
       if (en.dead || en.boss || en.spawnT > 0 || en.x < v.x - 40 || en.x > v.x + v.w + 40 || en.y < v.y - 40 || en.y > v.y + v.h + 60) continue;
       if (!en.aggro && Math.abs(en.x - h.x) + Math.abs(en.y - h.y) > 620) continue;
       const d = en.level - me, c = d >= 5 ? '#ff4d4d' : d >= 3 ? '#ff9a4a' : d >= -2 ? '#fff1b8' : d >= -4 ? '#9fe870' : '#9aa0aa';
-      const text = `Lv ${en.level}`, y = en.y - en.r * (en.elite ? 1.6 : 1) - (en.hp < en.maxHp ? 28 : 18) - (en.elite ? 14 : 0);
+      const text = en.heroic ? `Heroic · Lv ${en.level}` : `Lv ${en.level}`, y = en.y - en.r * (en.heroic ? 1.45 : en.elite ? 1.6 : 1) - (en.hp < en.maxHp || en.heroic ? 28 : 18) - (en.elite ? 14 : 0);
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(12,14,22,.8)'; ctx.strokeText(text, en.x, y); ctx.fillStyle = c; ctx.fillText(text, en.x, y);
+      if (en.heroic) { ctx.font = `900 14px ${DISPLAY}`; ctx.strokeText(en.heroic, en.x, y - 15); ctx.fillStyle = '#f0c8ff'; ctx.fillText(en.heroic, en.x, y - 15); ctx.font = `900 11px ${UI}`; }
       if (d >= 5) {
         // A tiny skull: far too strong for Mira.
         const sx = en.x - ctx.measureText(text).width / 2 - 9, sy = y - 4;
@@ -1938,6 +2096,15 @@ export class Renderer {
         ctx.fillStyle = '#f2fbff'; ctx.beginPath(); ctx.moveTo(p.r * 2, 0); ctx.lineTo(-p.r * .6, -p.r * .8); ctx.lineTo(-p.r * 1.4, 0); ctx.lineTo(-p.r * .6, p.r * .8); ctx.closePath(); ctx.fill();
         ctx.restore();
         this.lights.push({ x: p.x, y: p.y, r: 90, color: '#9fe4ff', a: .9 });
+      } else if (p.kind === 'arrow') {
+        const a = Math.atan2(p.vy, p.vx);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+        if (p.crit) glow(ctx, 0, 0, 16, '#ffd35c', .7);
+        ctx.strokeStyle = 'rgba(255,245,210,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(-14, 0); ctx.stroke();
+        rect(ctx, -14, -1, 22, 2, '#a8844a');
+        ctx.fillStyle = '#d8dce8'; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(7, -3.5); ctx.lineTo(7, 3.5); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-19, -4); ctx.lineTo(-11, 0); ctx.lineTo(-19, 4); ctx.closePath(); ctx.fill();
+        ctx.restore();
       } else if (p.kind === 'knife') {
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + Math.PI / 2);
         glow(ctx, 0, 0, 12, '#e0c8ff', .6);
@@ -2305,7 +2472,7 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'campfire' || o.kind === 'fountain') dot(o, 2, o.kind === 'fountain' ? '#9fd8ff' : '#ffb347');
   }
   for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
-  for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
+  for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.heroic) { const q = P(en); glow(ctx, q.x, q.y, 8 * size, '#c98aff', .55 + Math.sin(t * 4) * .25); dot(en, 2.8, '#e8a0ff'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const mt = e.mainTarget(); if (mt && inside(mt) && size > 1) { const q = P(mt); ctx.strokeStyle = MAIN_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (6 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const h = e.hero; if (!inside(h)) return;

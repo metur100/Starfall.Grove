@@ -18,6 +18,7 @@ const ACCENT: Record<HeroId, { rim: number; rune: number; mote: number }> = {
   kael: { rim: 0xff8a4a, rune: 0xffb35c, mote: 0xffd0a0 },
   lyra: { rim: 0x7fd0ff, rune: 0x9fe4ff, mote: 0xe0f6ff },
   riven: { rim: 0xb69cff, rune: 0xff6b9a, mote: 0xe0c8ff },
+  wren: { rim: 0x9fe8b0, rune: 0xb9e27a, mote: 0xeaffc8 },
 };
 
 /** What one gear slot changes on a model: materials that take the piece's colour, and meshes shown only while worn. */
@@ -267,7 +268,63 @@ function buildRiven(): Model {
     head: dye([hoodM]), chest: dye([chestM]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM]), feet: dye([bootM]),
   } };
 }
-const BUILD: Record<HeroId, () => Model> = { mira: buildMira, kael: buildKael, lyra: buildLyra, riven: buildRiven };
+/** Wren: a hooded green cloak over leather, an auburn braid, a quiver and a longbow, and Fenn the wolf sitting at her side. */
+function buildWren(): Model {
+  const group = new THREE.Group(), body = new THREE.Group(); group.add(body);
+  const skin = mat('#f0c8a2', { roughness: .6 }), hairM = mat('#a8502e', { roughness: .7 }), wood = mat('#7a5230', { roughness: .6 }), leather = mat('#6a4a30');
+  const legM = mat('#5a4a36'), bootM = mat('#4b3025'), chestM = mat('#8a6a44', { roughness: .7 }), beltM = mat('#5a3a24'), hoodM = mat('#4a7a44', { roughness: .85 }), handM = mat('#6a4a30'), mantleM = mat('#6f9a4a', { roughness: .6 });
+  for (const s of [-1, 1]) {
+    mesh(new THREE.CapsuleGeometry(.08, .44, 6, 12), legM, s * .12, .4, 0, body);
+    const boot = mesh(new THREE.CapsuleGeometry(.085, .16, 6, 10), bootM, s * .12, .12, .03, body); boot.rotation.x = .2;
+  }
+  const torso = mesh(new THREE.CapsuleGeometry(.23, .36, 8, 16), chestM, 0, .98, 0, body); torso.scale.set(1, 1, .78);
+  mesh(new THREE.CylinderGeometry(.24, .24, .07, 20), beltM, 0, .75, 0, body);
+  mesh(new THREE.BoxGeometry(.1, .1, .07), leather, .18, .72, .15, body);
+  // Quiver across the back with red-fletched arrows.
+  const quiver = new THREE.Group(); quiver.position.set(-.1, 1.05, -.22); quiver.rotation.z = .45; body.add(quiver);
+  mesh(new THREE.CylinderGeometry(.07, .06, .5, 12), leather, 0, 0, 0, quiver);
+  for (let i = 0; i < 3; i++) { mesh(new THREE.CylinderGeometry(.008, .008, .22, 6), mat('#e8e0c8'), (i - 1) * .03, .32, 0, quiver); mesh(new THREE.BoxGeometry(.03, .05, .005), mat('#c0392b'), (i - 1) * .03, .4, 0, quiver); }
+  const armGeo = new THREE.CapsuleGeometry(.065, .38, 6, 12);
+  const left = mesh(armGeo, chestM, -.3, .94, .06, body); left.rotation.z = -.2; left.rotation.x = .9;
+  mesh(new THREE.SphereGeometry(.06, 12, 10), handM, -.34, .84, .3, body);
+  // The longbow, held upright in the left hand.
+  const bow = new THREE.Group(); bow.position.set(-.34, .86, .32); body.add(bow);
+  const bc = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, -.6, 0), new THREE.Vector3(0, 0, .22), new THREE.Vector3(0, .6, 0));
+  mesh(new THREE.TubeGeometry(bc, 24, .02, 8), wood, 0, 0, 0, bow);
+  const string = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -.6, 0), new THREE.Vector3(0, .6, 0)]); bow.add(new THREE.Line(string, new THREE.LineBasicMaterial({ color: 0xe8e0c8 })));
+  const arm = new THREE.Group(); arm.position.set(.3, 1.12, .04); body.add(arm);
+  const right = mesh(armGeo, chestM, .06, -.2, .05, arm); right.rotation.z = .3; right.rotation.x = -.3;
+  mesh(new THREE.SphereGeometry(.06, 12, 10), handM, .12, -.42, .14, arm);
+  // Head: auburn braid, hood.
+  const head = new THREE.Group(); head.position.set(0, 1.44, 0); body.add(head);
+  mesh(new THREE.SphereGeometry(.22, 24, 20), skin, 0, 0, 0, head);
+  face(head, .2, '#2d3a20');
+  const hair = mesh(new THREE.SphereGeometry(.235, 24, 18, 0, Math.PI * 2, 0, Math.PI * .55), hairM, 0, .02, -.02, head); hair.rotation.x = -.3;
+  const braid = new THREE.CatmullRomCurve3([new THREE.Vector3(-.12, -.05, -.16), new THREE.Vector3(-.2, -.25, -.12), new THREE.Vector3(-.18, -.48, -.02)]);
+  mesh(new THREE.TubeGeometry(braid, 16, .045, 8), hairM, 0, 0, 0, head);
+  const hood = mesh(new THREE.SphereGeometry(.27, 24, 18, 0, Math.PI * 2, 0, Math.PI * .58), hoodM, 0, .04, -.05, head); hood.rotation.x = -.5;
+  const { cape, base, m } = makeCape('#3f6a3a', .62, 1.06, 1.24, -.24); body.add(cape);
+  const shoulders = mantle(body, .25, 1.2, .12, mantleM);
+  // Fenn, sitting at her right side.
+  const fur = mat('#8a8a96', { roughness: .85 }), furL = mat('#d8d8e0', { roughness: .85 }), wolf = new THREE.Group(); wolf.position.set(.62, 0, .18); wolf.rotation.y = -.5; group.add(wolf);
+  const wb = mesh(new THREE.SphereGeometry(.2, 18, 14), fur, 0, .3, -.05, wolf); wb.scale.set(.9, 1.2, 1.3);
+  mesh(new THREE.SphereGeometry(.12, 14, 10), furL, 0, .36, .12, wolf).scale.set(1, 1.2, .6);
+  for (const s of [-1, 1]) { mesh(new THREE.CapsuleGeometry(.04, .2, 4, 8), fur, s * .09, .14, .12, wolf); mesh(new THREE.SphereGeometry(.07, 10, 8), fur, s * .12, .08, -.12, wolf).scale.set(1, .7, 1.6); }
+  const wh = new THREE.Group(); wh.position.set(0, .58, .08); wolf.add(wh);
+  mesh(new THREE.SphereGeometry(.13, 16, 12), fur, 0, 0, 0, wh);
+  mesh(new THREE.ConeGeometry(.07, .18, 10), fur, 0, -.03, .16, wh).rotation.x = Math.PI / 2;
+  mesh(new THREE.SphereGeometry(.025, 8, 6), mat('#2a2a30'), 0, -.03, .25, wh);
+  for (const s of [-1, 1]) { mesh(new THREE.ConeGeometry(.045, .12, 8), fur, s * .07, .13, -.01, wh); mesh(new THREE.SphereGeometry(.018, 8, 6), mat('#2a2a30'), s * .05, .03, .11, wh); }
+  mesh(new THREE.TorusGeometry(.15, .03, 8, 24), mat('#4f8a3a'), 0, .44, .02, wolf).rotation.x = Math.PI / 2 + .35;
+  const tail = new THREE.CatmullRomCurve3([new THREE.Vector3(0, .15, -.3), new THREE.Vector3(.1, .08, -.45), new THREE.Vector3(.25, .06, -.4)]);
+  mesh(new THREE.TubeGeometry(tail, 12, .05, 8), fur, 0, 0, 0, wolf);
+  const gems = { head: gem(head, 0, .2, .2), chest: gem(body, 0, 1.08, .22, .04) };
+  group.scale.setScalar(1.06);
+  return { group, cape, capeBase: base, arm, head, body, gems, dyes: {
+    head: dye([hoodM]), chest: dye([chestM]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM]), feet: dye([bootM]),
+  } };
+}
+const BUILD: Record<HeroId, () => Model> = { mira: buildMira, kael: buildKael, lyra: buildLyra, riven: buildRiven, wren: buildWren };
 
 export function createStage(canvas: HTMLCanvasElement, first: HeroId, mode: StageMode): Stage {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });

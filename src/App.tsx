@@ -9,12 +9,16 @@ import { ITEMS, ITEM_ORDER } from './game/items';
 import { RARITY, RARITY_ORDER, SLOT_NAMES, gearScore, sellPrice } from './game/gear';
 import { DECOR_LEVELS, QUALITIES, isTouch, loadGraphics, saveGraphics, type GraphicsSettings } from './game/graphics';
 import { clearSession, loadSession, saveSession } from './game/storage';
-import { MAX_RANK, UPGRADES, UPGRADE_ORDER, loadProfile, resetProfile, upgradeCost } from './game/progression';
+import { MAX_RANK, UPGRADES, UPGRADE_ORDER, loadProfile, resetProfile, saveProfile, upgradeCost } from './game/progression';
 import { MAIN_COLOR, SIDE_COLOR, drawWorldMap } from './game/render';
 import { sfx } from './game/audio';
 import { music } from './game/music';
+import { ACTIONS, RESERVED, actionOf, bindKey, getKeys, keyLabel, onKeysChange, resetKeys, spellSlot, type Action } from './game/keys';
+import { exportBackup, readBackup, restoreBackup, type Backup } from './game/backup';
+import { MOUNTS, MOUNT_ORDER } from './game/mounts';
+import { applyUpdate, onUpdateReady } from './pwa';
 import type { EngineEvent, GameSnapshot, HeroId, ItemId, LevelStats, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
-import CharacterScreen, { StatLines, type SheetTab } from './ui/CharacterScreen';
+import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
 import { GearIcon, HeroFace, ItemIcon } from './ui/icons';
 
@@ -63,9 +67,15 @@ function exitApp() {
   return false;
 }
 
-// Keyboard: the left hand moves (WASD) and dashes (E). The right hand attacks on L and casts the other spells leftward
-// along the home row in the order they are learned (K J H G); the row above opens menus: U spellbook, I inventory,
-// O quest log, P character. F still fires Spark for players used to it.
+// Keyboard (every key can be changed in the settings): the left hand moves (WASD), dashes (E) and rides (R). The right
+// hand attacks on L and casts the other spells leftward along the home row in the order they are learned (K J H); the
+// row above opens menus: U spellbook, I inventory, O quest log, P character. F still attacks when it is not bound.
+/** Re-renders when the key bindings change, and hands back the label of an action's key. */
+function useKeys() {
+  const [, set] = useState(0);
+  useEffect(() => onKeysChange(() => set(n => n + 1)), []);
+  return (a: Action) => keyLabel(getKeys()[a]);
+}
 type JournalTab = 'quests' | 'spells' | 'achievements';
 const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.filter(id => ITEMS[id].key).map(id => [ITEMS[id].key, id]));
 const LABEL: Record<string, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low', lowest: 'Lowest', full: 'Full', less: 'Less', off: 'Off' };
@@ -162,7 +172,7 @@ function App() {
       case 'dialogue': engineRef.current?.setMovement(0, 0); resetStick(); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then, offer: event.offer }); break;
       case 'notice': notify(event.text, event.tone, event.short); break;
       case 'item': if (!touchRef.current) notify(`Found ${ITEMS[event.id].name}${event.count > 1 ? ` ×${event.count}` : ''}`, 'good'); break;
-      case 'loot': { const r = RARITY[event.item.rarity]; notify(`${event.equipped ? 'Equipped' : 'Looted'} ${event.item.name} · ${r.name}`, RARITY_ORDER.indexOf(event.item.rarity) >= 3 ? 'epic' : 'good', event.item.name, r.color); break; }
+      case 'loot': { const r = RARITY[event.item.rarity], worn = engineRef.current?.profile.equipped[event.item.slot], up = !event.equipped && !!worn && gearScore(event.item) > gearScore(worn); notify(`${event.equipped ? 'Equipped' : 'Looted'} ${event.item.name} · ${r.name}${up ? ' · ▲ upgrade' : ''}`, RARITY_ORDER.indexOf(event.item.rarity) >= 3 ? 'epic' : 'good', event.item.name, r.color); break; }
       case 'zone': setZone(z => ({ name: event.name, discovered: event.discovered, key: (z?.key || 0) + 1 })); break;
       case 'region': setRegionBanner(b => ({ region: event.region, danger: event.danger, key: (b?.key || 0) + 1 })); break;
       case 'spellLearned': setSpellQueue(q => [...q, event.spell]); break;
@@ -255,43 +265,44 @@ function App() {
 
   const keys = useRef(new Set<string>());
   const syncKeys = () => {
-    const k = keys.current;
-    const x = (k.has('arrowright') || k.has('d') ? 1 : 0) - (k.has('arrowleft') || k.has('a') ? 1 : 0);
-    const y = (k.has('arrowdown') || k.has('s') ? 1 : 0) - (k.has('arrowup') || k.has('w') ? 1 : 0);
+    const k = keys.current, b = getKeys();
+    const x = (k.has('arrowright') || k.has(b.right) ? 1 : 0) - (k.has('arrowleft') || k.has(b.left) ? 1 : 0);
+    const y = (k.has('arrowdown') || k.has(b.down) ? 1 : 0) - (k.has('arrowup') || k.has(b.up) ? 1 : 0);
     engineRef.current?.setMovement(x, y);
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-    const k = e.key.toLowerCase();
+    const k = e.key.toLowerCase(), act = actionOf(k);
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
     if (dialogue) {
       if (offerOpen) { if (k === 'enter' || k === ' ' || k === 'y') answerOffer(true); else if (k === 'escape' || k === 'n') answerOffer(false); e.preventDefault(); return; }
-      if (k === 'enter' || k === ' ') { advanceDialogue(); e.preventDefault(); }
+      if (k === 'enter' || k === ' ' || act === 'interact') { advanceDialogue(); e.preventDefault(); }
       if (k === 'escape' && !dialogue.offer) setDialogue(null);
       return;
     }
-    if (k === 'n') { toggleMute(); return; }
-    if (mapOpen) { if (k === 'm' || k === 'escape') setMapOpen(false); return; }
+    if (act === 'mute') { toggleMute(); return; }
+    if (mapOpen) { if (act === 'map' || k === 'escape') setMapOpen(false); return; }
     if (paused) { if (k === 'escape') { if (settingsOpen) setSettingsOpen(false); else setPaused(false); } return; }
     if (panel) {
-      if (k === 'escape' || (panel === 'sheet' && ((k === 'i' && sheetTab === 'bag') || (k === 'p' && sheetTab === 'stats')))) { setPanel(null); e.preventDefault(); return; }
+      if (k === 'escape' || (panel === 'sheet' && ((act === 'bag' && sheetTab === 'bag') || (act === 'character' && sheetTab === 'stats')))) { setPanel(null); e.preventDefault(); return; }
       if (panel === 'shop') return;
-      if (k === 'i') { setSheetTab('bag'); return; } if (k === 'p') { setSheetTab('stats'); return; }
-      if (k === 'u' || k === 'o') { toggleJournal(k === 'u' ? 'spells' : 'quests'); return; }
+      if (act === 'bag') { setSheetTab('bag'); return; } if (act === 'character') { setSheetTab('stats'); return; }
+      if (act === 'spellbook' || act === 'quests') { toggleJournal(act === 'spellbook' ? 'spells' : 'quests'); return; }
       if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
       return;
     }
-    if (k === 'm') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); return; }
-    if (k === 'tab' || k === 'o') { toggleJournal('quests'); e.preventDefault(); return; }
-    if (k === 'u') { toggleJournal('spells'); return; }
-    if (k === 'y') { toggleJournal('achievements'); return; }
-    if (k === 'i' || k === 'p') { keys.current.clear(); openSheet(k === 'i' ? 'bag' : 'stats'); return; }
-    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) { keys.current.add(k); syncKeys(); e.preventDefault(); }
-    const ids = HEROES[heroRef.current].spells, spell = k === 'f' ? ids[0] : ids.find(id => SPELLS[id].key.toLowerCase() === k);
+    if (act === 'map') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); return; }
+    if (k === 'tab' || act === 'quests') { toggleJournal('quests'); e.preventDefault(); return; }
+    if (act === 'spellbook') { toggleJournal('spells'); return; }
+    if (act === 'achievements') { toggleJournal('achievements'); return; }
+    if (act === 'bag' || act === 'character') { keys.current.clear(); openSheet(act === 'bag' ? 'bag' : 'stats'); return; }
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k) || act === 'up' || act === 'down' || act === 'left' || act === 'right') { keys.current.add(k); syncKeys(); e.preventDefault(); }
+    const ids = HEROES[heroRef.current].spells, slot = spellSlot(k), spell = slot >= 0 ? ids[slot] : k === 'f' && !act ? ids[0] : undefined;
     if (spell) { if (!e.repeat || spell === ids[0]) cast(spell); }
     if (e.repeat) return;
     if (ITEM_KEYS[k]) drink(ITEM_KEYS[k]);
-    if (k === ' ' || k === 'enter') { engineRef.current?.interact(); e.preventDefault(); }
+    if (act === 'ride' && !blocked) engineRef.current?.toggleMount();
+    if (act === 'interact' || k === 'enter') { engineRef.current?.interact(); e.preventDefault(); }
     if (k === 'escape') { keys.current.clear(); engineRef.current?.setMovement(0, 0); if (journal) setJournal(false); else setPaused(true); }
   };
   const keyHandler = useRef(onKeyDown); keyHandler.current = onKeyDown;
@@ -361,6 +372,9 @@ function App() {
   const stickEnd = () => { resetStick(); engineRef.current?.setMovement(0, 0); };
   const potions = snapshot?.items.find(i => i.id === 'healthPotion')?.count ?? 0;
   const bannerWorld = chapterBanner ? WORLDS[LEVEL_ORDER[Math.min(LEVEL_ORDER.length - 1, chapterBanner.chapter - 1)]] : null;
+  const kl = useKeys();
+  /** Keeps the adventure on disk before a backup is written. */
+  const flushSave = () => { const e = engineRef.current; if (e && mode === 'play') { saveSession(hero, e.exportSave()); saveProfile(e.profile); } };
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
     {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={() => { wipeHero(hero); startGame(true); }} onDeleteAll={deleteAll} />}
@@ -381,6 +395,7 @@ function App() {
             {zone && !snapshot?.boss && <div className="zone-banner" key={zone.key}><span>✦</span>{zone.name}<span>✦</span>{zone.discovered && !touch && <em>Discovered</em>}</div>}
           </div>
           <div className="hud-buttons">
+            {snapshot?.mount && <button className={`icon-button mount-button ${snapshot.mount.riding ? 'on' : ''}`} onClick={() => engineRef.current?.toggleMount()} aria-label={snapshot.mount.riding ? 'Dismount' : `Ride ${snapshot.mount.name}`} title={`${snapshot.mount.riding ? 'Dismount' : `Ride ${snapshot.mount.name}`} (${kl('ride')})`}>{MOUNTS[snapshot.mount.id].icon}</button>}
             <button className="icon-button" onClick={() => openSheet('bag')} aria-label="Bag" title="Bag and equipment (I)">🎒</button>
             <button className="icon-button" onClick={() => { setMapOpen(true); sfx.play('page'); }} aria-label="World map" title="Map (M)">🗺️</button>
             <button className="icon-button" onClick={() => toggleJournal('quests')} aria-label="Quest log" title="Quest log (O)">📜</button>
@@ -393,7 +408,7 @@ function App() {
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast tone-${t.tone} ${t.color ? 'loot' : ''}`} style={t.color ? { '--r': t.color } as CSSProperties : undefined}>{t.text}</div>)}</div>
 
         {snapshot?.nearName && !dialogue && !panel && <button className={`near-prompt ${touch ? 'compact' : ''}`} onClick={() => engineRef.current?.interact()} aria-label={`${snapshot.nearAction} ${snapshot.nearName}`}>
-          {touch ? <span>{snapshot.nearAction}</span> : <><kbd>Space</kbd><span>{snapshot.nearAction}</span><b>{snapshot.nearName}</b></>}
+          {touch ? <span>{snapshot.nearAction}</span> : <><kbd>{kl('interact')}</kbd><span>{snapshot.nearAction}</span><b>{snapshot.nearName}</b></>}
         </button>}
 
         <div className="spellbar">
@@ -432,7 +447,7 @@ function App() {
           <div className="spell-card">
             <div className="spell-rays" /><div className="spell-icon">{SPELLS[showSpell].icon}</div>
             <small>New spell · Level {SPELLS[showSpell].level}</small><h2>{SPELLS[showSpell].name}</h2><p>{SPELLS[showSpell].description}</p>
-            {touch ? <em className="tap-note">Tap its {SPELLS[showSpell].icon} button to cast</em> : <kbd>Press {SPELLS[showSpell].key}</kbd>}
+            {touch ? <em className="tap-note">Tap its {SPELLS[showSpell].icon} button to cast</em> : <kbd>Press {keyLabel(getKeys()[(['spell1', 'spell2', 'spell3', 'spell4', 'spell5'] as Action[])[HEROES[hero].spells.indexOf(showSpell)] || 'spell1'])}</kbd>}
           </div>
         </div>}
 
@@ -452,7 +467,7 @@ function App() {
           </div>
         </div>}
 
-        {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} achievements={engineRef.current?.achievementRows() ?? []} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
+        {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} engine={engineRef.current} achievements={engineRef.current?.achievementRows() ?? []} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
         {panel === 'sheet' && snapshot && engineRef.current && <CharacterScreen snapshot={snapshot} engine={engineRef.current} initial={sheetTab} touch={touch} onUse={id => engineRef.current?.useItem(id)} onClose={() => setPanel(null)} />}
         {panel === 'shop' && shop && snapshot && engineRef.current && <ShopPanel shop={shop} snapshot={snapshot} engine={engineRef.current} onClose={() => setPanel(null)} />}
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
@@ -466,15 +481,16 @@ function App() {
 
         {paused && settingsOpen && <div className="overlay"><div className="panel pause-panel settings-panel">
           <button className="icon-button settings-close" onClick={() => { setSettingsOpen(false); sfx.play('page'); }} aria-label="Close settings" title="Close">✕</button>
-          <SettingsBody graphics={graphics} onGraphics={changeGraphics} />
+          <SettingsBody graphics={graphics} onGraphics={changeGraphics} touch={touch} />
+          <BackupPanel onBeforeExport={flushSave} />
           <button className="btn primary" onClick={() => setSettingsOpen(false)}>Back <b>←</b></button>
           <DangerZone hero={hero} onStartOver={startOver} onDeleteAll={deleteAll} />
         </div></div>}
         {paused && !settingsOpen && <div className="overlay"><div className="panel pause-panel">
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The valley can wait.</p>
           <div className="controls-grid">
-            <span><kbd>WASD</kbd> Move</span>{HEROES[hero].spells.map(id => <span key={id}><kbd>{SPELLS[id].key}</kbd> {SPELLS[id].name}</span>)}<span><kbd>Space</kbd> Talk / use</span>
-            <span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Bag</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>Y</kbd> Achievements</span><span><kbd>M</kbd> Map</span>
+            <span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> Move</span>{HEROES[hero].spells.map((id, i) => <span key={id}><kbd>{kl((['spell1', 'spell2', 'spell3', 'spell4', 'spell5'] as Action[])[i])}</kbd> {SPELLS[id].name}</span>)}<span><kbd>{kl('interact')}</kbd> Talk / use</span>
+            <span><kbd>{kl('ride')}</kbd> Ride mount</span><span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>{kl('spellbook')}</kbd> Spellbook</span><span><kbd>{kl('bag')}</kbd> Bag</span><span><kbd>{kl('quests')}</kbd> Quest log</span><span><kbd>{kl('character')}</kbd> Character</span><span><kbd>{kl('achievements')}</kbd> Achievements</span><span><kbd>{kl('map')}</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
           <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }} title="Back to the main menu">⌂ Main menu</button>
@@ -506,9 +522,13 @@ function App() {
 /** Title: the logo and one big Play button, centred on screen. Choosing a hero happens on the next screen. */
 function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
   const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || LEVEL_ORDER[LEVEL_ORDER.length - 1], last = heroStarted(hero) ? heroSummary(hero) : null;
+  const kl = useKeys();
+  const [update, setUpdate] = useState(false);
+  useEffect(() => onUpdateReady(setUpdate), []);
   return <main className="menu-page title-page">
     <TitleBackdrop level={next} />
     <header className="title-top">
+      {update && <button className="update-pill" onClick={() => { sfx.play('ui'); applyUpdate(); }}>✨ A new version is ready · <b>Restart</b></button>}
       <div className="title-tools">
         <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
         <button className="icon-button" onClick={() => { onSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>
@@ -522,10 +542,11 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
-    {!touch && <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> attack</span><span><kbd>E</kbd> dash / charge</span><span><kbd>K J H</kbd> abilities</span><span><kbd>Space</kbd> interact</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
+    {!touch && <footer className="title-foot"><span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> move</span><span><kbd>{kl('spell1')}</kbd> attack</span><span><kbd>{kl('spell2')}</kbd> dash</span><span><kbd>{kl('spell3')} {kl('spell4')} {kl('spell5')}</kbd> abilities</span><span><kbd>{kl('interact')}</kbd> interact</span><span><kbd>{kl('ride')}</kbd> ride</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>{kl('bag')}</kbd> bag</span><span><kbd>{kl('map')}</kbd> map</span></footer>}
     {settings && <div className="overlay" onClick={() => onSettings(false)}><div onClick={e => e.stopPropagation()} className="panel pause-panel settings-panel">
       <button className="icon-button settings-close" onClick={() => { onSettings(false); sfx.play('page'); }} aria-label="Close settings" title="Close">✕</button>
-      <SettingsBody graphics={graphics} onGraphics={onGraphics} />
+      <SettingsBody graphics={graphics} onGraphics={onGraphics} touch={touch} />
+      <BackupPanel />
       <button className="btn primary" onClick={() => onSettings(false)}>Back <b>←</b></button>
       <DangerZone hero={hero} onStartOver={onStartOver} onDeleteAll={onDeleteAll} />
     </div></div>}
@@ -533,7 +554,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
 }
 
 /** Graphics and sound, shared by the title screen and the pause menu. */
-function SettingsBody({ graphics, onGraphics }: { graphics: GraphicsSettings; onGraphics: (g: Partial<GraphicsSettings>) => void }) {
+function SettingsBody({ graphics, onGraphics, touch }: { graphics: GraphicsSettings; onGraphics: (g: Partial<GraphicsSettings>) => void; touch: boolean }) {
   return <>
     <small className="eyebrow">Settings</small><h2>Graphics &amp; sound</h2>
     <p>Lower these if the game feels slow or the device gets warm. Changes apply right away.</p>
@@ -544,7 +565,60 @@ function SettingsBody({ graphics, onGraphics }: { graphics: GraphicsSettings; on
     <SettingRow label="Screen shake">{[true, false].map(v => <button key={String(v)} className={graphics.shake === v ? 'on' : ''} onClick={() => onGraphics({ shake: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
     <SettingRow label="Show FPS">{[true, false].map(v => <button key={String(v)} className={graphics.showFps === v ? 'on' : ''} onClick={() => onGraphics({ showFps: v })}>{v ? 'On' : 'Off'}</button>)}</SettingRow>
     <VolumeControls />
+    {!touch && <KeyControls />}
   </>;
+}
+
+/** Every keyboard action with its key: click one, then press the new key. A key already in use swaps places. */
+function KeyControls() {
+  const [wait, setWait] = useState<Action | null>(null);
+  const [note, setNote] = useState('');
+  const kl = useKeys();
+  useEffect(() => {
+    if (!wait) return;
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const k = e.key.toLowerCase();
+      if (k === 'escape') { setWait(null); setNote(''); return; }
+      if (RESERVED.has(k)) { setNote(`${keyLabel(k)} is kept for something else (arrows, 1–0, Tab, Enter, Esc). Pick another key.`); return; }
+      const other = actionOf(k);
+      bindKey(wait, k); sfx.play('ui');
+      setNote(other && other !== wait ? `Swapped with “${ACTIONS.find(a => a.id === other)!.name}”.` : ''); setWait(null);
+    };
+    window.addEventListener('keydown', down, true);
+    return () => window.removeEventListener('keydown', down, true);
+  }, [wait]);
+  return <section className="key-controls">
+    <div className="kc-head"><span><b>Controls</b><em>Click an action, then press its new key. The arrow keys always move too, and 1–0 use potions and bombs.</em></span><button className="btn ghost" onClick={() => { resetKeys(); setNote('Default keys restored.'); sfx.play('ui'); }}>Reset</button></div>
+    {(['Move', 'Fight', 'Menus'] as const).map(g => <div key={g} className="kc-group"><small>{g}</small><div className="kc-grid">{ACTIONS.filter(a => a.group === g).map(a => <button key={a.id} className={`kc-key ${wait === a.id ? 'listening' : ''}`} onClick={() => { setWait(w => w === a.id ? null : a.id); setNote(''); sfx.play('page'); }}>
+      <span>{a.name}</span><kbd>{wait === a.id ? 'Press a key…' : kl(a.id)}</kbd></button>)}</div></div>)}
+    {note && <p className="kc-note">{note}</p>}
+  </section>;
+}
+
+/** Save backups: one file with every hero's progress, to keep safe or to move to another device. */
+function BackupPanel({ onBeforeExport }: { onBeforeExport?: () => void }) {
+  const [msg, setMsg] = useState<{ text: string; tone: 'good' | 'warn' } | null>(null);
+  const [pending, setPending] = useState<{ backup: Backup; heroes: number } | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    const r = await readBackup(f); if (input.current) input.current.value = '';
+    if (!r.ok) { setMsg({ text: r.error, tone: 'warn' }); sfx.play('nope'); return; }
+    setPending({ backup: r.backup, heroes: r.heroes }); setMsg(null); sfx.play('page');
+  };
+  return <section className="backup-panel">
+    <div className="dz-row"><span><b>Back up your saves</b><em>Your progress lives only in this browser. Download a backup file with every hero, and load it here again — or on another device — if anything is lost.</em></span>
+      <div className="backup-actions">
+        <button className="btn ghost" onClick={() => { onBeforeExport?.(); const n = exportBackup(); setMsg({ text: `Backup saved (${n} entries). Keep the file somewhere safe.`, tone: 'good' }); sfx.play('pickup'); }}>⬇ Export</button>
+        <button className="btn ghost" onClick={() => input.current?.click()}>⬆ Import</button>
+        <input ref={input} type="file" accept=".json,application/json" hidden onChange={e => pick(e.target.files?.[0])} />
+      </div>
+    </div>
+    {pending && <div className="backup-confirm"><p>Load this backup{pending.backup.exported ? ` from ${new Date(pending.backup.exported).toLocaleString()}` : ''} ({pending.heroes} hero{pending.heroes === 1 ? '' : 'es'})? It replaces every save on this device.</p>
+      <div><button className="btn ghost" onClick={() => setPending(null)}>Cancel</button><ConfirmButton label="Replace my saves" onConfirm={() => { restoreBackup(pending.backup); location.reload(); }} /></div></div>}
+    {msg && <p className={`backup-msg ${msg.tone}`}>{msg.text}</p>}
+  </section>;
 }
 
 /** "Start over" wipes only the chosen hero; "Delete all saves" wipes every hero. Both ask twice. */
@@ -695,8 +769,8 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
           const worn = snapshot.equipped[g.slot], up = !worn || gearScore(g) > gearScore(worn);
           const why = sold ? 'Sold' : snapshot.level < needLevel ? `Lv ${needLevel}` : '';
           return <div key={g.uid} className={`bag-item armoury-item ${sold ? 'sold' : ''}`} style={{ '--c': RARITY[g.rarity].color } as CSSProperties}>
-            <span className="bag-icon"><GearIcon slot={g.slot} item={g} size={30} />{up && !sold && <i className="upgrade-arrow" title="Better than what you wear">▲</i>}</span>
-            <div><strong style={{ color: RARITY[g.rarity].color }}>{g.name}</strong><em>{RARITY[g.rarity].name} {SLOT_NAMES[g.slot].toLowerCase()} · item level {g.ilvl}</em><StatLines item={g} against={worn} /></div>
+            <span className="bag-icon"><GearIcon slot={g.slot} item={g} size={30} />{!sold && (up ? <i className="upgrade-arrow" title="Better than what you wear">▲</i> : <i className="upgrade-arrow down" title="Weaker than what you wear">▼</i>)}</span>
+            <div><strong style={{ color: RARITY[g.rarity].color }}>{g.name}</strong><em>{RARITY[g.rarity].name} {SLOT_NAMES[g.slot].toLowerCase()} · item level {g.ilvl}</em><StatLines item={g} against={worn} /><ScoreLine item={g} against={worn} /></div>
             <button className="btn ghost price" disabled={!!why || gold < price} onClick={() => { engine.buyGear(g.uid); refresh(); }}>{why ? (sold ? 'Sold' : <>🔒 {why}</>) : <><i className="coin" />{price}</>}</button>
           </div>;
         })}
@@ -721,7 +795,7 @@ function BookSpell({ s, snapshot, touch, onUpgrade }: { s: SpellState; snapshot:
   return <div className={`book-spell ${s.unlocked ? '' : 'locked'}`} style={{ '--spell': info.color } as CSSProperties}>
     <b>{s.unlocked ? info.icon : '?'}</b>
     <div>
-      <strong>{s.unlocked ? info.name : 'Unknown ability'} {(!touch || !s.unlocked) && <kbd>{s.unlocked ? info.key : `Lv ${info.level}`}</kbd>}</strong>
+      <strong>{s.unlocked ? info.name : 'Unknown ability'} {(!touch || !s.unlocked) && <kbd>{s.unlocked ? s.key : `Lv ${info.level}`}</kbd>}</strong>
       <em>{s.unlocked ? info.description : `Learned at level ${info.level}.`}</em>
       {s.unlocked && <em className="book-stats">{s.damage > 0 && <span>Damage {s.damage}</span>}{s.cost > 0 && <span>{s.cost} {res}</span>}<span>{Math.round(s.cd * 10) / 10}s cooldown</span></em>}
       <div className="star-line">
@@ -737,7 +811,7 @@ function BookSpell({ s, snapshot, touch, onUpgrade }: { s: SpellState; snapshot:
 }
 
 const STATUS_ICON: Record<QuestRow['status'], string> ={ available: '!', active: '○', ready: '?', done: '✓', locked: '·' };
-function Journal({ snapshot, achievements, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; achievements: AchRow[]; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
+function Journal({ snapshot, engine, achievements, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; engine: GameEngine | null; achievements: AchRow[]; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
   const w = WORLDS[snapshot?.region ?? 'meadow'];
   const [tab, setTab] = useState<JournalTab>(initial);
   return <aside className="journal">
@@ -758,8 +832,18 @@ function Journal({ snapshot, achievements, touch, initial, onClose, onTrack, onU
       <section><small>{HEROES[snapshot.hero].name}’s abilities · upgrade each one with up to five stars</small><div className="spellbook">{snapshot.spells.map(s => <BookSpell key={s.id} s={s} snapshot={snapshot} touch={touch} onUpgrade={onUpgrade} />)}</div></section>
       <section className="book-upgrades"><small>Smith upgrades · buy ranks from a city smith</small>{upgradeRows(snapshot)}</section>
     </>}
-    {snapshot && tab === 'achievements' && <Achievements rows={achievements} tip={w.script.tip} hero={snapshot.hero} />}
+    {snapshot && tab === 'achievements' && <>{engine && <Stable engine={engine} current={snapshot.mount?.id ?? null} />}<Achievements rows={achievements} tip={w.script.tip} hero={snapshot.hero} /></>}
   </aside>;
+}
+
+/** The stable: every mount, earned ones to choose from and locked ones with the achievement that earns them. */
+function Stable({ engine, current }: { engine: GameEngine; current: string | null }) {
+  const [, set] = useState(0);
+  const got = MOUNT_ORDER.filter(id => engine.mountUnlocked(id)).length;
+  return <section className="stable"><small>Mounts · {got} of {MOUNT_ORDER.length} · ride with {keyLabel(getKeys().ride)} or the saddle button</small>
+    <div className="stable-grid">{MOUNT_ORDER.map(id => { const m = MOUNTS[id], ok = engine.mountUnlocked(id); return <button key={id} className={`stable-card ${ok ? '' : 'locked'} ${current === id ? 'on' : ''}`} disabled={!ok} onClick={() => { engine.setMount(id); set(n => n + 1); }} title={ok ? `Ride the ${m.name}` : m.how}>
+      <b>{ok ? m.icon : '🔒'}</b><span><strong>{m.name}</strong><em>{ok ? `+${Math.round((m.speed - 1) * 100)}% speed${current === id ? ' · riding this one' : ''}` : m.how}</em></span></button>; })}</div>
+  </section>;
 }
 
 /** WoW-style achievements: points earned, a category filter, and every achievement with its progress. */
@@ -856,7 +940,7 @@ function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boo
       <button className="icon-button" onClick={onClose} aria-label="Close map">✕</button>
     </div>
     <canvas ref={ref} onClick={e => e.stopPropagation()} aria-label="World map. Drag to move, pinch or scroll to zoom." />
-    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: MAIN_COLOR }} />Main quest</span><span><i style={{ background: SIDE_COLOR }} />Side quest</span><span><i style={{ background: reg.palette.accent }} />{reg.script.keyLabel}</span><span><i style={{ background: '#ffd35c' }} />Shop</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span><span>{touch ? 'Drag · pinch to zoom' : 'Drag · scroll to zoom'}</span>{!touch && <span><kbd>M</kbd> close</span>}</div>
+    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: MAIN_COLOR }} />Main quest</span><span><i style={{ background: SIDE_COLOR }} />Side quest</span><span><i style={{ background: reg.palette.accent }} />{reg.script.keyLabel}</span><span><i style={{ background: '#ffd35c' }} />Shop</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span><span><i style={{ background: '#e8a0ff' }} />Heroic foe</span><span>{touch ? 'Drag · pinch to zoom' : 'Drag · scroll to zoom'}</span>{!touch && <span><kbd>M</kbd> close</span>}</div>
   </div>;
 }
 

@@ -5,11 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1330" />
     <meta name="description" content="Walk one vast valley in Starfall Grove: help and rescue its people, learn new spells, and defeat the guardians and the Eclipse." />
-    <link rel="icon" type="image/png" href="/starfall-grove-game-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@500;700;900&family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Starfall" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Starfall Grove" />
+    <meta property="og:description" content="A storybook action RPG: four lands, five heroes and one fallen star." />
+    <meta property="og:image" content="starfall-grove-game-icon.png" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <title>Starfall Grove</title>
+    <style>
+      /* The loading screen: shown by the HTML itself, before any code has arrived, and faded out once the game is ready. */
+      html, body { margin: 0; background: #0d1330; }
+      #boot { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 35%, #2a2560 0%, #141a44 45%, #080b1e 100%); color: #f4e6c4; font-family: Georgia, 'Times New Roman', serif; transition: opacity .6s ease, visibility .6s; }
+      #boot.gone { opacity: 0; visibility: hidden; }
+      #boot .b-in { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px; text-align: center; }
+      #boot .b-star { width: 74px; height: 74px; animation: b-spin 5s linear infinite, b-pulse 2.2s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(255, 211, 92, .75)); }
+      #boot .b-name { margin: 0; font-size: clamp(34px, 7vw, 60px); font-weight: 700; letter-spacing: .08em; line-height: 1; background: linear-gradient(100deg, #fff4d0, #f5d27a, #fff9e6, #e8a14a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      #boot .b-tag { margin: 0; font-size: 13px; letter-spacing: .32em; text-transform: uppercase; color: rgba(244, 230, 196, .7); }
+      #boot .b-bar { width: min(240px, 60vw); height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+      #boot .b-bar i { display: block; width: 40%; height: 100%; border-radius: 4px; background: linear-gradient(90deg, transparent, #f5d27a, transparent); animation: b-slide 1.3s ease-in-out infinite; }
+      #boot .b-dust { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+      #boot .b-dust b { position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%; background: #fff1b8; box-shadow: 0 0 8px #ffd35c; opacity: 0; animation: b-rise 6s linear infinite; }
+      @keyframes b-spin { to { transform: rotate(360deg); } }
+      @keyframes b-pulse { 50% { filter: drop-shadow(0 0 30px rgba(255, 211, 92, 1)); } }
+      @keyframes b-slide { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+      @keyframes b-rise { 10% { opacity: .9; } 90% { opacity: .6; } to { transform: translateY(-105vh); opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) { #boot .b-star, #boot .b-bar i, #boot .b-dust b { animation: none; } }
+    </style>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body>
+    <div id="boot" role="status" aria-label="Loading Starfall Grove">
+      <div class="b-dust" aria-hidden="true"><b style="left:12%;animation-delay:.2s"></b><b style="left:27%;animation-delay:2.4s"></b><b style="left:41%;animation-delay:1.1s"></b><b style="left:58%;animation-delay:3.3s"></b><b style="left:70%;animation-delay:.7s"></b><b style="left:84%;animation-delay:4.1s"></b><b style="left:93%;animation-delay:1.8s"></b></div>
+      <div class="b-in">
+        <svg class="b-star" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="bs" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff" /><stop offset=".45" stop-color="#fff1b8" /><stop offset="1" stop-color="#f5a83a" /></radialGradient></defs><path d="M32 2 L38 26 L62 32 L38 38 L32 62 L26 38 L2 32 L26 26 Z" fill="url(#bs)" /><circle cx="32" cy="32" r="6" fill="#ffffff" /></svg>
+        <p class="b-name">Starfall Grove</p>
+        <p class="b-tag">The valley is waking</p>
+        <div class="b-bar"><i></i></div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

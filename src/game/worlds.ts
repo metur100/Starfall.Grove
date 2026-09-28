@@ -419,6 +419,21 @@ function addRoadWisps(world: WorldDefinition) {
   });
 }
 /** The whole valley is generated on first use (a fraction of a second) and then cached. */
-export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); } return valley; }
+/** Each lair's pack leader is a heroic creature: a named little boss with far more health and much better loot. */
+const HEROIC: Record<string, string> = {
+  'meadow:hollow': 'Murkmaw the Gloom King', 'meadow:rot': 'Old Tusker',
+  'woods:nest': 'Mother Briar', 'woods:web': 'Silkshade the Weaver',
+  'summit:frostfang': 'Frostfang the Unbroken', 'summit:rift': 'Nulleye',
+  'ember:nest': 'Sandreaper', 'ember:foundry': 'Slagjaw',
+};
+function addHeroics(world: WorldDefinition) {
+  for (const p of world.pois) {
+    const name = HEROIC[`${p.region}:${p.id.split(':').pop()}`] || HEROIC[p.id]; if (!name || p.kind !== 'lair') continue;
+    const leader = world.enemies.filter(e => e.region === p.region && !e.boss && Math.hypot(e.x - p.x, e.y - p.y) < p.r)
+      .sort((a, b) => Number(!!b.elite) - Number(!!a.elite) || Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
+    if (leader) { leader.heroic = name; leader.elite = true; leader.level += 1; }
+  }
+}
+export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); } return valley; }
 /** Region metadata for menus, without generating the map. */
 export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit, ember };

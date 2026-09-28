@@ -29,6 +29,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Combat', 'k1000', 'Legend of the Hunt', 'Defeat 1000 creatures.', '⚔', 50, 'kills', 1000),
   a('Combat', 'e10', 'Elite Hunter', 'Defeat 10 gold-starred elites.', '★', 10, 'elites', 10),
   a('Combat', 'e50', 'Champion Slayer', 'Defeat 50 gold-starred elites.', '★', 25, 'elites', 50),
+  a('Combat', 'h1', 'Heroic Deed', 'Defeat a heroic creature, the named leader of a lair.', '♛', 10, 'heroics', 1),
+  a('Combat', 'h8', 'Bane of the Lairs', 'Defeat 8 heroic creatures.', '♛', 25, 'heroics', 8),
   a('Combat', 'combo15', 'Combo Artist', 'Land a 15-hit combo.', '✺', 10, 'combo', 15),
   a('Combat', 'combo40', 'Unstoppable', 'Land a 40-hit combo.', '✺', 25, 'combo', 40),
   a('Combat', 'underdog', 'Giant Slayer', 'Defeat a creature four or more levels above you.', '💀', 10, 'underdog'),

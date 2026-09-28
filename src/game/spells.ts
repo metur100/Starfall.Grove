@@ -31,6 +31,12 @@ export const SPELLS: Record<SpellId, SpellInfo> = {
   knives: { name: 'Fan of Knives', key: 'K', icon: '✥', cost: 16, cooldown: 4, color: '#d8d0f0', description: 'Throw ten knives in every direction at once.', level: 3, dmg: 18, slot: 'side' },
   veil: { name: 'Smoke Veil', key: 'J', icon: '◌', cost: 20, cooldown: 12, color: '#a898c8', description: 'Vanish for 4 seconds: creatures lose track of you, and your first strike from the shadows deals triple damage.', level: 6, slot: 'inner' },
   deathmark: { name: 'Death Mark', key: 'H', icon: '☠', cost: 36, cooldown: 11, color: '#ff6b9a', description: 'Mark the strongest foe near you. Two seconds later the mark bursts, and shadow blades cut everything around it.', level: 10, dmg: 110, slot: 'top' },
+  // Wren, beast hunter, with Fenn the wolf
+  arrow: { name: 'Quick Shot', key: 'L', icon: '➹', cost: 0, cooldown: .38, color: '#e8d49a', description: 'Loose an arrow at the nearest foe. It flies far and pierces through the first creature it hits. Fenn attacks whatever you shoot.', level: 1, dmg: 11, slot: 'main' },
+  tumble: { name: 'Tumble', key: 'E', icon: '↻', cost: 0, cooldown: 1.8, color: '#c8e6a0', description: 'Roll in the direction you move; you cannot be hit mid-roll. Fenn pounces on the nearest foe and stuns it.', level: 1, dmg: 16, slot: 'dash' },
+  volley: { name: 'Volley', key: 'K', icon: '⋔', cost: 16, cooldown: 3.5, color: '#f0c070', description: 'Fire a fan of seven arrows at once.', level: 3, dmg: 20, slot: 'side' },
+  snare: { name: 'Snare Trap', key: 'J', icon: '⊛', cost: 18, cooldown: 7, color: '#b9e27a', description: 'Set a trap at your feet. The first creatures to step on it are caught for 3 seconds and hurt. It waits for 20 seconds.', level: 6, dmg: 40, slot: 'inner' },
+  wildcall: { name: 'Call of the Wild', key: 'H', icon: '🐺', cost: 38, cooldown: 14, color: '#9fe8b0', description: 'Fenn howls: for 8 seconds two spirit wolves join the hunt, and Fenn bites twice as fast and hard.', level: 10, dmg: 14, slot: 'top' },
 };
 
 /**
@@ -44,6 +50,7 @@ export const SPELL_UPGRADES: Record<SpellId, SpellUpgrade> = {
   slash: { stat: 'damage', per: 12 }, charge: { stat: 'damage', per: 15 }, guard: { stat: 'duration', per: 12 }, slam: { stat: 'damage', per: 12 }, bladestorm: { stat: 'damage', per: 12 },
   frostbolt: { stat: 'damage', per: 12 }, blink: { stat: 'cooldown', per: 8 }, frostnova: { stat: 'damage', per: 12 }, iceBarrier: { stat: 'duration', per: 12 }, blizzard: { stat: 'damage', per: 12 },
   stab: { stat: 'damage', per: 12 }, shadowstep: { stat: 'cooldown', per: 8 }, knives: { stat: 'damage', per: 12 }, veil: { stat: 'duration', per: 12 }, deathmark: { stat: 'damage', per: 12 },
+  arrow: { stat: 'damage', per: 12 }, tumble: { stat: 'cooldown', per: 8 }, volley: { stat: 'damage', per: 12 }, snare: { stat: 'damage', per: 12 }, wildcall: { stat: 'duration', per: 12 },
 };
 export const starLevel = (id: SpellId, star: number) => Math.min(25, SPELLS[id].level + (star - 1) * 3);
 export const starCost = (id: SpellId, star: number) => Math.round(45 * Math.pow(star, 1.7) * (1 + SPELLS[id].level / 10) / 5) * 5;
@@ -62,5 +69,6 @@ export const HEROES: Record<HeroId, HeroInfo> = {
   kael: { id: 'kael', name: 'Kael', title: 'Warrior', portrait: '🛡️', description: 'Sword and shield up close. Tough — creatures hurt him far less.', spells: ['slash', 'charge', 'guard', 'slam', 'bladestorm'], resource: 'Stamina', hearts: 7, armor: .65, regen: 5, hpPerLevel: 11, speed: 255, boy: true, melee: true },
   lyra: { id: 'lyra', name: 'Lyra', title: 'Frost mage', portrait: '❄️', description: 'Bends winter from afar. Chills, freezes and slows — she wins by controlling the fight.', spells: ['frostbolt', 'blink', 'frostnova', 'iceBarrier', 'blizzard'], resource: 'Magic', hearts: 5, armor: .92, regen: 3.4, hpPerLevel: 8, speed: 265, boy: false, melee: false },
   riven: { id: 'riven', name: 'Riven', title: 'Shadow assassin', portrait: '🗡️', description: 'Twin daggers and shadows up close. The fastest and deadliest hero, but lightly armoured.', spells: ['stab', 'shadowstep', 'knives', 'veil', 'deathmark'], resource: 'Energy', hearts: 6, armor: .82, regen: 4.6, hpPerLevel: 9, speed: 292, boy: true, melee: true },
+  wren: { id: 'wren', name: 'Wren', title: 'Beast hunter', portrait: '🏹', description: 'A longbow and Fenn, her loyal wolf. She shoots from afar while Fenn bites, traps and hunts beside her.', spells: ['arrow', 'tumble', 'volley', 'snare', 'wildcall'], resource: 'Focus', hearts: 6, armor: .86, regen: 4.2, hpPerLevel: 9, speed: 275, boy: false, melee: false },
 };
-export const HERO_ORDER: HeroId[] = ['mira', 'kael', 'lyra', 'riven'];
+export const HERO_ORDER: HeroId[] = ['mira', 'kael', 'lyra', 'riven', 'wren'];

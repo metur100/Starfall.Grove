@@ -442,6 +442,7 @@ async function loadManifest() {
   window.setTimeout(() => { if (manifest === undefined) { manifest = null; sync(); } }, 2500);
   let m: Record<string, string> | null = null;
   try {
+    if (!navigator.onLine) throw new Error('offline'); // played offline: the built-in music is used
     const r = await fetch(`${import.meta.env.BASE_URL}music/manifest.json`);
     const j: unknown = r.ok ? JSON.parse(await r.text()) : null; // the dev server may answer with index.html: parse fails -> procedural
     if (j && typeof j === 'object' && !Array.isArray(j)) m = Object.fromEntries(Object.entries(j).filter(([key, v]) => key in TRACKS && typeof v === 'string'));

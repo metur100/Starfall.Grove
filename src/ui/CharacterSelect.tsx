@@ -16,8 +16,9 @@ const TRAITS: Record<HeroId, Array<[string, number]>> = {
   kael: [['Range', 1], ['Toughness', 5], ['Might', 5], ['Speed', 3]],
   lyra: [['Range', 5], ['Toughness', 2], ['Control', 5], ['Speed', 3]],
   riven: [['Range', 2], ['Toughness', 3], ['Burst', 5], ['Speed', 5]],
+  wren: [['Range', 5], ['Toughness', 3], ['Companion', 5], ['Speed', 4]],
 };
-const BACKDROP: Record<HeroId, LevelId> = { mira: 'summit', kael: 'meadow', lyra: 'woods', riven: 'ember' };
+const BACKDROP: Record<HeroId, LevelId> = { mira: 'summit', kael: 'meadow', lyra: 'woods', riven: 'ember', wren: 'meadow' };
 
 export default function CharacterSelect({ hero, summary, touch, onHero, onEnter, onBack }: { hero: HeroId; summary: (id: HeroId) => HeroSummary; touch: boolean; onHero: (h: HeroId) => void; onEnter: () => void; onBack: () => void }) {
   const info = HEROES[hero], me = summary(hero), worn = Object.keys(me.equipped).length;
