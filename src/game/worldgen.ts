@@ -1,10 +1,10 @@
 // Procedural world builder. Each region is a hand-authored layout (places, people, quests) that grows into a living map
-// with roads, a city, villages, farms, camps, ruins, lakes, forests, creatures, critters and loot. The three regions are
+// with roads, a city, villages, farms, camps, ruins, lakes, forests, creatures, critters and loot. The four regions are
 // then laid side by side into one valley, split by cliffs with a gate road between them.
 import { Grid } from './spatial';
 import type { StoryQuest } from './story';
 import type {
-  Ambient, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
+  Ambient, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
   Palette, Point, Poi, Pond, QuestDef, RegionId, WorldDefinition, WorldObject, WorldScript,
 } from './types';
 
@@ -20,7 +20,7 @@ export type NpcSpec = {
 export type LoreSpec = { at: string; name: string; text: string[] };
 export type RegionSpec = {
   id: RegionId; chapter: number; title: string; subtitle: string; name: string; seed: number;
-  palette: Palette; darkness: number; ambient: Ambient; ground: 'grass' | 'snow'; levels: [number, number]; xpScale: number;
+  palette: Palette; darkness: number; ambient: Ambient; ground: Ground; levels: [number, number]; xpScale: number;
   pois: Array<Omit<Poi, 'region'>>; lakeSize: Record<string, number>; links: Array<[string, string]>;
   keyAt: string[]; keyName: string; shrineName: string; finaleName: string;
   trees: Array<[ObstacleKind, number]>; decorKinds: Array<[DecorKind, number]>; decorColors: string[];
@@ -269,7 +269,8 @@ function buildRegion(spec: RegionSpec): RegionPart {
         break;
       }
       case 'grove': {
-        ring(p, 10, p.r * .75, p.r * .95, 30, pt => put({ x: pt.x, y: pt.y, r: 32, kind: spec.trees[0][0] === 'pine' ? 'crystal' : 'mushroom', seed: rand() }, 36));
+        // A grove is a ring of the land's most magical plant; in the wastes it is the last ring of living trees.
+        ring(p, 10, p.r * .75, p.r * .95, 30, pt => put({ x: pt.x, y: pt.y, r: 32, kind: spec.ground === 'ash' ? 'tree' : spec.trees[0][0] === 'pine' ? 'crystal' : 'mushroom', seed: rand() }, 36));
         for (let i = 0; i < 18; i++) { const a = i / 18 * 6.28; addDecor(p.x + Math.cos(a) * 110, p.y + Math.sin(a) * 80, 'shroom'); }
         for (let i = 0; i < 70; i++) { const a = rand() * 6.28, rr = R(0, p.r * .7); addDecor(p.x + Math.cos(a) * rr, p.y + Math.sin(a) * rr * .8, 'flower'); }
         const c = spot(p.x, p.y, 150, p.r * .6, 30); if (c) obj({ id: `chest-${p.id}`, kind: 'chest', x: c.x, y: c.y, name: 'Mossy chest' });

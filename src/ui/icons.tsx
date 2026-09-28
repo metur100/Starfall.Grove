@@ -5,9 +5,41 @@ import type { GearItem, GearSlot, HeroId, ItemId } from '../game/types';
 
 // Small drawn icons: hero faces, consumables and equipment slots. All inline SVG, so they stay sharp at any size.
 
-/** Mira keeps her warlock emoji; Kael gets a drawn face in a plumed steel helm to match. */
+/** Mira keeps her warlock emoji; the others get drawn faces: Kael in a plumed helm, Lyra under a frost circlet, Riven hooded. */
 export function HeroFace({ hero }: { hero: HeroId }) {
   if (hero === 'mira') return <span className="hero-face emoji" aria-hidden="true">🧙‍♀️</span>;
+  if (hero === 'lyra') return <svg className="hero-face" viewBox="0 0 64 64" aria-hidden="true">
+    <defs>
+      <radialGradient id="lf-skin" cx=".45" cy=".4" r=".75"><stop offset="0" stopColor="#fff0e4" /><stop offset="1" stopColor="#e8bfa4" /></radialGradient>
+      <linearGradient id="lf-hair" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f4fbff" /><stop offset="1" stopColor="#9fd0ee" /></linearGradient>
+      <linearGradient id="lf-ice" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#7fd0ff" /></linearGradient>
+    </defs>
+    <path d="M14 34 C 12 50, 16 58, 22 60 L 24 40 Z M50 34 C 52 50, 48 58, 42 60 L 40 40 Z" fill="url(#lf-hair)" />
+    <circle cx="32" cy="36" r="16" fill="url(#lf-skin)" />
+    <path d="M15 34 C 14 20, 22 13, 32 13 C 42 13, 50 20, 49 34 C 45 27, 40 24, 32 25 C 24 24, 19 27, 15 34 Z" fill="url(#lf-hair)" stroke="#8ac4e6" strokeWidth=".8" />
+    <path d="M18 24 C 24 19 40 19 46 24" stroke="#c9eaff" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+    <path d="M32 7 L 36 17 L 32 22 L 28 17 Z" fill="url(#lf-ice)" stroke="#7fd0ff" strokeWidth=".8" />
+    <path d="M24 12 L 26 19 L 23 21 Z M40 12 L 38 19 L 41 21 Z" fill="url(#lf-ice)" />
+    <circle cx="25.5" cy="37" r="2.3" fill="#2a4a6a" /><circle cx="38.5" cy="37" r="2.3" fill="#2a4a6a" />
+    <circle cx="26.3" cy="36.2" r=".8" fill="#fff" /><circle cx="39.3" cy="36.2" r=".8" fill="#fff" />
+    <circle cx="21" cy="42" r="2.3" fill="#8ec8f0" opacity=".45" /><circle cx="43" cy="42" r="2.3" fill="#8ec8f0" opacity=".45" />
+    <path d="M28.5 45 Q 32 47.5 35.5 45" stroke="#9a5a6a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+  </svg>;
+  if (hero === 'riven') return <svg className="hero-face" viewBox="0 0 64 64" aria-hidden="true">
+    <defs>
+      <linearGradient id="rf-hood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#5a4a7a" /><stop offset="1" stopColor="#241a34" /></linearGradient>
+      <radialGradient id="rf-skin" cx=".45" cy=".4" r=".75"><stop offset="0" stopColor="#f0d0b8" /><stop offset="1" stopColor="#c89878" /></radialGradient>
+    </defs>
+    <path d="M32 5 C 46 5, 56 18, 56 36 C 56 50, 50 58, 44 61 L 20 61 C 14 58, 8 50, 8 36 C 8 18, 18 5, 32 5 Z" fill="url(#rf-hood)" stroke="#16101f" strokeWidth="1.2" />
+    <path d="M18 34 C 18 22, 24 17, 32 17 C 40 17, 46 22, 46 34 L 46 44 L 18 44 Z" fill="url(#rf-skin)" />
+    <path d="M18 29 C 22 23, 42 23, 46 29" stroke="#16101f" strokeWidth="3" fill="none" opacity=".35" />
+    <path d="M22 33.5 L 29 34.5" stroke="#2a1f1b" strokeWidth="2" strokeLinecap="round" /><path d="M42 33.5 L 35 34.5" stroke="#2a1f1b" strokeWidth="2" strokeLinecap="round" />
+    <ellipse cx="25.5" cy="37.5" rx="2.6" ry="1.8" fill="#b69cff" /><ellipse cx="38.5" cy="37.5" rx="2.6" ry="1.8" fill="#b69cff" />
+    <circle cx="25.5" cy="37.5" r=".9" fill="#1a1028" /><circle cx="38.5" cy="37.5" r=".9" fill="#1a1028" />
+    <path d="M16 41 C 22 39, 42 39, 48 41 L 47 52 C 40 56, 24 56, 17 52 Z" fill="#2e2440" stroke="#16101f" strokeWidth="1" />
+    <path d="M20 45 C 28 47, 36 47, 44 45" stroke="#6a5a8a" strokeWidth="1.2" fill="none" />
+    <path d="M32 5 L 32 16" stroke="#7a6a9a" strokeWidth="1.2" opacity=".6" />
+  </svg>;
   return <svg className="hero-face" viewBox="0 0 64 64" aria-hidden="true">
     <defs>
       <linearGradient id="kf-steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f0f4fa" /><stop offset=".55" stopColor="#9aa6b8" /><stop offset="1" stopColor="#5a6478" /></linearGradient>

@@ -79,7 +79,7 @@ export default function CharacterScreen({ snapshot: s, engine, initial, touch, o
 }
 
 /** Stat lines of a piece, each compared with what is worn in that slot. */
-function StatLines({ item, against }: { item: GearItem; against?: GearItem | null }) {
+export function StatLines({ item, against }: { item: GearItem; against?: GearItem | null }) {
   const keys = [...new Set([...Object.keys(item.stats), ...Object.keys(against?.stats || {})])] as GearStat[];
   return <ul className="stat-lines">{keys.map(k => {
     const v = item.stats[k] || 0, o = against ? against.stats[k] || 0 : v, d = Math.round((v - o) * 10) / 10;

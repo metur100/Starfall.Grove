@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import GameCanvas from './game/GameCanvas';
 import TitleBackdrop from './TitleBackdrop';
-import { GameEngine } from './game/engine';
+import { GameEngine, personalize, type AchRow } from './game/engine';
+import { ACHIEVEMENTS, ACH_CATEGORIES, TOTAL_POINTS } from './game/achievements';
 import { LEVEL_ORDER, WORLDS } from './game/worlds';
 import { HEROES, HERO_ORDER, SPELLS, SPELL_UPGRADES } from './game/spells';
 import { ITEMS, ITEM_ORDER } from './game/items';
-import { RARITY, RARITY_ORDER, sellPrice } from './game/gear';
+import { RARITY, RARITY_ORDER, SLOT_NAMES, gearScore, sellPrice } from './game/gear';
 import { DECOR_LEVELS, QUALITIES, isTouch, loadGraphics, saveGraphics, type GraphicsSettings } from './game/graphics';
 import { clearSession, loadSession, saveSession } from './game/storage';
 import { MAX_RANK, UPGRADES, UPGRADE_ORDER, loadProfile, resetProfile, upgradeCost } from './game/progression';
@@ -13,7 +14,7 @@ import { MAIN_COLOR, SIDE_COLOR, drawWorldMap } from './game/render';
 import { sfx } from './game/audio';
 import { music } from './game/music';
 import type { EngineEvent, GameSnapshot, HeroId, ItemId, LevelStats, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
-import CharacterScreen, { type SheetTab } from './ui/CharacterScreen';
+import CharacterScreen, { StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
 import { GearIcon, HeroFace, ItemIcon } from './ui/icons';
 
@@ -23,14 +24,16 @@ type Dialogue = { speaker: string; portrait: string; lines: string[]; index: num
 type Toast = { id: number; text: string; tone: NoticeTone; color?: string };
 type Panel = 'sheet' | 'shop' | null;
 type Shop = { kind: ShopKind; name: string; portrait: string };
-type Victory = { region: RegionId; stats: LevelStats };
+/** The "chapter complete" banner: it plays over the game while the story carries straight on. */
+type ChapterDone = { region: RegionId; stats: LevelStats; last: boolean; key: number };
+type AchPop = { id: string; name: string; description: string; icon: string; points: number; key: number };
 /** Chapter stars per hero; Mira keeps the original key so older saves carry over. */
 const saveKey = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-save-v2' : `starfall-grove-save-${hero}-v2`;
 const CHOICE_KEY = 'starfall-grove-hero-choice';
-const loadChoice = (): HeroId => { try { const v = localStorage.getItem(CHOICE_KEY); return v === 'kael' ? 'kael' : 'mira'; } catch { return 'mira'; } };
+const loadChoice = (): HeroId => { try { const v = localStorage.getItem(CHOICE_KEY) as HeroId | null; return v && HERO_ORDER.includes(v) ? v : 'mira'; } catch { return 'mira'; } };
 const heroStarted = (hero: HeroId) => { const p = loadProfile(hero), sv = getSave(hero); return !!loadSession(hero) || LEVEL_ORDER.some(id => sv.done[id]) || p.level > 1 || p.xp > 0; };
-const ROMAN = ['', 'I', 'II', 'III'];
-const blankSave = (): Save => ({ version: 2, done: { meadow: false, woods: false, summit: false }, stars: { meadow: 0, woods: 0, summit: 0 }, bestTime: { meadow: 0, woods: 0, summit: 0 } });
+const ROMAN = ['', 'I', 'II', 'III', 'IV'];
+const blankSave = (): Save => ({ version: 2, done: { meadow: false, woods: false, summit: false, ember: false }, stars: { meadow: 0, woods: 0, summit: 0, ember: 0 }, bestTime: { meadow: 0, woods: 0, summit: 0, ember: 0 } });
 function getSave(hero: HeroId): Save {
   try {
     const d = JSON.parse(localStorage.getItem(saveKey(hero)) || 'null') as Partial<Save> | null;
@@ -43,8 +46,9 @@ const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60
 const levels = (id: RegionId) => `Lv ${WORLDS[id].levels[0]}–${WORLDS[id].levels[1]}`;
 /** What the character select screen shows for each hero. */
 function heroSummary(id: HeroId): HeroSummary {
-  const p = loadProfile(id), sv = getSave(id), next = LEVEL_ORDER.find(r => !sv.done[r]) || 'summit';
-  return { started: heroStarted(id), level: p.level, gold: p.gold, where: `Chapter ${ROMAN[WORLDS[next].chapter]} · ${WORLDS[next].title}`, stars: LEVEL_ORDER.reduce((n, r) => n + (sv.stars[r] || 0), 0) };
+  const p = loadProfile(id), sv = getSave(id), next = LEVEL_ORDER.find(r => !sv.done[r]) || LEVEL_ORDER[LEVEL_ORDER.length - 1];
+  const points = ACHIEVEMENTS.reduce((n, d) => n + (p.ach.got[d.id] ? d.points : 0), 0);
+  return { started: heroStarted(id), level: p.level, gold: p.gold, where: `Chapter ${ROMAN[WORLDS[next].chapter]} · ${WORLDS[next].title}`, stars: LEVEL_ORDER.reduce((n, r) => n + (sv.stars[r] || 0), 0), equipped: p.equipped, points };
 }
 /** Closes the app when it runs inside an Android wrapper that offers a way to; returns false in a plain browser. */
 function exitApp() {
@@ -62,7 +66,7 @@ function exitApp() {
 // Keyboard: the left hand moves (WASD) and dashes (E). The right hand attacks on L and casts the other spells leftward
 // along the home row in the order they are learned (K J H G); the row above opens menus: U spellbook, I inventory,
 // O quest log, P character. F still fires Spark for players used to it.
-type JournalTab = 'quests' | 'spells' | 'world';
+type JournalTab = 'quests' | 'spells' | 'achievements';
 const ITEM_KEYS: Record<string, ItemId> = Object.fromEntries(ITEM_ORDER.filter(id => ITEMS[id].key).map(id => [ITEMS[id].key, id]));
 const LABEL: Record<string, string> = { auto: 'Auto', high: 'High', balanced: 'Balanced', low: 'Low', lowest: 'Lowest', full: 'Full', less: 'Less', off: 'Off' };
 
@@ -105,7 +109,8 @@ function App() {
   const [spellQueue, setSpellQueue] = useState<SpellId[]>([]);
   const [levelBanner, setLevelBanner] = useState<{ level: number; key: number } | null>(null);
   const [bossBanner, setBossBanner] = useState<{ name: string; title: string } | null>(null);
-  const [victory, setVictory] = useState<Victory | null>(null);
+  const [chapterDone, setChapterDone] = useState<ChapterDone | null>(null);
+  const [achQueue, setAchQueue] = useState<AchPop[]>([]);
   const touch = useTouch();
   const touchRef = useRef(touch); touchRef.current = touch;
   const engineRef = useRef<GameEngine | null>(null);
@@ -114,7 +119,18 @@ function App() {
 
   // Menu music outside of play; region music is driven by the game loop.
   useEffect(() => { if (mode === 'title' || mode === 'ending') music.play('menu'); }, [mode]);
-  useEffect(() => { if (victory) music.play('victory'); }, [victory]);
+  // The chapter banner plays for a few seconds; after the last chapter the ending follows.
+  useEffect(() => {
+    if (!chapterDone) return;
+    const t = window.setTimeout(() => {
+      setChapterDone(null);
+      if (chapterDone.last) setMode('ending');
+      else setChapterBanner(b => ({ chapter: WORLDS[chapterDone.region].chapter + 1, key: (b?.key || 0) + 1 }));
+    }, chapterDone.last ? 6500 : 5600);
+    return () => window.clearTimeout(t);
+  }, [chapterDone]);
+  const achPop = achQueue[0] ?? null;
+  useEffect(() => { if (!achPop) return; const t = window.setTimeout(() => setAchQueue(q => q.slice(1)), 4600); return () => window.clearTimeout(t); }, [achPop]);
   useEffect(() => {
     const unlock = () => { sfx.unlock(); if (music.current() === null && mode !== 'play') music.play('menu'); };
     window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock);
@@ -146,7 +162,7 @@ function App() {
       case 'dialogue': engineRef.current?.setMovement(0, 0); resetStick(); setDialogue({ speaker: event.speaker, portrait: event.portrait, lines: event.lines, index: 0, then: event.then, offer: event.offer }); break;
       case 'notice': notify(event.text, event.tone, event.short); break;
       case 'item': if (!touchRef.current) notify(`Found ${ITEMS[event.id].name}${event.count > 1 ? ` ×${event.count}` : ''}`, 'good'); break;
-      case 'loot': { const r = RARITY[event.item.rarity]; notify(`Looted ${event.item.name} · ${r.name}`, RARITY_ORDER.indexOf(event.item.rarity) >= 3 ? 'epic' : 'good', event.item.name, r.color); break; }
+      case 'loot': { const r = RARITY[event.item.rarity]; notify(`${event.equipped ? 'Equipped' : 'Looted'} ${event.item.name} · ${r.name}`, RARITY_ORDER.indexOf(event.item.rarity) >= 3 ? 'epic' : 'good', event.item.name, r.color); break; }
       case 'zone': setZone(z => ({ name: event.name, discovered: event.discovered, key: (z?.key || 0) + 1 })); break;
       case 'region': setRegionBanner(b => ({ region: event.region, danger: event.danger, key: (b?.key || 0) + 1 })); break;
       case 'spellLearned': setSpellQueue(q => [...q, event.spell]); break;
@@ -157,6 +173,11 @@ function App() {
         else if (event.state === 'completed') notify(`Quest complete: ${event.title}${event.xp ? ` · +${event.xp} XP` : ''}`, 'epic', '✓ Quest complete');
         break;
       case 'bossIntro': setBossBanner({ name: event.name, title: event.title }); window.setTimeout(() => setBossBanner(null), 3000); break;
+      case 'achievement': {
+        // A chapter's own achievement is shown by the chapter banner instead.
+        if (!event.id.startsWith('ch-')) setAchQueue(q => [...q, { ...event, key: Date.now() + Math.random() }]);
+        break;
+      }
       case 'levelComplete': {
         const r = event.region;
         setSave(prev => {
@@ -164,7 +185,8 @@ function App() {
           saveNow(heroRef.current, next); return next;
         });
         const e = engineRef.current; if (e) saveSession(heroRef.current, e.exportSave());
-        setDialogue(null); setPaused(false); setMapOpen(false); setPanel(null); setJournal(false); setVictory({ region: r, stats: event.stats });
+        music.play('victory');
+        setChapterDone({ region: r, stats: event.stats, last: event.last, key: Date.now() });
       }
     }
   }, [notify]);
@@ -172,29 +194,21 @@ function App() {
   const startGame = (fresh = false) => {
     sfx.unlock();
     if (fresh) clearSession(hero);
-    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setVictory(null); resetStick();
+    setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setChapterDone(null); setAchQueue([]); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('play');
   };
   /** Erases the adventure, the hero's level, gold, bag and quest progress. Sound and graphics settings are kept. */
   /** Erases one hero's adventure, level, gold, bag and quest progress. Sound and graphics settings are kept. */
   const wipeHero = (h: HeroId) => { clearSession(h); resetProfile(h); const s = blankSave(); saveNow(h, s); if (h === hero) setSave(s); };
   const startOver = () => { engineRef.current = null; wipeHero(hero); setSettingsOpen(false); startGame(true); };
-  const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setVictory(null); setMode('title'); };
-  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setVictory(null); setMode('title'); };
-  /** From the chapter-complete screen: the adventure continues in the same world, or the ending plays after the last chapter. */
-  const nextChapter = () => {
-    const e = engineRef.current, v = victory;
-    setVictory(null); sfx.play('ui');
-    if (v?.region === 'summit') { if (e) { e.nextChapter(); saveSession(hero, e.exportSave()); } setMode('ending'); return; }
-    e?.nextChapter();
-    if (e) setChapterBanner(b => ({ chapter: e.chapter, key: (b?.key || 0) + 1 }));
-  };
+  const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setChapterDone(null); setMode('title'); };
+  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setChapterDone(null); setMode('title'); };
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
   const changeGraphics = (patch: Partial<GraphicsSettings>) => { const g = { ...graphics, ...patch }; setGraphics(g); saveGraphics(g); sfx.play('ui'); };
   const showSpell = spellQueue.length && !dialogue ? spellQueue[0] : null;
-  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!victory;
+  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel;
   const cast = (id: SpellId) => { if (!blocked) engineRef.current?.cast(id); };
-  const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen && !victory) engineRef.current?.useItem(id); };
+  const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen) engineRef.current?.useItem(id); };
   /** Opens the quest log on a tab, or closes it if that tab is already showing. */
   const toggleJournal = (tab: JournalTab) => { setPanel(null); setJournal(open => !(open && journalTab === tab)); setJournalTab(tab); sfx.play('page'); };
   /** The bag and the character sheet are one screen with two tabs; the same key or button again closes it. */
@@ -249,7 +263,6 @@ function App() {
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     const k = e.key.toLowerCase();
-    if (victory) { if (k === 'enter' || k === ' ') { nextChapter(); e.preventDefault(); } return; }
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
     if (dialogue) {
       if (offerOpen) { if (k === 'enter' || k === ' ' || k === 'y') answerOffer(true); else if (k === 'escape' || k === 'n') answerOffer(false); e.preventDefault(); return; }
@@ -271,6 +284,7 @@ function App() {
     if (k === 'm') { keys.current.clear(); engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); return; }
     if (k === 'tab' || k === 'o') { toggleJournal('quests'); e.preventDefault(); return; }
     if (k === 'u') { toggleJournal('spells'); return; }
+    if (k === 'y') { toggleJournal('achievements'); return; }
     if (k === 'i' || k === 'p') { keys.current.clear(); openSheet(k === 'i' ? 'bag' : 'stats'); return; }
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) { keys.current.add(k); syncKeys(); e.preventDefault(); }
     const ids = HEROES[heroRef.current].spells, spell = k === 'f' ? ids[0] : ids.find(id => SPELLS[id].key.toLowerCase() === k);
@@ -289,7 +303,7 @@ function App() {
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); keys.current.clear(); engineRef.current?.setMovement(0, 0); };
   }, [mode]);
-  useEffect(() => { if (paused || dialogue || mapOpen || panel || victory) { keys.current.clear(); engineRef.current?.setMovement(0, 0); resetStick(); } }, [paused, dialogue, mapOpen, panel, victory]);
+  useEffect(() => { if (paused || dialogue || mapOpen || panel) { keys.current.clear(); engineRef.current?.setMovement(0, 0); resetStick(); } }, [paused, dialogue, mapOpen, panel]);
 
   // Android back button. In a WebView (and a browser) "back" walks the page history, which would leave the game.
   // An extra history entry catches it instead: back closes whatever is open, opens the pause menu while playing,
@@ -297,7 +311,6 @@ function App() {
   const onBack = () => {
     if (mode === 'title') { if (settingsOpen) setSettingsOpen(false); else setExitAsk(a => a ? null : 'ask'); return; }
     if (mode === 'select' || mode === 'ending') { setMode('title'); return; }
-    if (victory) return;
     if (showSpell) { dismissSpell(); return; }
     if (dialogue) { if (dialogue.then !== 'complete') setDialogue(null); return; }
     if (mapOpen) { setMapOpen(false); return; }
@@ -326,7 +339,7 @@ function App() {
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!victory || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
@@ -345,7 +358,7 @@ function App() {
   };
   const stickEnd = () => { resetStick(); engineRef.current?.setMovement(0, 0); };
   const potions = snapshot?.items.find(i => i.id === 'healthPotion')?.count ?? 0;
-  const bannerWorld = chapterBanner ? WORLDS[LEVEL_ORDER[Math.min(2, chapterBanner.chapter - 1)]] : null;
+  const bannerWorld = chapterBanner ? WORLDS[LEVEL_ORDER[Math.min(LEVEL_ORDER.length - 1, chapterBanner.chapter - 1)]] : null;
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
     {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={() => { wipeHero(hero); startGame(true); }} onDeleteAll={deleteAll} />}
@@ -382,7 +395,7 @@ function App() {
         {snapshot && snapshot.combo >= 3 && <div className="combo" key={`combo-${snapshot.combo}`}><b>{snapshot.combo}</b><small>COMBO</small></div>}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast tone-${t.tone} ${t.color ? 'loot' : ''}`} style={t.color ? { '--r': t.color } as CSSProperties : undefined}>{t.text}</div>)}</div>
 
-        {snapshot?.nearName && !dialogue && !panel && !victory && <button className={`near-prompt ${touch ? 'compact' : ''}`} onClick={() => engineRef.current?.interact()} aria-label={`${snapshot.nearAction} ${snapshot.nearName}`}>
+        {snapshot?.nearName && !dialogue && !panel && <button className={`near-prompt ${touch ? 'compact' : ''}`} onClick={() => engineRef.current?.interact()} aria-label={`${snapshot.nearAction} ${snapshot.nearName}`}>
           {touch ? <span>{snapshot.nearAction}</span> : <><kbd>Space</kbd><span>{snapshot.nearAction}</span><b>{snapshot.nearName}</b></>}
         </button>}
 
@@ -410,7 +423,7 @@ function App() {
         {showChapter && bannerWorld && chapterBanner && <div className="chapter-banner" key={`chapter-${chapterBanner.key}`}>
           <small>Chapter {ROMAN[bannerWorld.chapter]}</small><h2>{bannerWorld.title}</h2><p>{bannerWorld.subtitle}</p><i />
         </div>}
-        {regionBanner && !showChapter && !levelBanner && !showSpell && <div className={`region-banner ${regionBanner.danger ? 'danger' : ''}`} key={`region-${regionBanner.key}`}>
+        {regionBanner && !showChapter && !levelBanner && !showSpell && !chapterDone && <div className={`region-banner ${regionBanner.danger ? 'danger' : ''}`} key={`region-${regionBanner.key}`}>
           <small>Entering</small><h3>{WORLDS[regionBanner.region].title}</h3><span>Creatures {levels(regionBanner.region)}</span>
           {regionBanner.danger && <em>⚠ Too dangerous for your level</em>}
         </div>}
@@ -442,12 +455,17 @@ function App() {
           </div>
         </div>}
 
-        {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
+        {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} achievements={engineRef.current?.achievementRows() ?? []} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
         {panel === 'sheet' && snapshot && engineRef.current && <CharacterScreen snapshot={snapshot} engine={engineRef.current} initial={sheetTab} touch={touch} onUse={id => engineRef.current?.useItem(id)} onClose={() => setPanel(null)} />}
         {panel === 'shop' && shop && snapshot && engineRef.current && <ShopPanel shop={shop} snapshot={snapshot} engine={engineRef.current} onClose={() => setPanel(null)} />}
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
-        {victory && <VictoryOverlay victory={victory} save={save} hero={hero} onNext={nextChapter} onMenu={leaveToTitle} />}
+        {chapterDone && <ChapterBanner done={chapterDone} hero={hero} />}
+        {achPop && !chapterDone && <div className="ach-pop" key={achPop.key}>
+          <span className="ach-shield"><b>{achPop.icon}</b></span>
+          <span className="ach-text"><small>Achievement earned</small><strong>{achPop.name}</strong>{!touch && <em>{achPop.description}</em>}</span>
+          <span className="ach-points"><b>{achPop.points}</b></span>
+        </div>}
 
         {paused && settingsOpen && <div className="overlay"><div className="panel pause-panel settings-panel">
           <SettingsBody graphics={graphics} onGraphics={changeGraphics} />
@@ -458,7 +476,7 @@ function App() {
           <small className="eyebrow">Paused</small><h2>Take a breath.</h2><p>Your adventure is saved. The valley can wait.</p>
           <div className="controls-grid">
             <span><kbd>WASD</kbd> Move</span>{HEROES[hero].spells.map(id => <span key={id}><kbd>{SPELLS[id].key}</kbd> {SPELLS[id].name}</span>)}<span><kbd>Space</kbd> Talk / use</span>
-            <span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Bag</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>M</kbd> Map</span>
+            <span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Bag</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>Y</kbd> Achievements</span><span><kbd>M</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
           <div className="pause-row">
@@ -471,12 +489,12 @@ function App() {
     </main>}
 
     {mode === 'ending' && <main className="menu-page ending-page">
-      <TitleBackdrop level="summit" />
+      <TitleBackdrop level="ember" />
       <Confetti />
       <div className="panel victory-panel">
         <small className="eyebrow">The valley remembers</small>
         <h1>Every light <em>is shining.</em></h1>
-        <p>You relit the Beacon, rang the Ancient Bell, broke the Hollow Star and cast out Umbra, the Eclipse. Orrin and Sable are home, and {hero === 'mira' ? `${HEROES[hero].name} and Tuft have` : `${HEROES[hero].name} has`} become the valley’s newest legend.</p>
+        <p>You relit the Beacon, rang the Ancient Bell, returned the Star to its Cradle, woke the Dawn Forge and cast out Umbra, the Eclipse. Orrin and Sable are home, and {hero === 'mira' ? `${HEROES[hero].name} and Tuft have` : `${HEROES[hero].name} has`} become the valley’s newest legend.</p>
         <div className="star-row">{LEVEL_ORDER.map(id => <span key={id} className="on" title={WORLDS[id].title}>{'★'.repeat(save.stars[id] || 1)}</span>)}</div>
         <div className="menu-actions">
           <button className="btn primary" onClick={() => startGame()}>Keep exploring <b>→</b></button>
@@ -489,7 +507,7 @@ function App() {
 
 /** Title: the logo and one big Play button, centred on screen. Choosing a hero happens on the next screen. */
 function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
-  const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || 'summit', last = heroStarted(hero) ? heroSummary(hero) : null;
+  const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || LEVEL_ORDER[LEVEL_ORDER.length - 1], last = heroStarted(hero) ? heroSummary(hero) : null;
   return <main className="menu-page title-page">
     <TitleBackdrop level={next} />
     <header className="title-top">
@@ -501,8 +519,8 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
     <section className="title-hero">
       <small className="eyebrow">A storybook action RPG</small>
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
-      <p className="title-tag">Three lands · two heroes · one fallen star</p>
-      <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods and the silver summit. Help the valley folk, gather loot, grow stronger — and learn what hides inside the Hollow Star.</p>
+      <p className="title-tag">Four lands · four heroes · one fallen star</p>
+      <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods, the silver summit and the burning Ember Wastes. Help the valley folk, gather loot, earn achievements — and learn what hides inside the Hollow Star.</p>
       <button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
@@ -539,32 +557,25 @@ function DangerZone({ hero, onStartOver, onDeleteAll }: { hero: HeroId; onStartO
   </div>;
 }
 
-/** The chapter-complete screen. On phones in landscape it is laid out side by side so "Next chapter" is always in view. */
-function VictoryOverlay({ victory, save, hero, onNext, onMenu }: { victory: Victory; save: Save; hero: HeroId; onNext: () => void; onMenu: () => void }) {
-  const w = WORLDS[victory.region], s = victory.stats, last = victory.region === 'summit';
-  const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(victory.region) + 1];
-  return <div className="victory-overlay">
+/**
+ * "Chapter complete", shown like a big achievement over the game: the chapter's title and story line, its stars and a
+ * few numbers. Nothing to press — the next chapter simply begins, and after the last one the ending follows.
+ */
+function ChapterBanner({ done, hero }: { done: ChapterDone; hero: HeroId }) {
+  const w = WORLDS[done.region], s = done.stats, ach = ACHIEVEMENTS.find(d => d.stat === `chapter:${done.region}`);
+  const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(done.region) + 1];
+  return <div className="chapter-done" key={done.key} aria-live="polite">
     <Confetti />
-    <div className="panel victory-panel compact">
-      <div className="victory-text">
-        <small className="eyebrow">Chapter {ROMAN[w.chapter]} complete</small>
-        <h1>{w.script.victory.title}</h1>
-        <p>{hero === 'mira' ? w.script.victory.text : w.script.victory.text.replace(/Mira and Tuft have/g, `${HEROES[hero].name} has`).replace(/\bMira\b/g, HEROES[hero].name)}</p>
+    <div className="cd-card">
+      <small className="eyebrow">Chapter {ROMAN[w.chapter]} complete</small>
+      <h2>{w.script.victory.title}</h2>
+      <p>{personalize(w.script.victory.text, hero)}</p>
+      <div className="cd-row">
+        <span className="cd-stars">{[1, 2, 3].map(n => <i key={n} className={n <= (s.stars || 1) ? 'on' : ''} style={{ animationDelay: `${.3 + n * .2}s` }}>★</i>)}</span>
+        <span><b>{fmtTime(s.time)}</b> time</span><span><b>{s.quests}/{s.totalQuests}</b> side quests</span><span><b>{s.defeated}</b> creatures</span>
       </div>
-      <div className="victory-side">
-        <div className="star-row">{[1, 2, 3].map(n => <span key={n} className={n <= (s.stars || 1) ? 'on' : ''} style={{ animationDelay: `${.3 + n * .25}s` }}>★</span>)}</div>
-        <div className="stat-row">
-          <div><b>{fmtTime(s.time)}</b><small>Time</small></div>
-          <div><b>{s.quests}/{s.totalQuests}</b><small>Side quests</small></div>
-          <div><b>{s.defeated}</b><small>Creatures</small></div>
-          <div><b>{s.level}</b><small>Level</small></div>
-        </div>
-        <div className="menu-actions">
-          <button className="btn primary" onClick={onNext} autoFocus>{last ? 'See the ending' : `Next chapter · ${WORLDS[next].title}`} <b>→</b></button>
-          <button className="btn ghost" onClick={onMenu}>Menu</button>
-        </div>
-        {!last && <p className="victory-hint">The road east is open. Chapter {ROMAN[w.chapter + 1]} creatures are {levels(next)}{save.stars[victory.region] < 3 ? ' — side quests here still give rewards.' : '.'}</p>}
-      </div>
+      {ach && <div className="cd-ach"><span className="ach-shield"><b>{ach.icon}</b></span><span><small>Achievement earned</small><strong>{ach.name}</strong></span><span className="ach-points"><b>{ach.points}</b></span></div>}
+      {next && <em className="cd-next">The road east is open: {WORLDS[next].title}, creatures {levels(next)}.</em>}
     </div>
   </div>;
 }
@@ -647,16 +658,16 @@ function PotionButton({ id, count, onUse, touch, quick }: { id: ItemId; count: n
   </button>;
 }
 
-/** Merchants sell potions and bombs and buy loot; smiths forge the three permanent upgrades. */
+/** Merchants sell potions and bombs and buy loot; smiths forge the three permanent upgrades; armourers sell costly equipment. */
 function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: GameSnapshot; engine: GameEngine; onClose: () => void }) {
   const [, setTick] = useState(0);
   const [tab, setTab] = useState<'buy' | 'sell'>('buy');
   const gold = snapshot.gold, refresh = () => setTick(t => t + 1);
   const junk = snapshot.gear.filter(g => g.rarity === 'common' || g.rarity === 'uncommon');
   return <aside className="side-panel shop-panel">
-    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
-    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy old gear too.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
-    {shop.kind === 'merchant' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell gear <small>{snapshot.gear.length}</small></button></div>}
+    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : shop.kind === 'armorer' ? 'Armoury' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
+    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy anything you don’t need — gear, potions, the lot.”' : shop.kind === 'armorer' ? '“Fine gear, fine prices. My best pieces wait until you have grown into them.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
+    {shop.kind === 'merchant' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell <small>{snapshot.gear.length + snapshot.items.filter(i => i.count > 0).length}</small></button></div>}
     <div className="bag-list">
       {shop.kind === 'merchant' && tab === 'buy' && ITEM_ORDER.map(id => {
         const info = ITEMS[id], have = snapshot.items.find(i => i.id === id)?.count ?? 0;
@@ -667,13 +678,30 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
         </div>;
       })}
       {shop.kind === 'merchant' && tab === 'sell' && <>
-        {!snapshot.gear.length && <p className="panel-note">No spare equipment in your bag. Worn pieces are never sold.</p>}
+        {!snapshot.gear.length && !snapshot.items.some(i => i.count > 0) && <p className="panel-note">Nothing to sell. Worn pieces are never sold.</p>}
+        {snapshot.items.filter(i => i.count > 0).map(({ id, count }) => { const info = ITEMS[id], price = Math.max(1, Math.round(info.price * .4)); return <div key={id} className="bag-item" style={{ '--c': info.color } as CSSProperties}>
+          <span className="bag-icon"><ItemIcon id={id} size={30} /><b>{count}</b></span>
+          <div><strong>{info.name}</strong><em>{info.kind === 'bomb' ? 'Bomb' : info.kind === 'charm' ? 'Charm' : 'Potion'} · you have {count}</em></div>
+          <button className="btn ghost price" onClick={() => { engine.sellItem(id); refresh(); }}><i className="coin" />{price}</button>
+        </div>; })}
         {junk.length > 1 && <button className="btn ghost" onClick={() => { for (const g of junk) engine.sellGear(g.uid); refresh(); }}>Sell all common &amp; uncommon · <i className="coin" />{junk.reduce((n, g) => n + sellPrice(g), 0)}</button>}
         {[...snapshot.gear].sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity)).map(g => <div key={g.uid} className="bag-item" style={{ '--c': RARITY[g.rarity].color } as CSSProperties}>
           <span className="bag-icon"><GearIcon slot={g.slot} item={g} size={30} /></span>
           <div><strong style={{ color: RARITY[g.rarity].color }}>{g.name}</strong><em>{RARITY[g.rarity].name} · item level {g.ilvl}</em></div>
           <button className="btn ghost price" onClick={() => { engine.sellGear(g.uid); refresh(); }}><i className="coin" />{sellPrice(g)}</button>
         </div>)}
+      </>}
+      {shop.kind === 'armorer' && <>
+        {engine.armoury().map(({ item: g, price, needLevel, sold }) => {
+          const worn = snapshot.equipped[g.slot], up = !worn || gearScore(g) > gearScore(worn);
+          const why = sold ? 'Sold' : snapshot.level < needLevel ? `Lv ${needLevel}` : '';
+          return <div key={g.uid} className={`bag-item armoury-item ${sold ? 'sold' : ''}`} style={{ '--c': RARITY[g.rarity].color } as CSSProperties}>
+            <span className="bag-icon"><GearIcon slot={g.slot} item={g} size={30} />{up && !sold && <i className="upgrade-arrow" title="Better than what you wear">▲</i>}</span>
+            <div><strong style={{ color: RARITY[g.rarity].color }}>{g.name}</strong><em>{RARITY[g.rarity].name} {SLOT_NAMES[g.slot].toLowerCase()} · item level {g.ilvl}</em><StatLines item={g} against={worn} /></div>
+            <button className="btn ghost price" disabled={!!why || gold < price} onClick={() => { engine.buyGear(g.uid); refresh(); }}>{why ? (sold ? 'Sold' : <>🔒 {why}</>) : <><i className="coin" />{price}</>}</button>
+          </div>;
+        })}
+        <p className="panel-note">New pieces arrive every time you reach a new level.</p>
       </>}
       {shop.kind === 'smith' && UPGRADE_ORDER.map(id => {
         const info = UPGRADES[id], rank = engine.upgradeRank(id), cost = upgradeCost(rank), maxed = rank >= MAX_RANK;
@@ -710,14 +738,14 @@ function BookSpell({ s, snapshot, touch, onUpgrade }: { s: SpellState; snapshot:
 }
 
 const STATUS_ICON: Record<QuestRow['status'], string> ={ available: '!', active: '○', ready: '?', done: '✓', locked: '·' };
-function Journal({ snapshot, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
+function Journal({ snapshot, achievements, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; achievements: AchRow[]; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
   const w = WORLDS[snapshot?.region ?? 'meadow'];
   const [tab, setTab] = useState<JournalTab>(initial);
   return <aside className="journal">
     <div className="journal-head"><strong>Quest log</strong><button className="icon-button" onClick={onClose} aria-label="Close quest log">✕</button></div>
-    <div className="journal-tabs">{(['quests', 'spells', 'world'] as const).map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'quests' ? 'Quests' : t === 'spells' ? 'Spellbook' : 'Explorer'}</button>)}</div>
+    <div className="journal-tabs">{(['quests', 'spells', 'achievements'] as const).map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'quests' ? 'Quests' : t === 'spells' ? 'Spellbook' : 'Achievements'}</button>)}</div>
     {snapshot && tab === 'quests' && <>
-      <section className="q-main"><small>Chapter {ROMAN[Math.min(3, snapshot.chapter)]} · main quest {snapshot.main.index} of {snapshot.main.total}</small><p className="main-q">{snapshot.main.title}</p><p className="sub-q">{snapshot.main.step}{snapshot.main.count > 0 && <em> {snapshot.main.progress}/{snapshot.main.count}</em>}</p>
+      <section className="q-main"><small>Chapter {ROMAN[Math.min(LEVEL_ORDER.length, snapshot.chapter)]} · main quest {snapshot.main.index} of {snapshot.main.total}</small><p className="main-q">{snapshot.main.title}</p><p className="sub-q">{snapshot.main.step}{snapshot.main.count > 0 && <em> {snapshot.main.progress}/{snapshot.main.count}</em>}</p>
         <ol className="story">{snapshot.mainQuests.map(q => <li key={q.id} className={q.status === 'done' ? 'done' : 'now'}><span>{q.status === 'done' ? '✓' : '◆'}</span>{q.title}</li>)}</ol>
       </section>
       <section className="q-sides"><small>Side quests · {touch ? 'tap' : 'click'} one to follow it</small>
@@ -731,41 +759,105 @@ function Journal({ snapshot, touch, initial, onClose, onTrack, onUpgrade }: { sn
       <section><small>{HEROES[snapshot.hero].name}’s abilities · upgrade each one with up to five stars</small><div className="spellbook">{snapshot.spells.map(s => <BookSpell key={s.id} s={s} snapshot={snapshot} touch={touch} onUpgrade={onUpgrade} />)}</div></section>
       <section className="book-upgrades"><small>Smith upgrades · buy ranks from a city smith</small>{upgradeRows(snapshot)}</section>
     </>}
-    {snapshot && tab === 'world' && <>
-      <section className="journal-stats"><span>Places discovered</span><b>{snapshot.discovered} / {snapshot.totalPlaces}</b></section>
-      <section className="journal-stats"><span>Chests opened</span><b>{snapshot.chests} / {snapshot.totalChests}</b></section>
-      <section className="journal-stats"><span>Runestones read</span><b>{snapshot.lore} / {snapshot.totalLore}</b></section>
-      <section className="journal-stats"><span>Creatures defeated</span><b>{snapshot.defeated}</b></section>
-      <section className="lands"><small>The three lands</small>{LEVEL_ORDER.map(id => <p key={id}><b>{WORLDS[id].title}</b><span>{levels(id)}</span></p>)}</section>
-      <section className="fox-tip"><small>{snapshot.hero === 'mira' ? '🦊 Tuft’s field note' : '⚔ Field note'}</small><p>“{w.script.tip}”</p></section>
-    </>}
+    {snapshot && tab === 'achievements' && <Achievements rows={achievements} tip={w.script.tip} hero={snapshot.hero} />}
   </aside>;
 }
 
+/** WoW-style achievements: points earned, a category filter, and every achievement with its progress. */
+function Achievements({ rows, tip, hero }: { rows: AchRow[]; tip: string; hero: HeroId }) {
+  const [cat, setCat] = useState<string>('All');
+  const earned = rows.filter(r => r.got), points = earned.reduce((n, r) => n + r.points, 0);
+  const shown = rows.filter(r => cat === 'All' || r.category === cat).sort((a, b) => Number(!!b.got) - Number(!!a.got) || (b.progress / b.goal) - (a.progress / a.goal));
+  return <>
+    <section className="ach-summary">
+      <span className="ach-shield big"><b>{points}</b></span>
+      <div><strong>{points} / {TOTAL_POINTS} points</strong><em>{earned.length} of {rows.length} achievements earned</em><i className="ach-bar"><i style={{ width: `${(points / TOTAL_POINTS) * 100}%` }} /></i></div>
+    </section>
+    <div className="ach-cats">{['All', ...ACH_CATEGORIES].map(c => { const list = rows.filter(r => c === 'All' || r.category === c); return <button key={c} className={cat === c ? 'on' : ''} onClick={() => { setCat(c); sfx.play('page'); }}>{c}<small>{list.filter(r => r.got).length}/{list.length}</small></button>; })}</div>
+    <section className="ach-list">{shown.map(r => <div key={r.id} className={`ach-row ${r.got ? 'got' : ''}`}>
+      <span className="ach-shield"><b>{r.icon}</b></span>
+      <div><strong>{r.name}</strong><em>{r.description}</em>
+        {!r.got && r.goal > 1 && <span className="ach-progress"><i className="ach-bar"><i style={{ width: `${(r.progress / r.goal) * 100}%` }} /></i><small>{r.progress} / {r.goal}</small></span>}
+        {r.got > 0 && <small className="ach-date">Earned {new Date(r.got).toLocaleDateString()}</small>}
+      </div>
+      <span className="ach-points"><b>{r.points}</b></span>
+    </div>)}</section>
+    <section className="fox-tip"><small>{hero === 'mira' ? '🦊 Tuft’s field note' : '⚔ Field note'}</small><p>“{tip}”</p></section>
+  </>;
+}
+
+/**
+ * The map of the whole valley: every land side by side, with the fog lifting wherever the hero has been. It opens
+ * zoomed on the land the hero is in; drag to pan, pinch or scroll to zoom, or jump with the buttons.
+ */
 function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boolean; onClose: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [tab, setTab] = useState(() => LEVEL_ORDER.indexOf(engine.heroRegion.id));
+  const W = engine.world.width, H = engine.world.height;
+  // cx, cy: world point at the centre of the view; z: zoom, where 1 shows the whole valley.
+  const view = useRef({ cx: engine.hero.x, cy: H / 2, z: 0 });
+  const size = useRef({ w: 1, h: 1 });
+  const [here, setHere] = useState(() => engine.heroRegion.id);
+  const base = () => Math.min((size.current.w - 16) / W, (size.current.h - 16) / H);
+  const regionZoom = () => { const r = engine.world.regions[0]; return Math.min((size.current.w - 16) / (r.x1 - r.x0), (size.current.h - 16) / H) / base(); };
+  const clampView = () => {
+    const v = view.current, S = base() * v.z, { w, h } = size.current;
+    v.z = clamp(v.z, 1, regionZoom() * 3);
+    const hw = w / 2 / (base() * v.z), hh = h / 2 / (base() * v.z);
+    v.cx = hw * 2 >= W ? W / 2 : clamp(v.cx, hw, W - hw); v.cy = hh * 2 >= H ? H / 2 : clamp(v.cy, hh, H - hh);
+    return S;
+  };
+  const jump = (id: RegionId | 'all') => {
+    const v = view.current;
+    if (id === 'all') { v.z = 1; v.cx = W / 2; v.cy = H / 2; }
+    else { const r = engine.world.regions.find(x => x.id === id)!; v.z = regionZoom(); v.cx = (r.x0 + r.x1) / 2; v.cy = H / 2; }
+    setHere(id === 'all' ? engine.heroRegion.id : id); sfx.play('page');
+  };
   useEffect(() => {
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d'); if (!ctx) return;
     let raf = 0;
     const frame = (now: number) => {
       const r = c.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1);
-      if (c.width !== Math.round(r.width * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
-      ctx.setTransform(d, 0, 0, d, 0, 0); drawWorldMap(ctx, r.width, r.height, engine, now / 1000, tab);
+      if (c.width !== Math.round(r.width * d) || c.height !== Math.round(r.height * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
+      size.current = { w: r.width, h: r.height };
+      if (!view.current.z) view.current.z = regionZoom();
+      const S = base() * view.current.z; clampView();
+      ctx.setTransform(d, 0, 0, d, 0, 0); drawWorldMap(ctx, r.width, r.height, engine, now / 1000, { cx: view.current.cx, cy: view.current.cy, S });
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [engine, tab]);
-  const reg = engine.world.regions[tab];
+    // Drag to pan, two fingers or the wheel to zoom.
+    const pts = new Map<number, { x: number; y: number }>();
+    let pinch = 0;
+    const zoomAt = (f: number, sx: number, sy: number) => {
+      const v = view.current, S0 = base() * v.z, wx = v.cx + (sx - size.current.w / 2) / S0, wy = v.cy + (sy - size.current.h / 2) / S0;
+      v.z = clamp(v.z * f, 1, regionZoom() * 3); const S1 = base() * v.z;
+      v.cx = wx - (sx - size.current.w / 2) / S1; v.cy = wy - (sy - size.current.h / 2) / S1;
+    };
+    const down = (e: PointerEvent) => { c.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); } };
+    const move = (e: PointerEvent) => {
+      const p = pts.get(e.pointerId); if (!p) return;
+      if (pts.size === 1) { const S = base() * view.current.z; view.current.cx -= (e.offsetX - p.x) / S; view.current.cy -= (e.offsetY - p.y) / S; }
+      pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (pts.size === 2) { const [a, b] = [...pts.values()], d2 = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0) zoomAt(d2 / pinch, (a.x + b.x) / 2, (a.y + b.y) / 2); pinch = d2; }
+    };
+    const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch = 0; };
+    const wheel = (e: WheelEvent) => { e.preventDefault(); zoomAt(Math.pow(1.0015, -e.deltaY), e.offsetX, e.offsetY); };
+    c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up); c.addEventListener('wheel', wheel, { passive: false });
+    return () => { cancelAnimationFrame(raf); c.removeEventListener('pointerdown', down); c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); c.removeEventListener('wheel', wheel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine]);
+  const reg = engine.world.regions.find(r => r.id === here) || engine.heroRegion;
   return <div className="map-overlay" onClick={onClose}>
     <div className="map-head" onClick={e => e.stopPropagation()}>
-      <div className="map-tabs">{LEVEL_ORDER.map((id, i) => <button key={id} className={i === tab ? 'on' : ''} onClick={() => { setTab(i); sfx.play('page'); }}>{WORLDS[id].title}<small>{levels(id)}</small></button>)}</div>
+      <div className="map-tabs">
+        <button onClick={() => jump('all')}>Whole valley<small>All {LEVEL_ORDER.length} lands</small></button>
+        {LEVEL_ORDER.map(id => <button key={id} className={id === here ? 'on' : ''} onClick={() => jump(id)}>{WORLDS[id].title}<small>{levels(id)}</small></button>)}
+      </div>
       <button className="icon-button" onClick={onClose} aria-label="Close map">✕</button>
     </div>
-    <canvas ref={ref} />
-    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: MAIN_COLOR }} />Main quest</span><span><i style={{ background: SIDE_COLOR }} />Side quest</span><span><i style={{ background: reg.palette.accent }} />{reg.script.keyLabel}</span><span><i style={{ background: '#ffd35c' }} />Shop</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span>{!touch && <span><kbd>M</kbd> close</span>}</div>
+    <canvas ref={ref} onClick={e => e.stopPropagation()} aria-label="World map. Drag to move, pinch or scroll to zoom." />
+    <div className="map-legend"><span><i style={{ background: '#fff' }} />You</span><span><i style={{ background: MAIN_COLOR }} />Main quest</span><span><i style={{ background: SIDE_COLOR }} />Side quest</span><span><i style={{ background: reg.palette.accent }} />{reg.script.keyLabel}</span><span><i style={{ background: '#ffd35c' }} />Shop</span><span><i style={{ background: '#ff6b5b' }} />Guardian</span><span>{touch ? 'Drag · pinch to zoom' : 'Drag · scroll to zoom'}</span>{!touch && <span><kbd>M</kbd> close</span>}</div>
   </div>;
 }
 
@@ -773,6 +865,8 @@ function Confetti() {
   const pieces = Array.from({ length: 42 }, (_, i) => i);
   return <div className="confetti" aria-hidden="true">{pieces.map(i => <i key={i} style={{ left: `${(i * 37) % 100}%`, animationDelay: `${(i % 12) * .25}s`, animationDuration: `${3.2 + (i % 5) * .6}s`, background: ['#ffd35c', '#ff9aa8', '#9fd8ff', '#b9f29d', '#c9b6ff'][i % 5] }} />)}</div>;
 }
+
+const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 
 export default App;
 

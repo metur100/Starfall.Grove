@@ -1,9 +1,10 @@
 export type Point = { x: number; y: number };
-/** The valley is one continuous world made of three regions, one per story chapter. */
-export type RegionId = 'meadow' | 'woods' | 'summit';
+/** The valley is one continuous world made of four regions, one per story chapter. */
+export type RegionId = 'meadow' | 'woods' | 'summit' | 'ember';
 export type LevelId = RegionId;
-export type HeroId = 'mira' | 'kael';
-export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm';
+export type HeroId = 'mira' | 'kael' | 'lyra' | 'riven';
+export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm'
+  | 'frostbolt' | 'blink' | 'frostnova' | 'iceBarrier' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'veil' | 'deathmark';
 export type ItemId =
   | 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin'
   | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
@@ -33,7 +34,8 @@ export type Pond = { x: number; y: number; r: number };
 
 export type EnemyKind =
   | 'gloomling' | 'thornling' | 'wisp' | 'bristleboar' | 'sporecap' | 'shadewolf' | 'webspinner' | 'frostwraith' | 'cragGolem'
-  | 'mossback' | 'brambleWarden' | 'hollowStar' | 'eclipse';
+  | 'emberImp' | 'ashScorpion' | 'magmaHulk'
+  | 'mossback' | 'brambleWarden' | 'hollowStar' | 'cinderTyrant' | 'eclipse';
 /** `guard` names the rescue quest whose captive this creature keeps caged. */
 export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; level: number; region: RegionId; boss?: boolean; elite?: boolean; guard?: string };
 
@@ -43,8 +45,8 @@ export type CritterSeed = { kind: CritterKind; x: number; y: number };
 export type NpcHat = 'none' | 'straw' | 'hood' | 'cap' | 'wizard' | 'bonnet' | 'helm' | 'ears' | 'scarf';
 export type NpcLook = { skin: string; robe: string; hat: NpcHat; hatColor: string; hair: string; beard?: boolean; small?: boolean };
 export type NpcActivity = 'idle' | 'wander' | 'patrol' | 'travel' | 'chop' | 'farm' | 'fish' | 'sweep' | 'hammer' | 'play';
-/** Merchants sell potions, smiths forge upgrades, innkeepers let Mira rest. */
-export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn';
+/** Merchants sell potions, smiths forge upgrades, armourers sell equipment, innkeepers let Mira rest. */
+export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer';
 export type NpcDef = {
   id: string; name: string; portrait: string; look: NpcLook; activity: NpcActivity; x: number; y: number; region: RegionId;
   role?: NpcRole; route?: Point[]; lines: string[]; barks: string[];
@@ -74,7 +76,8 @@ export type QuestDef = {
 export type QuestStatus = 'locked' | 'available' | 'active' | 'ready' | 'done';
 export type QuestState = { status: QuestStatus; progress: number };
 
-export type Ambient = 'petals' | 'leaves' | 'stars';
+export type Ambient = 'petals' | 'leaves' | 'stars' | 'embers';
+export type Ground = 'grass' | 'snow' | 'ash';
 export type Palette = {
   ground: string; alternate: string; path: string; pathEdge: string; accent: string; water: string; waterDeep: string;
   foliage: [string, string, string]; trunk: string; rock: string; pod: string; roof: string[]; wall: string;
@@ -92,7 +95,7 @@ export type WorldScript = {
 
 export type Region = {
   id: RegionId; chapter: number; title: string; subtitle: string; name: string;
-  x0: number; x1: number; palette: Palette; darkness: number; ambient: Ambient; ground: 'grass' | 'snow';
+  x0: number; x1: number; palette: Palette; darkness: number; ambient: Ambient; ground: Ground;
   /** Creature levels rise from `levels[0]` near the region's entrance to `levels[1]` at its far side. */
   levels: [number, number]; xpScale: number; script: WorldScript;
 };
@@ -130,12 +133,16 @@ export type LevelStats = { stars: number; time: number; defeated: number; quests
 export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
 /** A quest being offered: the dialogue ends with Accept / Decline instead of closing. */
 export type QuestOffer = { id: string; title: string; summary: string; reward: string; main: boolean };
-export type ShopKind = 'merchant' | 'smith';
+export type ShopKind = 'merchant' | 'smith' | 'armorer';
+/** A piece on an armourer's shelf. `sold` pieces stay on the shelf, marked, until the stock changes. */
+export type ShopGear = { item: GearItem; price: number; needLevel: number; sold: boolean };
 export type EngineEvent =
   | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete'; offer?: QuestOffer }
   | { type: 'item'; id: ItemId; count: number }
-  | { type: 'loot'; item: GearItem }
-  | { type: 'levelComplete'; region: RegionId; stats: LevelStats }
+  | { type: 'loot'; item: GearItem; equipped?: boolean }
+  /** A chapter's light is restored: the adventure simply carries on east. `last` is the end of the whole story. */
+  | { type: 'levelComplete'; region: RegionId; stats: LevelStats; last: boolean }
+  | { type: 'achievement'; id: string; name: string; description: string; icon: string; points: number }
   /** `short` is the phone version: small screens get a few words instead of a sentence. */
   | { type: 'notice'; text: string; tone: NoticeTone; short?: string }
   | { type: 'spellLearned'; spell: SpellId }

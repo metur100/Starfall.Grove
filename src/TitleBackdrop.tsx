@@ -6,6 +6,7 @@ const THEMES: Record<LevelId, { sky: [string, string, string]; hills: [string, s
   meadow: { sky: ['#0d1330', '#2b2a5c', '#c8736a'], hills: ['#2c3558', '#1f3a3c', '#122620'], aurora: '120,255,190', glow: '#ffd98a' },
   woods: { sky: ['#07141a', '#113338', '#4f7a5c'], hills: ['#173236', '#10272a', '#08171a'], aurora: '160,255,170', glow: '#b9f29d' },
   summit: { sky: ['#07061a', '#221a4d', '#6a4bb0'], hills: ['#2a2554', '#1a1740', '#0c0b24'], aurora: '200,160,255', glow: '#c9b6ff' },
+  ember: { sky: ['#140a12', '#4a1a1e', '#d0642a'], hills: ['#4a2a26', '#2e1a18', '#170c0c'], aurora: '255,150,80', glow: '#ffb347' },
 };
 
 export default function TitleBackdrop({ level = 'meadow' }: { level?: LevelId }) {
@@ -103,7 +104,7 @@ export default function TitleBackdrop({ level = 'meadow' }: { level?: LevelId })
       for (const l of leaves) {
         if (!reduced) { l.y += l.v * dt; l.x += (Math.sin(t + l.p) * .01 + .01) * dt; if (l.y > 1.05) { l.y = -.05; l.x = Math.random(); } if (l.x > 1.05) l.x = -.05; }
         ctx.save(); ctx.translate(l.x * w - mx * 40, l.y * h); ctx.rotate(t * 1.5 + l.p); ctx.scale(1, Math.abs(Math.sin(t * 2 + l.p)) * .7 + .3);
-        ctx.fillStyle = level === 'summit' ? 'rgba(220,210,255,.7)' : level === 'woods' ? 'rgba(232,165,75,.8)' : 'rgba(247,197,213,.85)';
+        ctx.fillStyle = level === 'summit' ? 'rgba(220,210,255,.7)' : level === 'woods' ? 'rgba(232,165,75,.8)' : level === 'ember' ? 'rgba(255,150,70,.85)' : 'rgba(247,197,213,.85)';
         ctx.beginPath(); ctx.ellipse(0, 0, l.s, l.s * .5, 0, 0, 6.28); ctx.fill(); ctx.restore();
       }
       raf = requestAnimationFrame(frame);

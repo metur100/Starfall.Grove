@@ -1,10 +1,10 @@
 import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle } from './engine';
-import { RARITY } from './gear';
+import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
 import { REGION_W, fbm } from './worldgen';
 import type { Captive, Decor, ItemIcon, NpcLook, Obstacle, Palette, Point, Poi, Region, WorldDefinition, WorldObject } from './types';
 
-type AmbientKind = 'petal' | 'leaf' | 'firefly' | 'mote' | 'snow' | 'butterfly' | 'smoke';
+type AmbientKind = 'petal' | 'leaf' | 'firefly' | 'mote' | 'snow' | 'butterfly' | 'smoke' | 'ash';
 type Ambient = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; rot: number; vr: number; kind: AmbientKind; color: string; phase: number };
 type Light = { x: number; y: number; r: number; color?: string; a: number };
 type View = { x: number; y: number; w: number; h: number };
@@ -135,6 +135,7 @@ export class Renderer {
   private roadBoxes: Array<{ pts: Point[]; x0: number; y0: number; x1: number; y1: number }> = [];
   private draws: Array<{ y: number; run: () => void }> = [];
   private near: ReturnType<GameEngine['nearest']> = null;
+  private lookCache = { key: '-', look: {} as Look };
   /** Screen position (CSS px) just above the nearby person or object, or null when nothing is in reach. */
   nearScreen: Point | null = null;
   /** 1 = full detail, .75 balanced, .5 low (weak tablets): fewer glows, particles and screen effects. */
@@ -206,6 +207,7 @@ export class Renderer {
     this.drawOrbs(ctx, e);
     this.drawProjectiles(ctx, e);
     this.drawSlashes(ctx, e);
+    this.drawSpellMarks(ctx, e);
     for (const z of e.hazards) this.drawHazardAir(ctx, z);
     this.drawParticles(ctx, e.particles);
     if (this.weather) { this.updateAmbient(e, view, dt); this.drawAmbient(ctx); } else this.ambient.length = 0;
@@ -221,10 +223,10 @@ export class Renderer {
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
     // Where the touch "Talk" button goes: just above the head of whoever (or whatever) is in reach.
     const nr = this.near;
-    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
+    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
     else this.nearScreen = null;
     const dark = this.darkAt(world, camX + vw / 2);
-    if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, amb === 'stars');
+    if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, amb === 'stars' ? '8,8,32' : amb === 'embers' ? '28,10,8' : '6,20,22');
     if (amb === 'leaves' && rich && this.weather) this.drawGodRays(ctx, w, h);
     if (amb === 'stars' && this.weather) this.drawShootingStar(ctx, w, h, dt);
     if (amb === 'petals' && this.quality >= 1 && this.weather) this.drawSunGlow(ctx, w, h);
@@ -354,7 +356,7 @@ export class Renderer {
     const t = this.time;
     for (const [pi, pond] of e.world.ponds.entries()) {
       if (pond.x + pond.r < v.x - 40 || pond.x - pond.r > v.x + v.w + 40 || pond.y + pond.r < v.y - 40 || pond.y - pond.r > v.y + v.h + 40) continue;
-      const reg = regionOf(e.world, pond.x), summit = reg.ambient === 'stars', p = reg.palette;
+      const reg = regionOf(e.world, pond.x), summit = reg.ambient === 'stars', lava = reg.ambient === 'embers', p = reg.palette;
       ctx.save(); ctx.beginPath(); ctx.ellipse(pond.x, pond.y, pond.r, pond.r * .58, 0, 0, TAU); ctx.clip();
       const bands = Math.min(9, Math.round(pond.r / 45));
       for (let i = 0; i < bands; i++) {
@@ -367,12 +369,19 @@ export class Renderer {
         ctx.strokeStyle = `rgba(230,250,255,${(1 - ph) * .35})`; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.ellipse(cx, cy, 6 + ph * 46, 3 + ph * 20, 0, 0, TAU); ctx.stroke();
       }
-      if (this.quality > .5) for (let i = 0; i < (summit ? 16 : 8); i++) {
+      if (lava) {
+        // Lava: slow glowing blobs that swell and pop instead of sparkles.
+        for (let i = 0; i < 4 + Math.floor(pond.r / 70); i++) {
+          const ph = (t * .45 + i * .37 + pi * .21) % 1, x = pond.x + Math.sin(i * 5.1 + pi) * pond.r * .6, y = pond.y + Math.cos(i * 3.3 + pi) * pond.r * .32;
+          glow(ctx, x, y, 18 + ph * 26, '#ffd27a', (1 - ph) * .7); circle(ctx, x, y, 3 + ph * 8, `rgba(255,236,170,${(1 - ph) * .8})`);
+        }
+      } else if (this.quality > .5) for (let i = 0; i < (summit ? 16 : 8); i++) {
         const a = Math.max(0, Math.sin(t * 2.6 + i * 1.9 + pi)), x = pond.x + Math.sin(i * 7.3 + pi) * pond.r * .75, y = pond.y + Math.cos(i * 4.1) * pond.r * .4;
         if (a > .3) { ctx.fillStyle = `rgba(255,255,255,${a * .8})`; star(ctx, x, y, 2 + a * 3); ctx.fill(); }
       }
       ctx.restore();
-      if (!summit) for (let i = 0; i < 3 + Math.floor(pond.r / 90); i++) {
+      if (lava) { this.lights.push({ x: pond.x, y: pond.y, r: pond.r * 1.5, color: '#ff7a3d', a: .9 }); if (Math.random() < .08 * this.quality) this.pushAmbient({ x: pond.x + rand(-pond.r, pond.r) * .7, y: pond.y + rand(-pond.r, pond.r) * .35, vx: rand(-10, 10), vy: rand(-50, -25), life: 1.4, max: 1.4, size: 2.2, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 }); }
+      else if (!summit) for (let i = 0; i < 3 + Math.floor(pond.r / 90); i++) {
         const a = i * 1.7 + pi, x = pond.x + Math.cos(a) * pond.r * .62, y = pond.y + Math.sin(a) * pond.r * .32 + Math.sin(t * 1.2 + i) * 2;
         ctx.fillStyle = '#5f9a4c'; ctx.beginPath(); ctx.ellipse(x, y, 13, 7, a, .3, TAU - .1); ctx.lineTo(x, y); ctx.fill();
         if (i % 2 === 0) { circle(ctx, x + 2, y - 2, 3.4, '#f2a1b8'); circle(ctx, x + 2, y - 2, 1.4, '#fff2a1'); }
@@ -897,6 +906,7 @@ export class Renderer {
     const fy = y - 44 + Math.sin(t * 2) * 6;
     if (reg.id === 'meadow') { glow(ctx, x, fy, 30, '#ffb05c', .9); ctx.fillStyle = '#ffe38a'; star(ctx, x, fy, 14, 8, .5, t); ctx.fill(); circle(ctx, x, fy, 7, '#fff6d8'); }
     else if (reg.id === 'woods') { circle(ctx, x, fy, 14, '#3f7a4a'); circle(ctx, x - 4, fy - 4, 8, '#9fe8b0'); for (let i = 0; i < 3; i++) { const a = t * 1.5 + i * TAU / 3; ellipse(ctx, x + Math.cos(a) * 22, fy + Math.sin(a) * 8, 6, 3, '#9fe8b0', a); } }
+    else if (reg.id === 'ember') this.drawFlame(ctx, x, fy + 12, .7, '#ffb347');
     else { ctx.fillStyle = '#fff'; star(ctx, x, fy, 16, 5, .45, t); ctx.fill(); ctx.fillStyle = c; star(ctx, x, fy, 9, 5, .45, t); ctx.fill(); }
     if (Math.random() < .3) this.pushAmbient({ x: x + rand(-40, 40), y: y + rand(-5, 15), vx: 0, vy: rand(-50, -25), life: 1.2, max: 1.2, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: c, phase: 0 });
     this.lights.push({ x, y: y - 30, r: 220, color: c, a: power });
@@ -921,6 +931,15 @@ export class Renderer {
       circle(ctx, 0, 46, 5, '#6b5226'); ctx.restore();
       if (!lit) { ctx.strokeStyle = '#3d2c1f'; ctx.lineWidth = 5; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x - 30 + i * 18, y + 20); ctx.quadraticCurveTo(x - 10 + i * 6 + Math.sin(t + i) * 4, y - 30, x - 20 + i * 14, y - 60); ctx.stroke(); } }
       if (lit && Math.random() < .2) this.pushAmbient({ x: x + rand(-30, 30), y: y - 40, vx: rand(-40, 40), vy: rand(-40, -10), life: 1.5, max: 1.5, size: 5, rot: 0, vr: 3, kind: 'petal', color: pick(['#f7c5d5', '#fff', '#b9f29d']), phase: Math.random() * 6 });
+    } else if (id === 'ember') {
+      // The Dawn Forge: a great stone hearth with an anvil; lit, a white-gold fire roars out of its mouth.
+      ctx.fillStyle = '#3a2e2c'; ctx.beginPath(); ctx.moveTo(x - 46, y + 30); ctx.lineTo(x - 38, y - 60); ctx.quadraticCurveTo(x, y - 96, x + 38, y - 60); ctx.lineTo(x + 46, y + 30); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#4e3e3a'; ctx.fillRect(x - 50, y - 64, 100, 12);
+      ctx.fillStyle = lit ? '#ffd27a' : '#1a1210'; ctx.beginPath(); ctx.moveTo(x - 20, y + 30); ctx.lineTo(x - 20, y - 20); ctx.quadraticCurveTo(x, y - 44, x + 20, y - 20); ctx.lineTo(x + 20, y + 30); ctx.closePath(); ctx.fill();
+      if (lit) { this.drawFlame(ctx, x, y - 8, 1.1, '#fff1b8'); this.drawFlame(ctx, x, y - 70, 1.4, '#ffb347'); }
+      else { for (let i = 0; i < 5; i++) circle(ctx, x - 12 + i * 6, y + 22 - (i % 2) * 3, 3, `rgba(255,120,60,${.4 + Math.sin(t * 2 + i) * .2})`); }
+      ctx.fillStyle = '#2a2220'; ctx.beginPath(); ctx.roundRect(x + 52, y + 4, 34, 12, 3); ctx.fill(); ctx.fillRect(x + 62, y + 16, 14, 14);
+      if (lit && Math.random() < .3) this.pushAmbient({ x: x + rand(-20, 20), y: y - 70, vx: rand(-30, 30), vy: rand(-80, -40), life: 1.2, max: 1.2, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: pick(['#ffd27a', '#ffb347', '#fff1b8']), phase: 0 });
     } else {
       ctx.fillStyle = '#4a4f73'; ctx.beginPath(); ctx.ellipse(x, y + 20, 48, 16, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = '#6f7493'; ctx.beginPath(); ctx.ellipse(x, y + 14, 42, 12, 0, 0, TAU); ctx.fill();
@@ -1026,9 +1045,9 @@ export class Renderer {
       glow(ctx, x, my, 28, mc, .8);
       circle(ctx, x, my, 12, mc);
       ctx.fillStyle = '#2a2f24'; ctx.font = `900 16px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(mark.mark, x, my + 6);
-    } else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'inn') {
+    } else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'inn') {
       // Shops show a small sign over their keeper's head.
-      const my = y - 58 * s, icon = n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : '☾';
+      const my = y - 58 * s, icon = n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : n.role === 'armorer' ? '⛨' : '☾';
       ctx.fillStyle = 'rgba(14,20,30,.8)'; ctx.beginPath(); ctx.roundRect(x - 13, my - 13, 26, 24, 8); ctx.fill();
       ctx.strokeStyle = '#ffd35c'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = '#ffd35c'; ctx.font = `900 15px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(icon, x, my + 5);
@@ -1155,9 +1174,19 @@ export class Renderer {
     if (Math.random() < .05) this.pushAmbient({ x: x - f.flip * 22, y: y - 3, vx: rand(-10, 10), vy: rand(-20, -5), life: .8, max: .8, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#ffe38a', phase: 0 });
     this.lights.push({ x, y, r: 60, a: .4 });
   }
-  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb leaves them half see-through. */
+  /** The worn gear as colours per slot, recomputed only when the equipment changes. */
+  private heroLook(e: GameEngine): Look {
+    const eq = e.profile.equipped, key = SLOT_ORDER.map(s => eq[s]?.uid || '').join('|');
+    if (key !== this.lookCache.key) this.lookCache = { key, look: lookOf(eq) };
+    return this.lookCache.look;
+  }
+  /** Epic and legendary pieces shimmer where they are worn. */
+  private gearGlow(ctx: CanvasRenderingContext2D, L: Look, spots: Partial<Record<keyof Look, [number, number]>>) {
+    for (const [slot, [x, y]] of Object.entries(spots) as Array<[keyof Look, [number, number]]>) { const l = L[slot]; if (l?.glow) glow(ctx, x, y, 16 + Math.sin(this.time * 4 + x) * 3, l.color, .45); }
+  }
+  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb or Smoke Veil leaves them half see-through. */
   private drawHeroScaled(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined;
+    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined || e.stealthT > 0;
     if (s === 1 && !hidden) return this.drawHero(ctx, e);
     ctx.save();
     if (hidden) ctx.globalAlpha = .45 + Math.sin(this.time * 6) * .1;
@@ -1168,7 +1197,9 @@ export class Renderer {
   }
   private drawHero(ctx: CanvasRenderingContext2D, e: GameEngine) {
     if (e.heroId === 'kael') return this.drawWarrior(ctx, e);
-    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1;
+    if (e.heroId === 'lyra') return this.drawFrostMage(ctx, e);
+    if (e.heroId === 'riven') return this.drawAssassin(ctx, e);
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
     for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfe8ff'); circle(ctx, a.x, a.y - 18, 12, '#e6f7ff'); }
     ctx.globalAlpha = 1;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 4 : Math.sin(t * 2.2) * 1.2;
@@ -1184,19 +1215,23 @@ export class Renderer {
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
     ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, stretch);
     const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 270), wave = Math.sin(t * 8) * (2 + speed * 4);
-    ctx.fillStyle = '#7a3a52'; ctx.beginPath(); ctx.moveTo(-10, -6); ctx.quadraticCurveTo(-20 - speed * 10, 6 + wave, -22 - speed * 14, 20 + wave * .6); ctx.lineTo(-4, 20); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = L.back?.color ?? '#7a3a52'; ctx.beginPath(); ctx.moveTo(-10, -6); ctx.quadraticCurveTo(-20 - speed * 10, 6 + wave, -22 - speed * 14, 20 + wave * .6); ctx.lineTo(-4, 20); ctx.closePath(); ctx.fill();
     const step = moving ? Math.sin(h.walkTime) * 5 : 0;
-    ellipse(ctx, -6 + step, 21, 5, 3, '#4b3025'); ellipse(ctx, 6 - step, 21, 5, 3, '#4b3025');
-    ctx.fillStyle = hurtFlash ? '#ffffff' : '#d06c50'; ctx.beginPath(); ctx.moveTo(-13, -4); ctx.lineTo(13, -4); ctx.lineTo(17, 19); ctx.quadraticCurveTo(0, 25, -17, 19); ctx.closePath(); ctx.fill();
+    ellipse(ctx, -6 + step, 21, 5, 3, L.feet?.color ?? '#4b3025'); ellipse(ctx, 6 - step, 21, 5, 3, L.feet?.color ?? '#4b3025');
+    ctx.fillStyle = hurtFlash ? '#ffffff' : L.chest?.color ?? '#d06c50'; ctx.beginPath(); ctx.moveTo(-13, -4); ctx.lineTo(13, -4); ctx.lineTo(17, 19); ctx.quadraticCurveTo(0, 25, -17, 19); ctx.closePath(); ctx.fill();
+    if (L.legs) { ctx.fillStyle = L.legs.color; ctx.beginPath(); ctx.moveTo(-16.3, 15); ctx.lineTo(16.3, 15); ctx.lineTo(17, 19); ctx.quadraticCurveTo(0, 25, -17, 19); ctx.closePath(); ctx.fill(); }
     ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); ctx.moveTo(4, -4); ctx.lineTo(13, -4); ctx.lineTo(17, 19); ctx.lineTo(6, 22); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#f2c46a'; ctx.fillRect(-13, 5, 26, 3); circle(ctx, 0, 6.5, 2.6, '#fff1b8');
+    ctx.fillStyle = L.waist?.color ?? '#f2c46a'; ctx.fillRect(-13, 5, 26, 3); circle(ctx, 0, 6.5, 2.6, '#fff1b8');
+    if (L.shoulders) { ellipse(ctx, -12, -4, 7, 4.5, L.shoulders.color); ellipse(ctx, 12, -4, 7, 4.5, L.shoulders.color); }
+    this.gearGlow(ctx, L, { chest: [0, 8], shoulders: [12, -4], waist: [0, 6], legs: [0, 18], feet: [0, 21], back: [-16, 8] });
     circle(ctx, 0, -17, 12.5, hurtFlash ? '#ffffff' : '#f0c8a2');
     ctx.fillStyle = '#6b3f2a'; ctx.beginPath(); ctx.moveTo(-12, -18); ctx.quadraticCurveTo(-16, -2, -8 - wave * .3, 2); ctx.lineTo(-6, -14); ctx.closePath(); ctx.fill();
     const blink = (t % 3.7) < .12;
     if (blink) { ctx.fillStyle = '#2d2420'; ctx.fillRect(3, -17, 5, 1.4); } else { circle(ctx, 5.5, -16.5, 2, '#2d2420'); circle(ctx, 6.2, -17.3, .7, '#fff'); }
     circle(ctx, 8, -11.5, 2.2, 'rgba(230,110,100,.35)');
     const tip = Math.sin(t * 3 + speed * 4) * 4 - speed * 6;
-    ctx.fillStyle = '#3f5a41'; ctx.beginPath(); ctx.ellipse(0, -25, 19, 5.5, -.08, 0, TAU); ctx.fill();
+    ctx.fillStyle = L.head?.color ?? '#3f5a41'; ctx.beginPath(); ctx.ellipse(0, -25, 19, 5.5, -.08, 0, TAU); ctx.fill();
+    this.gearGlow(ctx, L, { head: [0, -34] });
     ctx.beginPath(); ctx.moveTo(-11, -26); ctx.quadraticCurveTo(-4, -46, -14 + tip, -54); ctx.quadraticCurveTo(4, -44, 11, -26); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#f2c46a'; ctx.fillRect(-11, -30, 22, 3.5);
     ctx.fillStyle = '#fff1b8'; star(ctx, -14 + tip, -54, 4, 4, .4, t * 2); ctx.fill();
@@ -1205,7 +1240,7 @@ export class Renderer {
     ctx.strokeStyle = '#7a5a3f'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26); ctx.stroke();
     circle(ctx, 0, -30, 5 + raise * 2, '#fff1b8'); glow(ctx, 0, -30, 18 + raise * 26, '#ffe38a', .9);
     ctx.restore();
-    circle(ctx, 11, 0, 4, '#f0c8a2');
+    circle(ctx, 11, 0, 4, L.hands?.color ?? '#f0c8a2');
     ctx.restore();
     const tipX = h.x + flip * (12 + Math.sin(-sa) * 30), tipY = h.y + bob + 2 - Math.cos(sa) * 30;
     if (Math.random() < .2) this.pushAmbient({ x: tipX + rand(-3, 3), y: tipY, vx: rand(-12, 12), vy: rand(-30, -10), life: .7, max: .7, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#ffe38a', phase: 0 });
@@ -1214,7 +1249,7 @@ export class Renderer {
 
   /** Kael: plate armour, a plumed helm, a kite shield on one arm and a sword that swings with each Slash. */
   private drawWarrior(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, storm = h.stormT > 0;
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, storm = h.stormT > 0, L = this.heroLook(e);
     for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 18, 24, '#ffd0a0'); circle(ctx, a.x, a.y - 18, 12, '#fff0e0'); }
     ctx.globalAlpha = 1;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3.5 : Math.sin(t * 2.2) * 1;
@@ -1239,22 +1274,25 @@ export class Renderer {
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
     ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
     if (storm) ctx.rotate(Math.sin(t * 22) * .15);
-    const step = moving ? Math.sin(h.walkTime) * 5 : 0, steel = hurtFlash ? '#ffffff' : '#9aa6b8', dark = '#5a6478';
+    const step = moving ? Math.sin(h.walkTime) * 5 : 0, steel = hurtFlash ? '#ffffff' : L.chest?.color ?? '#9aa6b8', dark = L.legs?.color ?? '#5a6478';
     // cape
     const wave = Math.sin(t * 7) * 3;
-    ctx.fillStyle = '#8a2a2a'; ctx.beginPath(); ctx.moveTo(-10, -8); ctx.quadraticCurveTo(-22, 6 + wave, -20, 22 + wave * .5); ctx.lineTo(-2, 20); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = L.back?.color ?? '#8a2a2a'; ctx.beginPath(); ctx.moveTo(-10, -8); ctx.quadraticCurveTo(-22, 6 + wave, -20, 22 + wave * .5); ctx.lineTo(-2, 20); ctx.closePath(); ctx.fill();
     // legs and boots
     rect(ctx, -9 + step, 10, 7, 11, dark); rect(ctx, 3 - step, 10, 7, 11, dark);
-    ellipse(ctx, -6 + step, 22, 6, 3, '#3a3040'); ellipse(ctx, 6 - step, 22, 6, 3, '#3a3040');
+    ellipse(ctx, -6 + step, 22, 6, 3, L.feet?.color ?? '#3a3040'); ellipse(ctx, 6 - step, 22, 6, 3, L.feet?.color ?? '#3a3040');
     // breastplate
     ctx.fillStyle = steel; ctx.beginPath(); ctx.moveTo(-14, -8); ctx.lineTo(14, -8); ctx.lineTo(13, 12); ctx.quadraticCurveTo(0, 18, -13, 12); ctx.closePath(); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(-10, -6, 5, 14);
-    rect(ctx, -14, 6, 28, 4, '#6a4a30'); circle(ctx, 0, 8, 2.8, '#e8c46a');
+    rect(ctx, -14, 6, 28, 4, L.waist?.color ?? '#6a4a30'); circle(ctx, 0, 8, 2.8, '#e8c46a');
     // pauldrons
-    ellipse(ctx, -13, -8, 7, 5, dark); ellipse(ctx, 13, -8, 7, 5, dark);
+    const pad = L.shoulders?.color ?? '#5a6478';
+    ellipse(ctx, -13, -8, 7, 5, pad); ellipse(ctx, 13, -8, 7, 5, pad);
+    this.gearGlow(ctx, L, { chest: [0, 2], shoulders: [13, -8], waist: [0, 8], legs: [0, 15], feet: [0, 22], back: [-15, 8] });
     // head and helm
     circle(ctx, 0, -18, 11.5, hurtFlash ? '#ffffff' : '#f0c8a2');
-    ctx.fillStyle = steel; ctx.beginPath(); ctx.arc(0, -21, 13, Math.PI * .95, Math.PI * 2.05); ctx.lineTo(13, -16); ctx.lineTo(-13, -16); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = hurtFlash ? '#ffffff' : L.head?.color ?? '#9aa6b8'; ctx.beginPath(); ctx.arc(0, -21, 13, Math.PI * .95, Math.PI * 2.05); ctx.lineTo(13, -16); ctx.lineTo(-13, -16); ctx.closePath(); ctx.fill();
+    this.gearGlow(ctx, L, { head: [0, -28] });
     rect(ctx, 2, -20, 11, 3, '#2a2430');
     ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(-2, -33); ctx.quadraticCurveTo(-18 - wave, -40, -20 - wave, -24); ctx.quadraticCurveTo(-10, -32, -1, -30); ctx.fill();
     // shield on the back arm
@@ -1271,9 +1309,113 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(-1, -38, 1.5, 30);
     if (h.castTime > 0 || storm) glow(ctx, 0, -30, 26, '#ffd0a0', .7);
     ctx.restore();
-    circle(ctx, 12, 0, 4, '#f0c8a2');
+    circle(ctx, 12, 0, 4, L.hands?.color ?? '#f0c8a2');
     ctx.restore();
     this.lights.push({ x: h.x, y: h.y - 10, r: 320, a: 1 });
+  }
+
+  /** Lyra: long pale hair, a crystal circlet, a blue over-robe on white, and a staff crowned with a floating ice shard. */
+  private drawFrostMage(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
+    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfeaff'); circle(ctx, a.x, a.y - 18, 12, '#eaf8ff'); }
+    ctx.globalAlpha = 1;
+    const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 4 : Math.sin(t * 2.2) * 1.2;
+    shadow(ctx, h.x, h.y + 20, 20, 7, .3);
+    if (h.shieldTime > 0) {
+      // Ice Barrier: a faceted shell of ice.
+      const a = Math.min(1, h.shieldTime * 2);
+      glow(ctx, h.x, h.y - 8, 72, '#9fe4ff', .5 * a);
+      ctx.save(); ctx.translate(h.x, h.y - 8); ctx.rotate(t * .4);
+      ctx.fillStyle = `rgba(200,240,255,${.18 * a})`; ctx.strokeStyle = `rgba(230,250,255,${.85 * a})`; ctx.lineWidth = 2.5;
+      ctx.beginPath(); for (let i = 0; i < 6; i++) { const q = i * TAU / 6, r = 46 + Math.sin(t * 8 + i) * 1.5; i ? ctx.lineTo(Math.cos(q) * r, Math.sin(q) * r) : ctx.moveTo(Math.cos(q) * r, Math.sin(q) * r); } ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
+    ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
+    const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 265), wave = Math.sin(t * 7) * (2 + speed * 4);
+    ctx.fillStyle = L.back?.color ?? '#9fd0ee'; ctx.beginPath(); ctx.moveTo(-10, -6); ctx.quadraticCurveTo(-20 - speed * 10, 6 + wave, -21 - speed * 13, 20 + wave * .6); ctx.lineTo(-4, 20); ctx.closePath(); ctx.fill();
+    const step = moving ? Math.sin(h.walkTime) * 5 : 0;
+    ellipse(ctx, -6 + step, 21, 5, 3, L.feet?.color ?? '#3a4a6a'); ellipse(ctx, 6 - step, 21, 5, 3, L.feet?.color ?? '#3a4a6a');
+    // White under-robe, then the open blue over-robe.
+    ctx.fillStyle = hurtFlash ? '#ffffff' : '#e6f4ff'; ctx.beginPath(); ctx.moveTo(-8, -4); ctx.lineTo(8, -4); ctx.lineTo(12, 20); ctx.quadraticCurveTo(0, 24, -12, 20); ctx.closePath(); ctx.fill();
+    const robe = hurtFlash ? '#ffffff' : L.chest?.color ?? '#5a8ac8';
+    ctx.fillStyle = robe; ctx.beginPath(); ctx.moveTo(-13, -4); ctx.lineTo(-4, -4); ctx.lineTo(-5, 22); ctx.quadraticCurveTo(-12, 22, -17, 19); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(13, -4); ctx.lineTo(4, -4); ctx.lineTo(5, 22); ctx.quadraticCurveTo(12, 22, 17, 19); ctx.closePath(); ctx.fill();
+    if (L.legs) { ctx.fillStyle = L.legs.color; ctx.fillRect(-12, 15, 24, 4); }
+    ctx.fillStyle = L.waist?.color ?? '#e6f4ff'; ctx.fillRect(-13, 5, 26, 3); ctx.fillStyle = '#9fe4ff'; star(ctx, 0, 6.5, 3.4, 4, .45, t); ctx.fill();
+    if (L.shoulders) { ellipse(ctx, -12, -4, 7, 4.5, L.shoulders.color); ellipse(ctx, 12, -4, 7, 4.5, L.shoulders.color); }
+    this.gearGlow(ctx, L, { chest: [8, 8], shoulders: [12, -4], waist: [0, 6], legs: [0, 17], feet: [0, 21], back: [-16, 8] });
+    // Long pale hair falling past the shoulders.
+    ctx.fillStyle = '#dff2ff'; ctx.beginPath(); ctx.moveTo(-12, -22); ctx.quadraticCurveTo(-18, -4, -12 - wave * .3, 6); ctx.lineTo(-5, -12); ctx.closePath(); ctx.fill();
+    circle(ctx, 0, -17, 12.5, hurtFlash ? '#ffffff' : '#f6dcc8');
+    ctx.fillStyle = '#dff2ff'; ctx.beginPath(); ctx.arc(0, -19, 13, Math.PI * .95, Math.PI * 2.02); ctx.quadraticCurveTo(8, -22, 2, -21); ctx.quadraticCurveTo(-6, -20, -12, -14); ctx.closePath(); ctx.fill();
+    const blink = (t % 3.9) < .12;
+    if (blink) { ctx.fillStyle = '#2a4a6a'; ctx.fillRect(3, -17, 5, 1.4); } else { circle(ctx, 5.5, -16.5, 2, '#2a4a6a'); circle(ctx, 6.2, -17.3, .7, '#fff'); }
+    circle(ctx, 8, -11.5, 2.2, 'rgba(140,200,240,.35)');
+    // Crystal circlet.
+    ctx.strokeStyle = L.head?.color ?? '#bfeaff'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(0, -19, 12.5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+    glow(ctx, 2, -32, 12, '#9fe4ff', .8); ctx.fillStyle = '#eaf8ff'; ctx.beginPath(); ctx.moveTo(2, -38); ctx.lineTo(5, -31); ctx.lineTo(2, -27); ctx.lineTo(-1, -31); ctx.closePath(); ctx.fill();
+    this.gearGlow(ctx, L, { head: [2, -31] });
+    // Staff with a floating ice shard.
+    const raise = h.castTime > 0 ? h.castTime / .3 : 0, sa = -.3 - raise * .7;
+    ctx.save(); ctx.translate(12, 2); ctx.rotate(sa);
+    ctx.strokeStyle = '#c8d8e8'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26); ctx.stroke();
+    const fy = -34 + Math.sin(t * 3) * 2;
+    glow(ctx, 0, fy, 18 + raise * 24, '#9fe4ff', .9);
+    ctx.fillStyle = '#eaf8ff'; ctx.beginPath(); ctx.moveTo(0, fy - 9); ctx.lineTo(5, fy); ctx.lineTo(0, fy + 7); ctx.lineTo(-5, fy); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    circle(ctx, 11, 0, 4, L.hands?.color ?? '#f6dcc8');
+    ctx.restore();
+    const tipX = h.x + flip * (12 + Math.sin(-sa) * 34), tipY = h.y + bob + 2 - Math.cos(sa) * 34;
+    if (Math.random() < .25) this.pushAmbient({ x: tipX + rand(-4, 4), y: tipY, vx: rand(-10, 10), vy: rand(10, 30), life: .7, max: .7, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#dff6ff', phase: 0 });
+    this.lights.push({ x: h.x, y: h.y - 10, r: 320, a: 1 }, { x: tipX, y: tipY, r: 110 + raise * 120, color: '#9fe4ff', a: .9 });
+  }
+
+  /** Riven: a slim hooded figure with a mask, glowing violet eyes, a short scarf-cape and a dagger in each hand. */
+  private drawAssassin(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
+    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 14, 22, '#6a5a9a'); circle(ctx, a.x, a.y - 18, 11, '#8a7ab8'); }
+    ctx.globalAlpha = 1;
+    const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3 : Math.sin(t * 2.6) * 1;
+    shadow(ctx, h.x, h.y + 20, 18, 6, .32);
+    const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
+    ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
+    const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 290), wave = Math.sin(t * 9) * (2 + speed * 5);
+    // Scarf tail streaming behind.
+    ctx.fillStyle = L.back?.color ?? '#2e2440'; ctx.beginPath(); ctx.moveTo(-6, -12); ctx.quadraticCurveTo(-20 - speed * 12, -8 + wave, -26 - speed * 16, 2 + wave); ctx.lineTo(-4, -4); ctx.closePath(); ctx.fill();
+    const step = moving ? Math.sin(h.walkTime) * 6 : 0, legs = L.legs?.color ?? '#3a3448';
+    rect(ctx, -7 + step, 8, 5, 12, legs); rect(ctx, 2 - step, 8, 5, 12, legs);
+    ellipse(ctx, -4.5 + step, 21, 5, 2.6, L.feet?.color ?? '#241c2c'); ellipse(ctx, 4.5 - step, 21, 5, 2.6, L.feet?.color ?? '#241c2c');
+    const body = hurtFlash ? '#ffffff' : L.chest?.color ?? '#4a3e62';
+    ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-10, -8); ctx.lineTo(10, -8); ctx.lineTo(9, 10); ctx.lineTo(-9, 10); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#6a4a8a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-9, -6); ctx.lineTo(8, 8); ctx.stroke();
+    rect(ctx, -10, 5, 20, 3, L.waist?.color ?? '#6a4a3a');
+    if (L.shoulders) { ellipse(ctx, -10, -7, 5.5, 3.6, L.shoulders.color); ellipse(ctx, 10, -7, 5.5, 3.6, L.shoulders.color); }
+    this.gearGlow(ctx, L, { chest: [0, 0], shoulders: [10, -7], waist: [0, 6], legs: [0, 14], feet: [0, 21], back: [-14, -4] });
+    // Hooded head: skin, mask, violet eyes.
+    circle(ctx, 0, -18, 10.5, hurtFlash ? '#ffffff' : '#e8c4a8');
+    ctx.fillStyle = '#2e2440'; ctx.beginPath(); ctx.moveTo(-10, -15); ctx.quadraticCurveTo(0, -12, 11, -15); ctx.lineTo(10, -8); ctx.quadraticCurveTo(0, -5, -10, -8); ctx.closePath(); ctx.fill();
+    glow(ctx, 5.5, -19, 7, '#b69cff', .7); ellipse(ctx, 5.5, -19, 2.2, 1.4, '#d8c8ff'); ellipse(ctx, 0, -19, 1.8, 1.2, '#b69cff');
+    ctx.fillStyle = hurtFlash ? '#ffffff' : L.head?.color ?? '#3a2e52';
+    ctx.beginPath(); ctx.moveTo(-12, -12); ctx.quadraticCurveTo(-14, -30, -4, -34); ctx.quadraticCurveTo(-10, -26 + wave * .2, -18, -30); ctx.quadraticCurveTo(-8, -38, 4, -32); ctx.quadraticCurveTo(13, -28, 12, -14); ctx.quadraticCurveTo(9, -24, 1, -25); ctx.quadraticCurveTo(-8, -24, -12, -12); ctx.closePath(); ctx.fill();
+    this.gearGlow(ctx, L, { head: [0, -28] });
+    // Daggers: the front one thrusts forward with each stab.
+    const thrust = h.castTime > 0 ? Math.sin((1 - h.castTime / .2) * Math.PI) : 0;
+    const dagger = (x: number, y: number, a: number, len: number) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+      rect(ctx, -1.5, -2, 3, 6, '#3a2a26'); rect(ctx, -4, -3, 8, 2, '#d8dce8');
+      ctx.fillStyle = '#eef0f8'; ctx.beginPath(); ctx.moveTo(-2, -3); ctx.lineTo(0, -3 - len); ctx.lineTo(2, -3); ctx.closePath(); ctx.fill();
+      if (thrust > .2) glow(ctx, 0, -len, 12, '#e0c8ff', thrust * .8);
+      ctx.restore();
+    };
+    dagger(-9, 2, -2.4, 13);
+    const hand = L.hands?.color ?? '#2a2236';
+    circle(ctx, -9, 2, 3.4, hand);
+    dagger(10 + thrust * 12, 0 - thrust * 2, 1.65, 15);
+    circle(ctx, 10 + thrust * 12, 0 - thrust * 2, 3.6, hand);
+    ctx.restore();
+    if (e.nextCrit && Math.random() < .4) this.pushAmbient({ x: h.x + flip * 18 + rand(-4, 4), y: h.y - 4, vx: rand(-8, 8), vy: rand(-30, -10), life: .5, max: .5, size: 1.6, rot: 0, vr: 0, kind: 'mote', color: '#e0c8ff', phase: 0 });
+    this.lights.push({ x: h.x, y: h.y - 10, r: e.stealthT > 0 ? 200 : 300, a: 1 });
   }
   // ───────────────────────────── enemies
   private drawEnemy(ctx: CanvasRenderingContext2D, en: Enemy, e: GameEngine) {
@@ -1300,6 +1442,10 @@ export class Renderer {
       case 'webspinner': this.drawSpider(ctx, base, t, look, flash, trem); break;
       case 'frostwraith': this.drawWraith(ctx, base, t, look, flash); break;
       case 'cragGolem': this.drawGolem(ctx, base, t, look, flash, trem); break;
+      case 'emberImp': this.drawImp(ctx, base, t, look, flash); break;
+      case 'ashScorpion': this.drawScorpion(ctx, base, t, look, flash, trem); break;
+      case 'magmaHulk': this.drawHulk(ctx, base, t, look, flash, trem); break;
+      case 'cinderTyrant': this.drawTyrant(ctx, en, t, look, flash); break;
       case 'mossback': this.drawMossback(ctx, en, t, look, flash, e); break;
       case 'brambleWarden': this.drawWarden(ctx, en, t, look, flash, e); break;
       case 'hollowStar': this.drawHollowStar(ctx, en, t, flash, e); break;
@@ -1307,7 +1453,15 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
     ctx.restore();
-    if (en.stunT > 0) for (let i = 0; i < 3; i++) { const a = t * 6 + i * TAU / 3; ctx.fillStyle = '#bfefff'; star(ctx, en.x + Math.cos(a) * en.r * .9, en.y - en.r * 1.3 + Math.sin(a) * 5, 4, 4, .4, t * 4); ctx.fill(); }
+    if (en.burrowT > 0) return;
+    if (en.frozenT > 0) {
+      // Frozen solid: a block of ice around the creature.
+      const r = en.r * (en.elite ? 1 : 1), k = Math.min(1, en.frozenT * 2);
+      ctx.fillStyle = `rgba(190,235,255,${.32 * k})`; ctx.strokeStyle = `rgba(235,250,255,${.8 * k})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(en.x - r * 1.15, en.y - r * 1.55, r * 2.3, r * 2.25, 6); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${.6 * k})`; ctx.beginPath(); ctx.moveTo(en.x - r * .8, en.y - r * 1.3); ctx.lineTo(en.x - r * .3, en.y - r * .6); ctx.stroke();
+    } else if (en.chillT > 0) glow(ctx, en.x, en.y - en.r * .3, en.r * 1.6, '#9fe4ff', .35);
+    if (en.stunT > 0 && en.frozenT <= 0) for (let i = 0; i < 3; i++) { const a = t * 6 + i * TAU / 3; ctx.fillStyle = '#bfefff'; star(ctx, en.x + Math.cos(a) * en.r * .9, en.y - en.r * 1.3 + Math.sin(a) * 5, 4, 4, .4, t * 4); ctx.fill(); }
     if (en.elite) { glow(ctx, en.x, en.y - en.r * 1.6, 16, '#ffd35c', .7); ctx.fillStyle = '#ffd35c'; star(ctx, en.x, en.y - en.r * 1.6 - 6, 7, 5, .45, t); ctx.fill(); }
     if (!en.boss && en.hp < en.maxHp) {
       const bw = en.elite ? 50 : 34; ctx.fillStyle = 'rgba(10,15,20,.65)'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2 - 1, en.y - en.r - 20, bw + 2, 6, 3); ctx.fill();
@@ -1316,6 +1470,7 @@ export class Renderer {
     if (en.boss && !e.bossUnlocked(en)) this.drawSeal(ctx, en, t, e);
     if (en.kind === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: '#a78bfa', a: .8 });
     if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
+    if (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant') this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
   }
   /** "Lv 9" over creatures near Mira, coloured by how dangerous they are compared to her. */
@@ -1432,6 +1587,92 @@ export class Renderer {
       ctx.fillStyle = dark; ctx.beginPath(); ctx.roundRect(-r * .28, r * .7, r * .56, r * .38, 8); ctx.fill();
       ctx.restore();
     }
+  }
+  /** Ember imp: a little horned fire devil on bat wings, hovering and glowing brighter as it winds up a throw. */
+  private drawImp(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, hover = Math.sin(t * 5) * 4 - 14, flap = Math.sin(t * 18);
+    shadow(ctx, 0, r * .9, r * .9, r * .3, .25);
+    ctx.translate(0, hover);
+    glow(ctx, 0, 0, r * 2.4, '#ff7a3d', .55 + (en.windup > 0 ? .3 : 0));
+    const wing = flash ? '#fff' : enrage('#7a2a1e', en.rage);
+    for (const s of [-1, 1]) { ctx.save(); ctx.scale(s, 1); ctx.rotate(-.3 + flap * .35); ctx.fillStyle = wing; ctx.beginPath(); ctx.moveTo(r * .3, -r * .2); ctx.quadraticCurveTo(r * 1.3, -r * 1.1, r * 1.6, -r * .1); ctx.quadraticCurveTo(r * 1.1, -r * .2, r * 1.2, r * .3); ctx.quadraticCurveTo(r * .8, 0, r * .3, r * .2); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    const body = flash ? '#fff' : enrage(en.elite ? '#c0391e' : '#e0572a', en.rage);
+    ctx.strokeStyle = body; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, r * .6); ctx.quadraticCurveTo(-r * .6, r * 1.2 + Math.sin(t * 6) * 3, -r * .9, r * .9); ctx.stroke();
+    ellipse(ctx, 0, 0, r * .75, r * .85, body);
+    ellipse(ctx, -r * .2, -r * .3, r * .25, r * .2, 'rgba(255,220,150,.45)');
+    ctx.fillStyle = '#3a2420';
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .35, -r * .6); ctx.quadraticCurveTo(s * r * .75, -r * 1.2, s * r * .45, -r * 1.4); ctx.lineTo(s * r * .18, -r * .72); ctx.fill(); }
+    this.eyes(ctx, look.x * 2, -r * .15, r * .3, r * .17, look, t, en.aggro, '#fff1b8');
+    if (en.windup > 0) { const k = 1 - en.windup / .5; glow(ctx, look.x * r, look.y * r, r * (1 + k), '#ffd27a', .9); circle(ctx, look.x * r * .9, look.y * r * .9 - 2, r * .3 * (.5 + k), '#fff1b8'); }
+  }
+  /** Ash scorpion: a sand-coloured scorpion with its tail arched; while burrowed only a moving mound of sand shows. */
+  private drawScorpion(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
+    const r = en.r;
+    if (en.burrowT > 0) {
+      const w = r * 1.3 + Math.sin(t * 12) * 2;
+      ellipse(ctx, 0, r * .5, w, r * .45, '#9a7650'); ellipse(ctx, -r * .2, r * .35, w * .6, r * .25, '#c9a26e');
+      for (let i = 0; i < 4; i++) { const a = t * 6 + i * 1.6; circle(ctx, Math.cos(a) * w * .9, r * .5 + Math.sin(a) * r * .2, 2.5, '#6a4e34'); }
+      return;
+    }
+    const dir = look.x >= 0 ? 1 : -1, walk = en.aggro ? Math.sin(t * 14) : Math.sin(t * 4) * .3, sting = en.windup > 0 ? 1 - en.windup / .5 : en.lunge > 0 ? 1 : 0;
+    shadow(ctx, 0, r * .6, r * 1.3, r * .35);
+    ctx.translate(trem, 0); ctx.scale(dir, 1);
+    const shell = flash ? '#fff' : enrage(en.elite ? '#8a4a2a' : '#b0764a', en.rage), dark = flash ? '#fff' : enrage('#6a4428', en.rage);
+    ctx.strokeStyle = dark; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) { const lx = -r * .5 + i * r * .33, ph = (i % 2 ? 1 : -1) * walk * 4; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx + ph, s * r * .55 + r * .25); ctx.stroke(); } }
+    ellipse(ctx, 0, 0, r * .8, r * .45, shell); ellipse(ctx, r * .6, -r * .05, r * .35, r * .3, shell);
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-r * .3 + i * r * .3, 0, r * .4, -1.2, 1.2); ctx.stroke(); }
+    for (const s of [-1, 1]) { ctx.save(); ctx.translate(r * .9, s * r * .25); ctx.rotate(s * .4 - (sting ? s * .3 : 0)); ellipse(ctx, r * .25, 0, r * .3, r * .14, shell); ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(r * .45, -r * .12); ctx.lineTo(r * .7, 0); ctx.lineTo(r * .45, r * .05); ctx.fill(); ctx.restore(); }
+    const up = .6 + sting * .6;
+    ctx.strokeStyle = shell; ctx.lineWidth = r * .28; ctx.beginPath(); ctx.moveTo(-r * .7, 0); ctx.quadraticCurveTo(-r * 1.4, -r * 1.2 * up, -r * .4, -r * 1.5 * up); ctx.stroke();
+    ctx.fillStyle = '#3a2418'; ctx.beginPath(); ctx.moveTo(-r * .45, -r * 1.55 * up); ctx.lineTo(r * .05 + sting * r * .3, -r * 1.3 * up + sting * r * .4); ctx.lineTo(-r * .3, -r * 1.35 * up); ctx.fill();
+    glow(ctx, -r * .2, -r * 1.4 * up, r * .5, '#b9e27a', .3 + sting * .5);
+    circle(ctx, r * .75, -r * .15, 2.2, '#ffd27a'); circle(ctx, r * .75, r * .05, 2.2, '#ffd27a');
+  }
+  /** Magma hulk: a lumbering heap of basalt with lava running through its cracks; it raises its fists to crack the ground. */
+  private drawHulk(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
+    const r = en.r, raise = en.windup > 0 ? 1 - en.windup / 1.1 : 0, step = en.aggro ? Math.sin(t * 3.5) : 0;
+    shadow(ctx, 0, r * .8, r * 1.35, r * .42);
+    ctx.translate(trem * 2, -raise * 8);
+    const rock = flash ? '#fff' : enrage(en.elite ? '#2e2220' : '#4a3a36', en.rage), dark = flash ? '#fff' : '#2a1e1c', lava = en.windup > 0 ? '#fff1b8' : '#ff7a3d';
+    for (const s of [-1, 1]) { ctx.fillStyle = dark; ctx.beginPath(); ctx.roundRect(s * r * .3 - r * .22, r * .15 + step * s * 3, r * .44, r * .6, 7); ctx.fill(); }
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.moveTo(-r * .85, r * .35); ctx.lineTo(-r, -r * .4); ctx.lineTo(-r * .55, -r * 1.05); ctx.lineTo(0, -r * 1.15); ctx.lineTo(r * .55, -r * 1.05); ctx.lineTo(r, -r * .4); ctx.lineTo(r * .85, r * .35); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = lava; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (const [a, b, c2, d] of [[-.6, -.8, -.2, -.2], [-.2, -.2, .3, -.6], [.3, -.6, .7, -.3], [-.1, -.2, 0, .25]] as Array<[number, number, number, number]>) { ctx.beginPath(); ctx.moveTo(a * r, b * r); ctx.lineTo(c2 * r, d * r); ctx.stroke(); }
+    glow(ctx, 0, -r * .4, r * 1.3, '#ff7a3d', .55 + raise * .45);
+    for (const s of [-1, 1]) { ellipse(ctx, look.x * 3 + s * r * .28, -r * .75, 4.5, 3, '#ffd27a'); glow(ctx, look.x * 3 + s * r * .28, -r * .75, 10, '#ffb347', .8); }
+    for (const s of [-1, 1]) {
+      ctx.save(); ctx.translate(s * r * .98, -r * .5); ctx.rotate(s * (.3 - raise * 2.4) + step * .1);
+      ctx.fillStyle = rock; ctx.beginPath(); ctx.roundRect(-r * .24, 0, r * .48, r * .82, 8); ctx.fill();
+      ctx.fillStyle = dark; ctx.beginPath(); ctx.roundRect(-r * .3, r * .72, r * .6, r * .4, 8); ctx.fill();
+      ctx.fillStyle = lava; ctx.fillRect(-r * .2, r * .86, r * .4, 3);
+      ctx.restore();
+    }
+  }
+  /** Pyrrhus, the Cinder Tyrant: a basalt-armoured fire giant with a crown of flame and a molten hammer. */
+  private drawTyrant(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, ph = en.phase, slam = en.action === 'slam' ? 1 - en.actionT / 1.25 : 0, walk = en.aggro ? Math.sin(t * 5) : 0;
+    shadow(ctx, 0, r * .95, r * 1.5, r * .5, .45);
+    glow(ctx, 0, -r * .5, r * 3.2, ph > 1 ? '#ff3d1f' : '#ff7a3d', .55);
+    const armour = flash ? '#fff' : ph > 1 ? '#3a1e1a' : '#2e2422', seam = ph > 1 ? '#ffd27a' : '#ff7a3d';
+    for (const s of [-1, 1]) { ctx.fillStyle = armour; ctx.beginPath(); ctx.roundRect(s * r * .32 - r * .2, r * .3 + walk * s * 4, r * .4, r * .65, 8); ctx.fill(); ctx.fillStyle = seam; ctx.fillRect(s * r * .32 - r * .12, r * .55 + walk * s * 4, r * .24, 3); }
+    ctx.fillStyle = armour; ctx.beginPath(); ctx.moveTo(-r * .75, r * .45); ctx.lineTo(-r * 1.05, -r * .6); ctx.lineTo(-r * .45, -r * 1.05); ctx.lineTo(r * .45, -r * 1.05); ctx.lineTo(r * 1.05, -r * .6); ctx.lineTo(r * .75, r * .45); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = seam; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(0, -r * .95); ctx.lineTo(0, r * .35); ctx.moveTo(-r * .8, -r * .4); ctx.quadraticCurveTo(0, -r * .1, r * .8, -r * .4); ctx.stroke();
+    glow(ctx, 0, -r * .35, r * .9, seam, .8);
+    for (const s of [-1, 1]) { ctx.fillStyle = '#4a3632'; ctx.beginPath(); ctx.ellipse(s * r * .95, -r * .75, r * .38, r * .26, s * .3, 0, TAU); ctx.fill(); ctx.fillStyle = seam; ctx.beginPath(); ctx.moveTo(s * r * .8, -r * .95); ctx.lineTo(s * r * 1.15, -r * 1.35); ctx.lineTo(s * r * 1.05, -r * .85); ctx.fill(); }
+    // Head: horned helm, burning eyes, a crown of flame.
+    ctx.fillStyle = '#1e1614'; ctx.beginPath(); ctx.roundRect(-r * .35, -r * 1.55, r * .7, r * .6, 10); ctx.fill();
+    for (const s of [-1, 1]) { ctx.fillStyle = '#3a2a26'; ctx.beginPath(); ctx.moveTo(s * r * .3, -r * 1.45); ctx.quadraticCurveTo(s * r * .8, -r * 1.7, s * r * .7, -r * 2.05); ctx.lineTo(s * r * .22, -r * 1.55); ctx.fill(); }
+    for (const s of [-1, 1]) { ellipse(ctx, look.x * 4 + s * r * .14, -r * 1.25, r * .09, r * .05, '#fff1b8'); glow(ctx, look.x * 4 + s * r * .14, -r * 1.25, 16, '#ffb347', .9); }
+    this.drawFlame(ctx, 0, -r * 1.55, ph > 1 ? 1.1 : .8, ph > 1 ? '#ff5f3d' : '#ffb347');
+    // The hammer: raised high, then brought down in a slam.
+    const ang = en.action === 'slam' ? -2.4 + Math.min(1, slam * 1.6) * 2.6 : -.7 + Math.sin(t * 1.5) * .08;
+    ctx.save(); ctx.translate(r * 1.05, -r * .55); ctx.rotate(ang);
+    ctx.fillStyle = '#3a2a26'; ctx.fillRect(-4, -r * 1.3, 8, r * 1.35);
+    ctx.fillStyle = '#2a1e1c'; ctx.beginPath(); ctx.roundRect(-r * .38, -r * 1.65, r * .76, r * .45, 6); ctx.fill();
+    ctx.fillStyle = seam; ctx.fillRect(-r * .32, -r * 1.46, r * .64, 4); glow(ctx, 0, -r * 1.43, r * .6, seam, .7);
+    ctx.restore();
   }
   /** Umbra: a black sun wearing the powers of all three guardians — moss, thorns and a hollow star circle it. */
   private drawEclipse(ctx: CanvasRenderingContext2D, en: Enemy, t: number, flash: boolean) {
@@ -1586,7 +1827,7 @@ export class Renderer {
   // ───────────────────────────── combat visuals
   private drawHazardGround(ctx: CanvasRenderingContext2D, z: Hazard) {
     const p = 1 - z.delay / z.maxDelay, t = this.time;
-    const hero = z.owner === 'hero', c = z.kind === 'firebomb' ? '#ff8a3d' : z.kind === 'frostbomb' ? '#8fd8ff' : z.kind === 'lightning' ? '#ffe96b' : hero ? '#ffe38a' : z.kind === 'meteor' ? '#c9b6ff' : z.kind === 'spore' ? '#a8e060' : '#ff6b5b';
+    const hero = z.owner === 'hero', c = z.kind === 'firebomb' ? '#ff8a3d' : z.kind === 'frostbomb' || z.kind === 'frostnova' ? '#8fd8ff' : z.kind === 'blizzard' ? '#dff6ff' : z.kind === 'lightning' ? '#ffe96b' : z.kind === 'lava' ? '#ff7a3d' : hero ? '#ffe38a' : z.kind === 'meteor' ? '#c9b6ff' : z.kind === 'spore' ? '#a8e060' : '#ff6b5b';
     ctx.save(); ctx.translate(z.x, z.y); ctx.scale(1, .62);
     ctx.fillStyle = alpha(c, .1 + p * .14); ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.fill();
     ctx.fillStyle = alpha(c, .25); ctx.beginPath(); ctx.arc(0, 0, z.r * p, 0, TAU); ctx.fill();
@@ -1595,6 +1836,7 @@ export class Renderer {
     if (z.kind === 'slam') { ctx.strokeStyle = alpha(c, .5 * p); ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * TAU / 8; ctx.beginPath(); ctx.moveTo(Math.cos(a) * z.r * .2, Math.sin(a) * z.r * .2); ctx.lineTo(Math.cos(a + .1) * z.r * .9 * p, Math.sin(a + .1) * z.r * .9 * p); ctx.stroke(); } }
     if (z.kind === 'root' && p > .6) { ctx.fillStyle = '#6f5337'; for (let i = 0; i < 3; i++) { const a = i * 2.1; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 10 - 4, Math.sin(a) * 10); ctx.lineTo(Math.cos(a) * 10, Math.sin(a) * 10 - 18 * (p - .6) * 2.5); ctx.lineTo(Math.cos(a) * 10 + 4, Math.sin(a) * 10); ctx.fill(); } }
     ctx.restore();
+    if (z.kind === 'lava' && !hero) { glow(ctx, z.x, z.y, z.r * (.6 + p * .6), '#ff5f3d', .35 + p * .35); this.lights.push({ x: z.x, y: z.y, r: z.r * 1.4, color: '#ff7a3d', a: .4 + p * .5 }); }
     if (z.kind === 'boulder' || z.kind === 'meteor' || z.kind === 'starfall') shadow(ctx, z.x, z.y, z.r * .5 * p, z.r * .22 * p, .35);
     else if (z.kind === 'firebomb' || z.kind === 'frostbomb') shadow(ctx, z.x, z.y, 14 * p, 6 * p, .35);
   }
@@ -1627,9 +1869,9 @@ export class Renderer {
       ctx.save(); ctx.translate(x, y); ctx.rotate(p * 9);
       ctx.fillStyle = '#7d8070'; ctx.beginPath(); ctx.moveTo(-16, -6); ctx.lineTo(-6, -16); ctx.lineTo(12, -13); ctx.lineTo(17, 4); ctx.lineTo(6, 16); ctx.lineTo(-13, 12); ctx.closePath(); ctx.fill();
       ellipse(ctx, -4, -6, 7, 4, '#6f9a4c'); ctx.restore();
-    } else if (z.kind === 'meteor' || z.kind === 'starfall') {
+    } else if (z.kind === 'meteor' || z.kind === 'starfall' || ((z.kind === 'lava' || z.kind === 'blizzard') && z.fromY < z.y - 250)) {
       const q = p * p, x = z.fromX + (z.x - z.fromX) * q, y = z.fromY + (z.y - z.fromY) * q;
-      const c = z.kind === 'meteor' ? '#a78bfa' : '#ffe38a';
+      const c = z.kind === 'meteor' ? '#a78bfa' : z.kind === 'lava' ? '#ff7a3d' : z.kind === 'blizzard' ? '#dff6ff' : '#ffe38a';
       const dx = z.x - z.fromX, dy = z.y - z.fromY, len = Math.hypot(dx, dy);
       const tl = 120, tx = x - dx / len * tl, ty = y - dy / len * tl;
       const g = ctx.createLinearGradient(tx, ty, x, y); g.addColorStop(0, alpha(c, 0)); g.addColorStop(1, alpha(c, .9));
@@ -1686,6 +1928,26 @@ export class Renderer {
         for (let i = 0; i < 6; i++) { const a = i * TAU / 6; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 11, Math.sin(a) * 11); ctx.stroke(); }
         for (const rr of [4, 8]) { ctx.beginPath(); for (let i = 0; i <= 6; i++) { const a = i * TAU / 6; i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.stroke(); }
         ctx.restore();
+      } else if (p.kind === 'frost') {
+        // Lyra's frost bolt: a long ice shard with a trail of cold light.
+        const a = Math.atan2(p.vy, p.vx), c = p.crit ? '#ffffff' : '#9fe4ff';
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+        const g = ctx.createLinearGradient(-34, 0, 0, 0); g.addColorStop(0, 'rgba(159,228,255,0)'); g.addColorStop(1, 'rgba(159,228,255,.6)');
+        ctx.fillStyle = g; ctx.fillRect(-34, -3, 34, 6);
+        glow(ctx, 0, 0, p.r * 3.2, c, .9);
+        ctx.fillStyle = '#f2fbff'; ctx.beginPath(); ctx.moveTo(p.r * 2, 0); ctx.lineTo(-p.r * .6, -p.r * .8); ctx.lineTo(-p.r * 1.4, 0); ctx.lineTo(-p.r * .6, p.r * .8); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        this.lights.push({ x: p.x, y: p.y, r: 90, color: '#9fe4ff', a: .9 });
+      } else if (p.kind === 'knife') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + Math.PI / 2);
+        glow(ctx, 0, 0, 12, '#e0c8ff', .6);
+        rect(ctx, -1.5, 2, 3, 5, '#3a2a26'); ctx.fillStyle = '#eef0f8'; ctx.beginPath(); ctx.moveTo(-2.5, 2); ctx.lineTo(0, -10); ctx.lineTo(2.5, 2); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      } else if (p.kind === 'fire') {
+        const fl = 1 + Math.sin(t * 36 + p.x) * .12, c = p.owner === 'hero' ? '#9fe8b0' : '#ff7a3d';
+        glow(ctx, p.x, p.y, p.r * 3.4 * fl, c, .95);
+        circle(ctx, p.x, p.y, p.r * fl, p.owner === 'hero' ? '#e6ffe9' : '#ffd27a'); circle(ctx, p.x, p.y, p.r * .5, '#fff6d8');
+        this.lights.push({ x: p.x, y: p.y, r: 80, color: c, a: .9 });
       } else if (p.kind === 'ice') {
         const a = Math.atan2(p.vy, p.vx);
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
@@ -1728,7 +1990,16 @@ export class Renderer {
   /** Kael's sword swings: a bright crescent that sweeps and fades. */
   private drawSlashes(ctx: CanvasRenderingContext2D, e: GameEngine) {
     for (const sl of e.slashes) {
-      const k = sl.life / sl.max, sweep = 1 - k, a0 = sl.angle - 1.25, a1 = a0 + 2.5 * Math.min(1, sweep * 1.8 + .25);
+      const k = sl.life / sl.max, sweep = 1 - k;
+      if (sl.narrow) {
+        // Riven's dagger thrusts: two quick straight streaks.
+        ctx.save(); ctx.translate(sl.x, sl.y); ctx.rotate(sl.angle); ctx.lineCap = 'round';
+        for (const off of [-7, 7]) { const len = sl.reach * Math.min(1, sweep * 2 + .3); ctx.strokeStyle = alpha(sl.color || '#ffffff', .8 * k); ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(18, off); ctx.lineTo(len, off * .4); ctx.stroke(); ctx.strokeStyle = `rgba(255,255,255,${k})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+        ctx.restore();
+        this.lights.push({ x: sl.x + Math.cos(sl.angle) * 50, y: sl.y + Math.sin(sl.angle) * 40, r: 100, color: sl.color || '#e0c8ff', a: k });
+        continue;
+      }
+      const a0 = sl.angle - 1.25, a1 = a0 + 2.5 * Math.min(1, sweep * 1.8 + .25);
       ctx.save(); ctx.translate(sl.x, sl.y); ctx.scale(1, .8);
       ctx.lineCap = 'round';
       for (const [w, c, r] of [[22, `rgba(255,180,110,${.25 * k})`, sl.reach * .8], [10, `rgba(255,230,200,${.75 * k})`, sl.reach * .82], [3, `rgba(255,255,255,${k})`, sl.reach * .86]] as Array<[number, string, number]>) {
@@ -1736,6 +2007,28 @@ export class Renderer {
       }
       ctx.restore();
       this.lights.push({ x: sl.x + Math.cos(sl.angle) * 60, y: sl.y + Math.sin(sl.angle) * 50, r: 140, color: '#ffd0a0', a: k });
+    }
+  }
+  /** Riven's Death Marks counting down over their targets, and Lyra's Blizzards swirling over the ground. */
+  private drawSpellMarks(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const t = this.time;
+    for (const s of e.storms) {
+      const k = Math.min(1, s.t * 2, (4 - s.t) * 3);
+      ctx.save(); ctx.translate(s.x, s.y); ctx.scale(1, .62);
+      ctx.fillStyle = `rgba(210,240,255,${.12 * k})`; ctx.beginPath(); ctx.arc(0, 0, 190, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(230,250,255,${.5 * k})`; ctx.lineWidth = 3; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 60;
+      ctx.beginPath(); ctx.arc(0, 0, 190, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      for (let i = 0; i < 5; i++) { const a = t * .6 + i * 1.3; ctx.fillStyle = `rgba(235,245,255,${.18 * k})`; ctx.beginPath(); ctx.ellipse(s.x + Math.cos(a) * 90, s.y - 240 + Math.sin(a * 1.3) * 20, 110, 40, 0, 0, TAU); ctx.fill(); }
+      this.lights.push({ x: s.x, y: s.y, r: 260, color: '#9fe4ff', a: .6 * k });
+    }
+    for (const m of e.marks) {
+      const en = m.e, k = 1 - m.t / m.max, y = en.y - en.r * 2.1 - 10, pulse = 1 + Math.sin(t * (8 + k * 14)) * .12;
+      glow(ctx, en.x, y, 26 * pulse, '#ff6b9a', .7 + k * .3);
+      ctx.strokeStyle = 'rgba(255,107,154,.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(en.x, y, 15, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+      circle(ctx, en.x, y, 8 * pulse, '#2a1838'); ctx.fillStyle = '#ff9ac0'; ctx.font = `900 11px ${UI}`; ctx.textAlign = 'center'; ctx.fillText('☠', en.x, y + 4);
+      ctx.save(); ctx.translate(en.x, en.y); ctx.scale(1, .6); ctx.strokeStyle = `rgba(255,107,154,${.35 + k * .4})`; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = t * 40; ctx.beginPath(); ctx.arc(0, 0, en.r + 16, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+      this.lights.push({ x: en.x, y, r: 90, color: '#ff6b9a', a: .8 });
     }
   }
   private drawParticles(ctx: CanvasRenderingContext2D, list: Particle[]) {
@@ -1802,14 +2095,14 @@ export class Renderer {
     const counts: Partial<Record<AmbientKind, number>> = {};
     for (const a of this.ambient) counts[a.kind] = (counts[a.kind] || 0) + 1;
     const reduce = (this.reduced ? .3 : 1) * this.quality;
-    const want: Array<[AmbientKind, number]> = kind === 'petals' ? [['petal', 30], ['butterfly', 6], ['mote', 14]] : kind === 'leaves' ? [['leaf', 24], ['firefly', 34], ['mote', 10]] : [['snow', 70], ['mote', 20]];
+    const want: Array<[AmbientKind, number]> = kind === 'petals' ? [['petal', 30], ['butterfly', 6], ['mote', 14]] : kind === 'leaves' ? [['leaf', 24], ['firefly', 34], ['mote', 10]] : kind === 'embers' ? [['ash', 46], ['mote', 30]] : [['snow', 70], ['mote', 20]];
     for (const [k, n] of want) {
       let have = counts[k] || 0;
       while (have < n * area * reduce) {
         const x = v.x + rand(-100, v.w + 50), y = v.y + rand(-40, v.h * .6);
-        const c = k === 'petal' ? pick(['#f7c5d5', '#ffffff', '#ffd6e5']) : k === 'leaf' ? pick(['#e8a54b', '#c9713d', '#a3c46a']) : k === 'firefly' ? pick(['#ffe38a', '#d8ff9a']) : k === 'butterfly' ? pick(['#ffb35c', '#9fd8ff', '#f2a1b8', '#fff49b']) : k === 'snow' ? '#eef2ff' : kind === 'stars' ? pick(['#c9b6ff', '#8ee8ff']) : '#fff8c0';
-        const life = rand(6, 14);
-        this.ambient.push({ x, y, vx: k === 'snow' ? rand(-8, 12) : rand(10, 30), vy: k === 'snow' ? rand(18, 40) : k === 'petal' || k === 'leaf' ? rand(20, 38) : rand(-6, 6), life, max: life, size: k === 'snow' ? rand(1, 2.6) : k === 'butterfly' ? rand(5, 7) : k === 'firefly' ? rand(1.8, 2.8) : k === 'mote' ? rand(1, 2) : rand(3.5, 6), rot: rand(0, 6), vr: rand(-3, 3), kind: k, color: c, phase: rand(0, 6.28) });
+        const c = k === 'petal' ? pick(['#f7c5d5', '#ffffff', '#ffd6e5']) : k === 'leaf' ? pick(['#e8a54b', '#c9713d', '#a3c46a']) : k === 'firefly' ? pick(['#ffe38a', '#d8ff9a']) : k === 'butterfly' ? pick(['#ffb35c', '#9fd8ff', '#f2a1b8', '#fff49b']) : k === 'snow' ? '#eef2ff' : k === 'ash' ? pick(['#8a8078', '#5a524e', '#b0a498']) : kind === 'stars' ? pick(['#c9b6ff', '#8ee8ff']) : kind === 'embers' ? pick(['#ffb347', '#ff7a3d', '#ffd27a']) : '#fff8c0';
+        const life = rand(6, 14), rising = kind === 'embers' && k === 'mote';
+        this.ambient.push({ x, y: rising ? v.y + rand(v.h * .3, v.h + 40) : y, vx: k === 'snow' || k === 'ash' ? rand(-8, 12) : rand(10, 30), vy: k === 'snow' ? rand(18, 40) : k === 'ash' ? rand(12, 26) : rising ? rand(-40, -18) : k === 'petal' || k === 'leaf' ? rand(20, 38) : rand(-6, 6), life, max: life, size: k === 'snow' || k === 'ash' ? rand(1, 2.6) : k === 'butterfly' ? rand(5, 7) : k === 'firefly' ? rand(1.8, 2.8) : k === 'mote' ? rand(1, 2) : rand(3.5, 6), rot: rand(0, 6), vr: rand(-3, 3), kind: k, color: c, phase: rand(0, 6.28) });
         have++;
       }
     }
@@ -1817,7 +2110,7 @@ export class Renderer {
     for (let i = this.ambient.length - 1; i >= 0; i--) {
       const a = this.ambient[i]; a.life -= dt;
       if (a.kind === 'petal' || a.kind === 'leaf') { a.x += (a.vx * w + Math.sin(t * 2 + a.phase) * 26) * dt; a.y += a.vy * dt; a.rot += a.vr * dt; }
-      else if (a.kind === 'snow') { a.x += (a.vx + Math.sin(t + a.phase) * 10) * dt; a.y += a.vy * dt; }
+      else if (a.kind === 'snow' || a.kind === 'ash') { a.x += (a.vx + Math.sin(t + a.phase) * 10) * dt; a.y += a.vy * dt; }
       else if (a.kind === 'firefly' || a.kind === 'mote') { a.x += (a.vx * .3 + Math.sin(t * .9 + a.phase) * 18) * dt; a.y += (a.vy + Math.cos(t * 1.1 + a.phase) * 14) * dt; }
       else if (a.kind === 'butterfly') { a.x += (Math.sin(t * .5 + a.phase) * 60) * dt; a.y += (Math.cos(t * .7 + a.phase * 2) * 40) * dt; }
       else { a.x += a.vx * dt; a.y += a.vy * dt; a.size += dt * 4; }
@@ -1839,6 +2132,7 @@ export class Renderer {
         if (b > .3) this.lights.push({ x: a.x, y: a.y, r: 46, color: a.color, a: b * .8 });
       } else if (a.kind === 'mote') { glow(ctx, a.x, a.y, a.size * 5, a.color, .6 * fade); circle(ctx, a.x, a.y, a.size, a.color); }
       else if (a.kind === 'snow') circle(ctx, a.x, a.y, a.size, 'rgba(238,242,255,.85)');
+      else if (a.kind === 'ash') { ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.phase + t); ctx.fillStyle = a.color; ctx.fillRect(-a.size, -a.size * .5, a.size * 2, a.size); ctx.restore(); }
       else if (a.kind === 'smoke') { ctx.globalAlpha = fade * .6; circle(ctx, a.x, a.y, a.size, a.color); }
       else if (a.kind === 'butterfly') {
         const flap = Math.abs(Math.sin(t * 13 + a.phase));
@@ -1860,12 +2154,13 @@ export class Renderer {
   }
 
   // ───────────────────────────── screen-space
-  private drawLighting(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, toScreen: (p: Point) => Point, scale: number, darkness: number, starry: boolean) {
+  /** `tint` is the night colour: deep blue on the Summit, teal in the woods, smoky red in the Ember Wastes. */
+  private drawLighting(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, toScreen: (p: Point) => Point, scale: number, darkness: number, tint: string) {
     const lc = this.lightCanvas, s = this.quality > .5 ? .5 : this.quality > .4 ? .3 : .22, lw = Math.ceil(w * s), lh = Math.ceil(h * s);
     if (lc.width !== lw || lc.height !== lh) { lc.width = lw; lc.height = lh; }
     const l = lc.getContext('2d')!;
     l.globalCompositeOperation = 'source-over'; l.clearRect(0, 0, lw, lh);
-    l.fillStyle = starry ? `rgba(8,8,32,${darkness * (1 - e.flash * .7)})` : `rgba(6,20,22,${darkness * (1 - e.flash * .7)})`;
+    l.fillStyle = `rgba(${tint},${darkness * (1 - e.flash * .7)})`;
     l.fillRect(0, 0, lw, lh);
     l.globalCompositeOperation = 'destination-out';
     const white = glowSprite('#ffffff');
@@ -2009,7 +2304,7 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'cage') { const q = P(o); glow(ctx, q.x, q.y, 9 * size, '#ff6b5b', .7); dot(o, 2.8, e.quest(o.questId!)?.main ? MAIN_COLOR : SIDE_COLOR); }
     else if (o.kind === 'campfire' || o.kind === 'fountain') dot(o, 2, o.kind === 'fountain' ? '#9fd8ff' : '#ffb347');
   }
-  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
+  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const mt = e.mainTarget(); if (mt && inside(mt) && size > 1) { const q = P(mt); ctx.strokeStyle = MAIN_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (6 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
@@ -2020,25 +2315,44 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
   ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -4); ctx.lineTo(-1.5, 0); ctx.lineTo(-4, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.restore();
 }
-/** Full-screen map of one region, used by the map overlay. */
-export function drawWorldMap(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, t: number, regionIndex: number) {
-  const world = e.world, map = worldMapCanvas(world), reg = world.regions[clamp(regionIndex, 0, world.regions.length - 1)];
-  const RW = reg.x1 - reg.x0, S = Math.min((w - 16) / RW, (h - 16) / world.height), mw = RW * S, mh = world.height * S, ox = (w - mw) / 2, oy = (h - mh) / 2;
+/**
+ * Full-screen map of the whole valley, used by the map overlay. `view` is the world point at the centre of the canvas and
+ * the scale in screen px per world px. Zoomed out, each land shows its name; zoomed in, every discovered place does.
+ */
+export function drawWorldMap(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, t: number, view: { cx: number; cy: number; S: number }) {
+  const world = e.world, map = worldMapCanvas(world), S = view.S;
+  const ox = w / 2 - view.cx * S, oy = h / 2 - view.cy * S, mw = world.width * S, mh = world.height * S;
   ctx.clearRect(0, 0, w, h);
-  ctx.save(); ctx.beginPath(); ctx.roundRect(ox, oy, mw, mh, 14); ctx.clip();
-  ctx.drawImage(map, reg.x0 * MAP_SCALE, 0, RW * MAP_SCALE, world.height * MAP_SCALE, ox, oy, mw, mh);
-  drawFog(ctx, e, ox - reg.x0 * S, oy, S);
-  const P = (p: Point) => ({ x: ox + (p.x - reg.x0) * S, y: oy + p.y * S });
+  ctx.save(); ctx.beginPath(); ctx.roundRect(Math.max(0, ox), Math.max(0, oy), Math.min(w, ox + mw) - Math.max(0, ox), Math.min(h, oy + mh) - Math.max(0, oy), 14); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(map, 0, 0, map.width, map.height, ox, oy, mw, mh);
+  drawFog(ctx, e, ox, oy, S);
+  const P = (p: Point) => ({ x: ox + p.x * S, y: oy + p.y * S });
+  const inView = (p: Point, pad = 60) => { const q = P(p); return q.x > -pad && q.x < w + pad && q.y > -pad && q.y < h + pad; };
   ctx.textAlign = 'center';
-  for (const poi of world.pois) {
-    if (poi.region !== reg.id) continue;
+  // Borders between the lands.
+  ctx.strokeStyle = 'rgba(255,240,200,.18)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 8]);
+  for (const r of world.regions.slice(1)) { const q = P({ x: r.x0, y: 0 }); ctx.beginPath(); ctx.moveTo(q.x, oy); ctx.lineTo(q.x, oy + mh); ctx.stroke(); }
+  ctx.setLineDash([]);
+  const labels = S * 140 >= 9;
+  if (labels) for (const poi of world.pois) {
+    if (!inView(poi)) continue;
     const q = P(poi), known = e.discovered.has(poi.id);
     if (!known && !seen(e, poi)) { ctx.fillStyle = 'rgba(255,247,223,.35)'; ctx.font = `900 14px ${UI}`; ctx.fillText('?', q.x, q.y + 5); continue; }
     const big = poi.kind === 'city';
-    ctx.font = `${big ? 900 : 700} ${Math.round(clamp(S * (big ? 190 : 140), 10, big ? 18 : 15))}px ${DISPLAY}`;
+    ctx.font = `${big ? 900 : 700} ${Math.round(clamp(S * (big ? 190 : 140), 10, big ? 20 : 16))}px ${DISPLAY}`;
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,12,20,.8)'; ctx.strokeText(poi.name, q.x, q.y - 10); ctx.fillStyle = big ? '#ffe9a8' : known ? '#fff4d6' : 'rgba(255,244,214,.6)'; ctx.fillText(poi.name, q.x, q.y - 10);
   }
-  drawMapMarkers(ctx, e, P, 1.4, t, reg.x0, reg.x1);
+  // Each land's name across its top, bigger when zoomed out.
+  for (const r of world.regions) {
+    const q = P({ x: (r.x0 + r.x1) / 2, y: 0 }), size = Math.round(clamp(S * 420, 13, 26));
+    if (q.x < -300 || q.x > w + 300) continue;
+    ctx.font = `900 ${size}px ${DISPLAY}`; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(10,12,20,.85)';
+    const y = Math.max(oy, 0) + size + 8;
+    ctx.strokeText(r.title, q.x, y); ctx.fillStyle = r.palette.accent; ctx.fillText(r.title, q.x, y);
+    ctx.font = `800 ${Math.max(10, size * .5)}px ${UI}`; ctx.strokeText(`Chapter ${r.chapter} · Lv ${r.levels[0]}–${r.levels[1]}`, q.x, y + size * .75); ctx.fillStyle = 'rgba(255,244,214,.8)'; ctx.fillText(`Chapter ${r.chapter} · Lv ${r.levels[0]}–${r.levels[1]}`, q.x, y + size * .75);
+  }
+  drawMapMarkers(ctx, e, P, clamp(S * 18, .9, 1.5), t);
   ctx.restore();
   ctx.strokeStyle = 'rgba(245,215,130,.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(ox, oy, mw, mh, 14); ctx.stroke();
 }

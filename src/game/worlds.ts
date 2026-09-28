@@ -2,7 +2,7 @@ import { buildValley, type RegionSpec } from './worldgen';
 import { STORY, type StoryQuest } from './story';
 import type { Captive, NpcLook, Region, RegionId, WorldDefinition } from './types';
 
-export const LEVEL_ORDER: RegionId[] = ['meadow', 'woods', 'summit'];
+export const LEVEL_ORDER: RegionId[] = ['meadow', 'woods', 'summit', 'ember'];
 
 const look = (robe: string, hat: NpcLook['hat'], extra: Partial<NpcLook> = {}): Partial<NpcLook> => ({ robe, hat, hatColor: extra.hatColor || '#4a5b3e', skin: '#f0c8a2', hair: '#6b3f2a', ...extra });
 const q = (def: StoryQuest) => def;
@@ -11,6 +11,7 @@ const shopLines = {
   merchant: ['Potions, tonics and brews — gold on the counter, please.'],
   smith: ['Bring gold and I’ll make that staff sing.'],
   inn: ['A warm bed and a hot meal. Rest as long as you like.'],
+  armorer: ['Fine gear is never cheap. Come back when you have grown — my shelf grows with you.'],
 };
 
 // ═════════════════════════════ Chapter I · Sunpetal Meadow · levels 1–6
@@ -58,6 +59,7 @@ const meadow: RegionSpec = {
     { id: 'tom', name: 'Baker Tom', portrait: '🧑‍🍳', at: 'city', dx: 90, dy: 260, activity: 'sweep', look: look('#e8e2d0', 'cap', { hatColor: '#ffffff' }), lines: ['Honey buns! Still warm!'], barks: ['Fresh bread!'] },
     { id: 'merchant', name: 'Merchant Pell', portrait: '🧪', at: 'city', dx: -120, dy: -130, activity: 'idle', role: 'merchant', look: look('#3f7a6a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions! Get your potions!'] },
     { id: 'smith', name: 'Smith Hilda', portrait: '⚒️', at: 'city', dx: 330, dy: 80, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Clang!'] },
+    { id: 'armorer', name: 'Armourer Brisk', portrait: '🛡️', at: 'city', dx: 150, dy: 120, activity: 'idle', role: 'armorer', look: look('#5a4a6a', 'helm', { hatColor: '#b8bcc6' }), lines: shopLines.armorer, barks: ['Only the finest!'] },
     { id: 'inn', name: 'Innkeeper Rosa', portrait: '🛏️', at: 'city', dx: -320, dy: 20, activity: 'idle', role: 'inn', look: look('#b07a5a', 'bonnet', { hatColor: '#e0525c' }), lines: shopLines.inn, barks: ['Rooms free for heroes!'] },
     { id: 'ottilie', name: 'Mayor Ottilie', portrait: '👵', at: 'willow', dx: -90, dy: -30, activity: 'idle', look: look('#b07a9a', 'bonnet', { hatColor: '#8a4f6a', hair: '#e8e2d0' }), lines: ['Welcome to Willowmere. Please wipe your boots.'], barks: ['Order, order!'] },
     { id: 'tilly', name: 'Little Tilly', portrait: '👧', at: 'willow', dx: 120, dy: 120, activity: 'play', look: look('#f2a1b8', 'none', { small: true, hair: '#b8743c' }), lines: ['Wanna play tag? You’re it!'], barks: ['Tag!', 'Hee hee!'] },
@@ -155,6 +157,7 @@ const woods: RegionSpec = {
     { id: 'pim', name: 'Little Pim', portrait: '👦', at: 'city', dx: 120, dy: 300, activity: 'play', look: look('#6f8fb8', 'none', { small: true, hair: '#2e2420' }), lines: ['I’m not scared of the dark! Mostly.'], barks: ['Catch me!'] },
     { id: 'merchant', name: 'Merchant Quill', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions and tonics!'] },
     { id: 'smith', name: 'Smith Garron', portrait: '⚒️', at: 'city', dx: 330, dy: -60, activity: 'hammer', role: 'smith', look: look('#5a3a2a', 'cap', { hatColor: '#2a1a14', beard: true }), lines: shopLines.smith, barks: ['Clang! Clang!'] },
+    { id: 'armorer', name: 'Armourer Vale', portrait: '🛡️', at: 'city', dx: 200, dy: 40, activity: 'idle', role: 'armorer', look: look('#3f5a4a', 'helm', { hatColor: '#8a9a7a', beard: true }), lines: shopLines.armorer, barks: ['Rootsteel, fresh from the forge!'] },
     { id: 'inn', name: 'Innkeeper Bree', portrait: '🛏️', at: 'city', dx: -330, dy: 40, activity: 'idle', role: 'inn', look: look('#8a6a4a', 'bonnet', { hatColor: '#6f9a5c' }), lines: shopLines.inn, barks: ['Warm soup inside!'] },
     { id: 'ysolde', name: 'Trapper Ysolde', portrait: '🏹', at: 'lodge', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a' }), lines: ['Quiet feet catch more than loud ones.'], barks: ['Shh.'] },
     { id: 'ivo', name: 'Scout Ivo', portrait: '💂', at: 'watch', dx: -60, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a' }), lines: ['From the tower I see every lantern in the woods.'], barks: ['All clear… for now.'] },
@@ -229,10 +232,11 @@ const summit: RegionSpec = {
     { id: 'rift', name: 'Void Rift', kind: 'lair', x: 7600, y: 5900, r: 430, pack: ['wisp', 'frostwraith', 'wisp'] },
     { id: 'altar', name: 'Star Altar', kind: 'shrine', x: 7400, y: 4200, r: 280 },
     { id: 'spire', name: 'Broken Spire', kind: 'ruins', x: 7800, y: 1300, r: 400 },
-    { id: 'cradle', name: 'The Star Cradle', kind: 'finale', x: 8900, y: 3200, r: 480 },
+    { id: 'cradle', name: 'The Star Cradle', kind: 'finale', x: 8800, y: 1900, r: 480 },
+    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9480, y: 3300, r: 240 },
   ],
   lakeSize: { tarn: 380 },
-  links: [['hamlet', 'tarn'], ['terrace', 'city'], ['pass', 'spire'], ['city', 'altar'], ['crystal', 'bloom'], ['altar', 'cradle'], ['city', 'frostfang']],
+  links: [['hamlet', 'tarn'], ['terrace', 'city'], ['pass', 'spire'], ['city', 'altar'], ['crystal', 'bloom'], ['altar', 'cradle'], ['city', 'frostfang'], ['altar', 'gateE']],
   keyAt: ['crystal', 'frostfang', 'spire'], keyName: 'Star shard', shrineName: 'Star Altar', finaleName: 'Star Cradle',
   trees: [['pine', 7], ['crystal', 2], ['rock', 3]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 2], ['flower', 2]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
   enemyKinds: [['wisp', 4], ['frostwraith', 4], ['cragGolem', 2], ['shadewolf', 2], ['thornling', 1]], boss: 'hollowStar', bossLevel: 19,
@@ -255,6 +259,7 @@ const summit: RegionSpec = {
     { id: 'orla', name: 'Tinker Orla', portrait: '🔧', at: 'city', dx: 380, dy: 180, activity: 'hammer', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: ['Starsilver sings when you strike it.'], barks: ['Tink tink!'] },
     { id: 'merchant', name: 'Merchant Sol', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#4a4a8a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Warming tonics!'] },
     { id: 'smith', name: 'Master-smith Ingrid', portrait: '⚒️', at: 'city', dx: 340, dy: -80, activity: 'hammer', role: 'smith', look: look('#5a4a5a', 'cap', { hatColor: '#2a2a3a' }), lines: shopLines.smith, barks: ['Starsteel!'] },
+    { id: 'armorer', name: 'Armourer Sigrun', portrait: '🛡️', at: 'city', dx: 160, dy: -150, activity: 'idle', role: 'armorer', look: look('#4a4a7a', 'helm', { hatColor: '#c9cfe8' }), lines: shopLines.armorer, barks: ['Starsilver, for those who can pay.'] },
     { id: 'inn', name: 'Innkeeper Mott', portrait: '🛏️', at: 'city', dx: -340, dy: -40, activity: 'idle', role: 'inn', look: look('#7a6a9a', 'hood', { hatColor: '#5a4a7a', beard: true }), lines: shopLines.inn, barks: ['Hot cocoa by the fire!'] },
     { id: 'dov', name: 'Quartermaster Dov', portrait: '💂', at: 'pass', dx: 80, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a', beard: true }), lines: ['Nobody crosses the pass without my say-so. Except wisps. They don’t ask.'], barks: ['Halt! Oh, it’s you.'] },
     { id: 'sable', name: 'Sable', portrait: '🌑', at: 'spire', dx: -120, dy: 90, activity: 'idle', after: 'm15', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['I remember lighting lanterns with him. Before the shadow hurt.'], barks: ['…'] },
@@ -300,15 +305,101 @@ const summit: RegionSpec = {
     keyLabel: 'Star shards', bossName: 'The Hollow Star', bossTitle: 'Heart of the Fallen Light', finaleName: 'Star Cradle',
     guide: { done: ['The sky is whole again.'] },
     shrine: { bless: ['The altar opens to the sky. A star answers your call.', 'The stars bless you. (+Experience, full health and magic)'], again: ['The altar glitters like a tiny night sky.'] },
-    finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['A shadow circles the Cradle. Defeat it!'], done: ['You lay the three shards into the Cradle. The star remembers its light and rises, whole, into the sky.', 'Beside you, Sable’s shadow is gone — or maybe it was never the enemy. Orrin holds her like he is afraid to let go.', 'Across the valley the Beacon, the Bell and the Star shine together. The Eclipse is over.'] },
+    finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['A shadow circles the Cradle. Defeat it!'], done: ['You lay the three shards into the Cradle. The star remembers its light and rises, whole, into the sky.', 'Beside you, Sable’s shadow is gone — or maybe it was never the enemy. Orrin holds her like he is afraid to let go.', 'But as the star climbs, a thread of black smoke tears loose from the broken shell and streaks east, over the last ridge, toward the Ember Wastes. Umbra is not finished.'] },
     pickupKey: 'Star shard gathered. {n}/3',
     sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall turns the sky on your enemies.',
-    victory: { title: 'The star rises home.', text: 'Umbra is broken and the star is whole again. Sable is free, Orrin is forgiven, and Mira and Tuft have become the valley’s newest legend.' },
+    victory: { title: 'The star rises home.', text: 'The star is whole again. Sable is free and Orrin is forgiven — but Umbra slipped out of the broken shell and fled east, into the Ember Wastes.' },
+  },
+};
+
+// ═════════════════════════════ Chapter IV · The Ember Wastes · levels 19–24
+const ember: RegionSpec = {
+  id: 'ember', chapter: 4, title: 'The Ember Wastes', subtitle: 'The Dawn Forge', name: 'The Ember Wastes', seed: 211,
+  palette: { ground: '#6e4a3a', alternate: '#7c5442', path: '#c9a26e', pathEdge: '#8a6a48', accent: '#ff9a3d', water: '#e2592a', waterDeep: '#a3301a', foliage: ['#2e2220', '#4f3428', '#8f5a34'], trunk: '#2a1e1a', rock: '#5e4c4a', pod: '#ffb347', roof: ['#9a4a2a', '#6a4a3a', '#b0642a', '#5a3a3a'], wall: '#dcc4a2' },
+  darkness: .38, ambient: 'embers', ground: 'ash', levels: [19, 24], xpScale: 4,
+  pois: [
+    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
+    { id: 'camp', name: 'Emberwatch Outpost', kind: 'start', x: 1000, y: 2700, r: 380 },
+    { id: 'kiln', name: 'Kilnhollow', kind: 'village', x: 2400, y: 4300, r: 500 },
+    { id: 'farm', name: 'Saltglass Farm', kind: 'farm', x: 1200, y: 5600, r: 440 },
+    { id: 'obsidian', name: 'Obsidian Maze', kind: 'ruins', x: 1500, y: 1100, r: 400 },
+    { id: 'mere', name: 'The Molten Mere', kind: 'lake', x: 3500, y: 2100, r: 540 },
+    { id: 'city', name: 'Brasshaven', kind: 'city', x: 5100, y: 3900, r: 900 },
+    { id: 'nest', name: 'Scorpion Burrows', kind: 'lair', x: 3700, y: 6000, r: 430, pack: ['ashScorpion', 'ashScorpion', 'emberImp'] },
+    { id: 'watch', name: 'Ashfall Watch', kind: 'lookout', x: 5300, y: 900, r: 360 },
+    { id: 'green', name: 'The Last Green', kind: 'grove', x: 7000, y: 700, r: 380 },
+    { id: 'caravan', name: 'Salt Caravan Camp', kind: 'camp', x: 7000, y: 5900, r: 340 },
+    { id: 'foundry', name: 'Old Foundry', kind: 'lair', x: 7300, y: 2800, r: 430, pack: ['magmaHulk', 'emberImp', 'emberImp'] },
+    { id: 'spring', name: 'Phoenix Spring', kind: 'shrine', x: 8200, y: 4500, r: 280 },
+    { id: 'forge', name: 'The Dawn Forge', kind: 'finale', x: 8800, y: 1700, r: 480 },
+  ],
+  lakeSize: { mere: 380 },
+  links: [['kiln', 'city'], ['city', 'caravan'], ['city', 'foundry'], ['mere', 'watch'], ['obsidian', 'mere'], ['foundry', 'forge'], ['spring', 'caravan'], ['city', 'spring']],
+  keyAt: ['obsidian', 'nest', 'foundry'], keyName: 'Ember core', shrineName: 'Phoenix Spring', finaleName: 'Dawn Forge',
+  trees: [['deadtree', 5], ['rock', 4], ['crystal', 1]], decorKinds: [['pebble', 5], ['grass', 3], ['shard', 2], ['flower', 1]], decorColors: ['#ff9a3d', '#ffd27a', '#ff5f3d', '#c9a26e'],
+  enemyKinds: [['emberImp', 4], ['ashScorpion', 4], ['magmaHulk', 2], ['shadewolf', 1], ['wisp', 1]], boss: 'cinderTyrant', bossLevel: 25,
+  critters: [['bird', 4], ['rabbit', 3], ['goat', 2], ['frog', 1]],
+  villagerNames: ['Ash', 'Brenna', 'Cinder', 'Dax', 'Emberly', 'Faro', 'Garnet', 'Hale', 'Ione', 'Jasper', 'Kilna', 'Loam', 'Marl', 'Nell', 'Onyx', 'Pyra', 'Quill', 'Rust', 'Sienna', 'Tinder', 'Umber', 'Vesta', 'Wren'],
+  chatter: ['The wind here tastes of salt and smoke.', 'Brasshaven’s bells are made from melted-down swords. Peace, they say, sounds better.', 'When the sand bulges, run. That’s all anyone needs to know about scorpions.', 'The Dawn Forge lit the sunrise for a thousand years. Now the mornings come up grey.', 'Glass from Kilnhollow sells for gold in every city of the valley.', 'I once saw a phoenix drink from the spring. Or a very orange chicken.', 'Magma hulks are just rocks that got too hot to be calm.', 'The Tyrant used to be the Forge’s keeper. Then he fell in love with the fire.'],
+  barks: ['Hot one today.', 'Mind the lava.', 'Water, anyone?', 'Salt for sale!', 'The dawn is late again…'],
+  npcs: [
+    { id: 'guide', name: 'Captain Ashka', portrait: '💂‍♀️', at: 'camp', dx: -40, dy: -60, activity: 'idle', role: 'guide', look: look('#8a4a3a', 'helm', { hatColor: '#6a6a70', hair: '#2e2420' }), lines: [], barks: ['Over here, traveller!', 'The forge is cold.'] },
+    { id: 'soot', name: 'Courier Soot', portrait: '🐿️', at: 'camp', dx: 170, dy: 40, activity: 'wander', look: look('#5a4a48', 'ears', { hatColor: '#3a2a26', small: true }), lines: ['Pip, Nutkin, Bramble and me. I’m the one who doesn’t burn.'], barks: ['Hot paws, hot paws!'] },
+    { id: 'hessa', name: 'Kiln-mother Hessa', portrait: '👵', at: 'kiln', dx: -60, dy: 90, activity: 'idle', look: look('#b0643a', 'bonnet', { hatColor: '#6a3a2a', hair: '#e8e2d0' }), lines: ['Glass is only sand that was brave enough to walk through fire.'], barks: ['The kilns never sleep.'] },
+    { id: 'tam', name: 'Little Tam', portrait: '👦', at: 'kiln', dx: 140, dy: 160, activity: 'play', look: look('#c9a24c', 'none', { small: true, hair: '#4a2f24' }), lines: ['I’m going to be a glassblower. Or a dragon.'], barks: ['Roar!'] },
+    { id: 'fenwick', name: 'Saltfarmer Fenwick', portrait: '👨‍🌾', at: 'farm', dx: 60, dy: 60, activity: 'farm', look: look('#d8c8a8', 'straw', { hatColor: '#e8d8a8', beard: true }), lines: ['Salt doesn’t grow, it just waits for you.'], barks: ['Shoo, scorpions!'] },
+    { id: 'tovan', name: 'Forgemaster Tovan', portrait: '🧔', at: 'city', dx: 300, dy: 120, activity: 'hammer', look: look('#5a3a2a', 'cap', { hatColor: '#2a1a14', beard: true }), lines: ['Iron remembers every blow. So do I.'], barks: ['Clang! Clang!'] },
+    { id: 'rusk', name: 'Captain Rusk', portrait: '💂', at: 'city', dx: 200, dy: -160, activity: 'idle', look: look('#8a5a3a', 'helm', { hatColor: '#b0643a', beard: true }), lines: ['Brasshaven has never fallen. I don’t plan to start.'], barks: ['Eyes on the dunes.'] },
+    { id: 'merchant', name: 'Merchant Zafir', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Cooling tonics!'] },
+    { id: 'smith', name: 'Smith Brona', portrait: '⚒️', at: 'city', dx: 340, dy: -60, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Firesteel!'] },
+    { id: 'armorer', name: 'Armourer Kess', portrait: '🛡️', at: 'city', dx: 160, dy: -250, activity: 'idle', role: 'armorer', look: look('#4a3a3a', 'helm', { hatColor: '#8a5a3a' }), lines: shopLines.armorer, barks: ['Obsidian plate, fresh from the forge!'] },
+    { id: 'inn', name: 'Innkeeper Dusk', portrait: '🛏️', at: 'city', dx: -330, dy: -40, activity: 'idle', role: 'inn', look: look('#7a5a4a', 'hood', { hatColor: '#5a3a2a' }), lines: shopLines.inn, barks: ['Cool rooms, cold drinks!'] },
+    { id: 'seer', name: 'Ember-seer Ilyana', portrait: '🔮', at: 'watch', dx: -60, dy: 60, activity: 'idle', look: look('#8a3a5a', 'hood', { hatColor: '#5a2a3a', hair: '#e8e2d0' }), lines: ['The flames show me the future. Mostly they show me more flames.'], barks: ['I saw you coming.'] },
+    { id: 'zara', name: 'Hunter Zara', portrait: '🏹', at: 'caravan', dx: 80, dy: 60, activity: 'idle', look: look('#8a6a4a', 'hood', { hatColor: '#5a4a2a' }), lines: ['In the wastes, the hunter who drinks most wins.'], barks: ['Quiet feet.'] },
+    { id: 'omar', name: 'Salt-trader Omar', portrait: '🧳', at: 'kiln', to: 'city', activity: 'travel', look: look('#c07850', 'scarf', { hatColor: '#8a3b2f', beard: true }), lines: ['Salt to the city, glass to the kiln, gossip everywhere.'], barks: ['Salt! Fine salt!'] },
+  ],
+  quests: [
+    ...STORY.ember,
+    q({ id: 'stingers', title: 'Stingers in the Kiln', giver: 'hessa', kind: 'slay', count: 8, enemy: 'ashScorpion', summary: 'Defeat ash scorpions.', reward: { xp: 160, hearts: 1 },
+      text: { offer: ['Scorpions dig into my kilns at night for the warmth. Then they sting my glassblowers.', 'Eight of them, please.'], progress: ['Scorpions burrow. Watch the sand for moving mounds.'], complete: ['Eight! My glassblowers can work in peace.', 'Take this — kiln-hardened leather.'], after: ['The kilns hum happily.'] } }),
+    q({ id: 'marble', title: 'Tam’s Glass Marble', giver: 'tam', kind: 'collect', count: 1, near: 'mere', item: 'Glass marble', icon: 'gem', summary: 'Find Tam’s marble near the Molten Mere.', reward: { xp: 120 },
+      text: { offer: ['I made my first marble and it rolled all the way to the Molten Mere!', 'It’s blue inside. Like water. Please?'], progress: ['It’s near the lava lake, north of here!'], complete: ['My marble! It didn’t even melt!'], after: ['Want to see it catch the light?'] } }),
+    q({ id: 'bellows', title: 'Imps in the Bellows', giver: 'tovan', kind: 'slay', count: 8, enemy: 'emberImp', summary: 'Defeat ember imps.', reward: { xp: 170 },
+      text: { offer: ['Imps nest in the city bellows and blow my forge fires every which way.', 'Eight fewer imps, and I’ll owe you.'], progress: ['Imps hover out of reach. Close in fast.'], complete: ['My fires burn straight again. Well done.'], after: ['Clang!'] } }),
+    q({ id: 'water', title: 'Water for the Watch', giver: 'guide', kind: 'deliver', count: 1, to: 'seer', item: 'Waterskins', summary: 'Bring waterskins to Ember-seer Ilyana at Ashfall Watch.', reward: { xp: 140 },
+      text: { offer: ['Ilyana at Ashfall Watch hasn’t had fresh water in days. She won’t leave her flames.', 'Carry these waterskins to her — north, past the Molten Mere.'], progress: ['Ashfall Watch is far to the north-east.'], complete: [], after: ['Water is worth more than gold out here.'], deliver: ['Water! You are kinder than the flames told me.', 'Sit, sit. The fire is friendlier when you are not thirsty.'] } }),
+    q({ id: 'lastgreen', title: 'The Last Green', giver: 'seer', kind: 'visit', count: 1, place: 'green', summary: 'Find The Last Green in the far north.', reward: { xp: 150 },
+      text: { offer: ['Somewhere in the north, one grove still grows. The Last Green, the old songs call it.', 'Go and see if it lives.'], progress: ['The Last Green is north-east of the watch.'], complete: ['It lives? Then the wastes can bloom again, once the dawn returns.'], after: ['Green and gold, green and gold.'] } }),
+    q({ id: 'shards', title: 'Obsidian for the Anvil', giver: 'tovan', kind: 'collect', count: 5, near: 'obsidian', item: 'Obsidian shard', icon: 'gem', summary: 'Gather obsidian shards in the Obsidian Maze.', reward: { xp: 170, gold: 120 },
+      text: { offer: ['Obsidian makes the sharpest edge a smith can forge.', 'Five shards from the Maze, and I’ll pay well.'], progress: ['The Obsidian Maze is far to the north-west.'], complete: ['Beautiful black glass. Here’s your gold, as promised.'], after: ['Sharp as the day it cooled.'] } }),
+    q({ id: 'ria', title: 'The Kiln-girl', giver: 'hessa', kind: 'rescue', count: 1, place: 'mere', guards: 5, summary: 'Free Ria at the Molten Mere.', captive: person('Ria', '👧', { robe: '#b0643a', small: true, hair: '#4a2f24' }), reward: { xp: 190, gold: 110 },
+      text: { offer: ['Ria went to the Molten Mere for glass-sand. The imps have her caged on the shore.', 'Please bring her back.'], progress: ['The Molten Mere lies north of Kilnhollow.'], deliver: ['It was SO hot in there. The imps kept singing.', 'I’m going home. Hessa is going to be so cross.'], complete: ['Ria! Come here, child.', 'Take this, hero. Every kiln in the hollow chipped in.'], after: ['Glass and fire, fire and glass.'] } }),
+    q({ id: 'hulkhunt', title: 'Hulk Hunt', giver: 'zara', kind: 'slay', count: 4, enemy: 'magmaHulk', summary: 'Break magma hulks.', reward: { xp: 190, hearts: 1 },
+      text: { offer: ['Magma hulks stomp through the caravan routes and melt the wagon wheels.', 'Break four, and the caravans roll again.'], progress: ['Hulks roam the east. Stay out of the glowing cracks.'], complete: ['Four hulks! You hunt like a sandstorm.', 'Wear this — it has turned more fire than I can count.'], after: ['The caravans roll again.'] } }),
+    q({ id: 'plumes', title: 'Phoenix Plumes', giver: 'seer', kind: 'collect', count: 4, near: 'spring', item: 'Phoenix plume', icon: 'feather', summary: 'Collect phoenix plumes around the Phoenix Spring.', reward: { xp: 170, mana: 14 },
+      text: { offer: ['Phoenixes shed their plumes at the spring. Each one holds a little dawn.', 'Four, please. My flames need them.'], progress: ['The Phoenix Spring lies east of the city.'], complete: ['Four little dawns. Here — they’ll warm your magic.'], after: ['The flames grow brighter.'] } }),
+  ],
+  lore: [
+    { at: 'obsidian', name: 'Obsidian tablet', text: ['“The maze was the Forge’s first mould. Every wall is a sword that was never finished.”'] },
+    { at: 'mere', name: 'Scorched stone', text: ['“The Mere was a lake of water once. Then the Tyrant wept fire into it.”'] },
+    { at: 'nest', name: 'Buried marker', text: ['“Scorpions guard what is hot. Whatever they drag below is worth digging for.”'] },
+    { at: 'forge', name: 'Forge-stone', text: ['“Beacon, Bell, Star and Forge — four lights, and the dark between them has nowhere to sleep.”'] },
+    { at: 'watch', name: 'Seer’s stone', text: ['“From the Watch you see the sunrise before anyone else. Lately, you see it first — and alone.”'] },
+    { at: 'city', name: 'Brass plaque', text: ['“Brasshaven, forged where the caravan roads cross. Its gates open to anyone who brings water.”'] },
+  ],
+  script: {
+    keyLabel: 'Ember cores', bossName: 'Pyrrhus', bossTitle: 'The Cinder Tyrant', finaleName: 'Dawn Forge',
+    guide: { done: ['The wastes are cooling. The dawn is coming back.'] },
+    shrine: { bless: ['Warm water bubbles up around you, bright as a sunrise.', 'The phoenix blesses you. (+Experience, full health and magic)'], again: ['The spring steams gently.'] },
+    finale: { locked: ['The Dawn Forge is cold. Three ember cores are needed to wake it.'], guarded: ['A shadow broods over the forge. Defeat it!'], done: ['You set the three ember cores into the Dawn Forge. Its fire roars up, white and gold, and a new dawn spills across the wastes.', 'Umbra’s last shadow burns away like morning mist. Far to the west, the Star, the Bell and the Beacon shine back.', 'Every land, every light. The valley is whole again.'] },
+    pickupKey: 'Ember core recovered. {n}/3',
+    sealed: 'Pyrrhus sleeps in a shell of cooling stone. Recover the three ember cores first.', tip: 'Magma hulks crack the ground around them: step out of the glowing circles. Ash scorpions burrow, so watch for moving mounds of sand.',
+    victory: { title: 'The dawn returns.', text: 'Umbra is gone for good. The Dawn Forge burns again, and Mira and Tuft have become the valley’s newest legend.' },
     final: { name: 'Umbra', title: 'The Eclipse Sovereign' },
   },
 };
 
-const SPECS: RegionSpec[] = [meadow, woods, summit];
+const SPECS: RegionSpec[] = [meadow, woods, summit, ember];
 let valley: WorldDefinition | null = null;
 /**
  * "Wisps on the Wind" sends the player down the road from Warden's Lookout to Frostpine Hamlet, but the random packs
@@ -330,4 +421,4 @@ function addRoadWisps(world: WorldDefinition) {
 /** The whole valley is generated on first use (a fraction of a second) and then cached. */
 export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); } return valley; }
 /** Region metadata for menus, without generating the map. */
-export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit };
+export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit, ember };

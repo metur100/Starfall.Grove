@@ -1,6 +1,7 @@
+import { ACHIEVEMENTS, goalOf, type AchDef, type Totals } from './achievements';
 import { ambience, footstep, sfx, type Sfx } from './audio';
 import { ITEMS, ITEM_ORDER, rollItem } from './items';
-import { RARITY, SLOT_ORDER, makeGear, rollRarity, seeded, sellPrice } from './gear';
+import { RARITY, SLOT_ORDER, armouryStock, makeGear, rollRarity, seeded, sellPrice } from './gear';
 import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
 import { HEROES, MAX_STARS, SPELLS, SPELL_UPGRADES, starCost, starLevel, upgradeText } from './spells';
 import { Grid } from './spatial';
@@ -8,7 +9,7 @@ import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
 import type {
   CritterKind, EngineEvent, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
-  QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
+  QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
 export type Hero = {
@@ -19,6 +20,8 @@ export type Hero = {
   slowT: number;
   /** Kael: seconds left of Bladestorm, and whether the current dash is a Charge. */
   stormT: number; stormTick: number; charging: boolean;
+  /** Seconds the hero cannot be hurt after a Blink or a Shadowstep (no hurt flicker, unlike `hurtTime`). */
+  ghostT: number;
 };
 export type Enemy = EnemySeed & {
   hp: number; maxHp: number; r: number; dead: boolean; deadT: number; cd: number; windup: number; hitFlash: number;
@@ -29,27 +32,48 @@ export type Enemy = EnemySeed & {
   rage: number;
   /** Seconds left of a stun; `blinkT` counts down to a frost wraith's next blink. */
   stunT: number; blinkT: number;
+  /** Chilled creatures move and act slower; frozen ones are shown in a block of ice; a burrowed scorpion is under the sand. */
+  chillT: number; frozenT: number; burrowT: number;
 };
 export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string };
 export type Critter = { kind: CritterKind; x: number; y: number; homeX: number; homeY: number; tx: number; ty: number; state: 'idle' | 'move' | 'flee' | 'fly'; t: number; face: number; alt: number; hop: number; seed: number };
 type BossAction = 'slam' | 'boulders' | 'nova' | 'roots' | 'charge' | 'spiral' | 'meteors' | 'blink';
-export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice'; targetId?: string; crit?: boolean; spin: number };
-export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning'; fromX: number; fromY: number };
+export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice' | 'frost' | 'knife' | 'fire'; targetId?: string; crit?: boolean; spin: number };
+export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning' | 'lava' | 'frostnova' | 'blizzard' | 'mark'; fromX: number; fromY: number };
+/** Riven's Death Mark on a creature, and Lyra's Blizzard over a patch of ground. */
+export type Mark = { e: Enemy; t: number; max: number; mul: number };
+export type Storm = { x: number; y: number; t: number; tick: number };
+/** One achievement as the journal shows it. */
+export type AchRow = AchDef & { goal: number; progress: number; got: number };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 'dot' | 'leaf' | 'ember' | 'star' | 'smoke' | 'ring' | 'shard'; rot: number; vr: number; grav: number; drag: number; glow: boolean };
 /** A `loot` orb carries a piece of equipment and is drawn as a small bag glowing in its rarity colour. */
 export type Orb = { x: number; y: number; vx: number; vy: number; kind: 'mana' | 'heart' | 'gold' | 'loot'; age: number; value: number; gear?: GearItem };
 export type Pod = { id: number; x: number; y: number; dead: boolean; hitT: number };
 export type FloatText = { x: number; y: number; text: string; life: number; max: number; color: string; size: number };
 export type Afterimage = { x: number; y: number; life: number; faceX: number };
-/** Kael's sword swings, drawn as a fading arc. */
-export type Slash = { x: number; y: number; angle: number; life: number; max: number; reach: number };
+/** Kael's sword swings (and Riven's dagger thrusts, `narrow`), drawn as a fading arc. */
+export type Slash = { x: number; y: number; angle: number; life: number; max: number; reach: number; color?: string; narrow?: boolean };
 export type EngineSave = {
   version: 4; hero: { x: number; y: number; hp: number; mana: number }; main: MainQuest; quests: Record<string, QuestState>; got: string[];
   opened: string[]; read: string[]; discovered: string[]; explored: string; brokenPods: number[]; checkpoint: Point; elapsed: number; defeated: number;
   blessed: string[]; tracked: string | null; chapterStart: { elapsed: number; defeated: number }; awaiting: boolean; foxQueue: string[];
+  /** Columns of the explore grid when saved: the valley grew a fourth land, so older fog maps are re-laid row by row. */
+  exploreCols?: number;
 };
 type Near = { kind: 'object'; o: WorldObject } | { kind: 'npc'; n: Npc };
 
+/** Mira's story, retold for another hero: their name, their looks, and no fox at their side. */
+const EPITHET: Record<HeroId, string> = { mira: 'girl with the fox', kael: 'warrior with the red plume', lyra: 'girl with frost in her hair', riven: 'one in the shadow-cloak' };
+export function personalize(l: string, hero: HeroId) {
+  if (hero === 'mira') return l;
+  const info = HEROES[hero];
+  return l.replace(/Mira and Tuft have/g, `${info.name} has`).replace(/\bMira\b/g, info.name).replace(/\bgirl with the fox\b/g, EPITHET[hero]).replace(/\b([Mm])y brave girl\b/g, (_, m: string) => `${m}y brave ${info.boy ? 'lad' : 'girl'}`)
+    .replace('(Tuft tugs at your sleeve and points east,', '(You look east,')
+    .replace('(Tuft sniffs the icy wind blowing through the Eastern Gate and whines.)', '(An icy wind howls through the Eastern Gate.)')
+    .replace('(Tuft stares east,', '(You stare east,')
+    .replace('(Tuft’s fur stands on end.', '(The hair on your neck stands on end.')
+    .replace(/ and Tuft\b/g, '').replace(/ with Tuft\b/g, '').replace(/\bTuft\b/g, 'the wind');
+}
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -67,10 +91,14 @@ const ENEMY_STATS: Record<EnemyKind, { hp: number; r: number; speed: number; nam
   webspinner: { hp: 42, r: 22, speed: 100, name: 'Webspinner', xp: 22, dmg: 1 },
   frostwraith: { hp: 44, r: 20, speed: 125, name: 'Frost wraith', xp: 24, dmg: 1 },
   cragGolem: { hp: 120, r: 32, speed: 52, name: 'Crag golem', xp: 42, dmg: 1.5 },
+  emberImp: { hp: 36, r: 17, speed: 140, name: 'Ember imp', xp: 24, dmg: .95 },
+  ashScorpion: { hp: 58, r: 22, speed: 105, name: 'Ash scorpion', xp: 27, dmg: 1.15 },
+  magmaHulk: { hp: 140, r: 34, speed: 55, name: 'Magma hulk', xp: 46, dmg: 1.5 },
   mossback: { hp: 2600, r: 46, speed: 78, name: 'Mossback', xp: 700, dmg: 1 },
   brambleWarden: { hp: 6500, r: 46, speed: 88, name: 'Bramble Warden', xp: 1100, dmg: 1 },
   hollowStar: { hp: 12000, r: 42, speed: 96, name: 'The Hollow Star', xp: 1800, dmg: 1 },
-  eclipse: { hp: 34000, r: 60, speed: 92, name: 'Umbra', xp: 4000, dmg: 1 },
+  cinderTyrant: { hp: 21000, r: 50, speed: 96, name: 'Pyrrhus', xp: 2800, dmg: 1 },
+  eclipse: { hp: 42000, r: 60, speed: 92, name: 'Umbra', xp: 5000, dmg: 1 },
 };
 const hpMul = (level: number) => 1.5 * (1 + .3 * (level - 1));
 /** Damage of one ordinary creature hit at a level, in health points. */
@@ -79,22 +107,24 @@ const BOSS_PATTERNS: Record<string, BossAction[][]> = {
   mossback: [['slam', 'boulders', 'slam', 'boulders'], ['boulders', 'slam', 'charge', 'boulders', 'slam', 'charge']],
   brambleWarden: [['nova', 'roots', 'slam', 'charge'], ['nova', 'charge', 'roots', 'nova', 'slam', 'roots']],
   hollowStar: [['spiral', 'meteors', 'blink', 'nova'], ['meteors', 'spiral', 'blink', 'nova', 'meteors', 'blink']],
+  cinderTyrant: [['slam', 'meteors', 'charge', 'nova'], ['meteors', 'charge', 'nova', 'slam', 'boulders', 'charge']],
   eclipse: [['slam', 'nova', 'boulders', 'roots', 'charge'], ['spiral', 'meteors', 'blink', 'slam', 'nova', 'roots'], ['meteors', 'spiral', 'charge', 'boulders', 'blink', 'nova', 'roots', 'slam']],
 };
 const SUMMONS: Record<string, EnemyKind[]> = {
-  mossback: ['gloomling', 'bristleboar'], brambleWarden: ['thornling', 'shadewolf'], hollowStar: ['wisp', 'frostwraith'],
-  eclipse: ['gloomling', 'bristleboar', 'shadewolf', 'webspinner', 'wisp', 'frostwraith'],
+  mossback: ['gloomling', 'bristleboar'], brambleWarden: ['thornling', 'shadewolf'], hollowStar: ['wisp', 'frostwraith'], cinderTyrant: ['emberImp', 'ashScorpion'],
+  eclipse: ['gloomling', 'bristleboar', 'shadewolf', 'webspinner', 'wisp', 'frostwraith', 'emberImp', 'ashScorpion'],
 };
 const KILL_COLORS: Partial<Record<EnemyKind, string[]>> = {
   gloomling: ['#8c7ce0', '#c9b6ff', '#ffffff'], thornling: ['#9fd46b', '#e8ffb0', '#5fae4f'], wisp: ['#8ee8ff', '#c9b6ff', '#ffffff'],
   bristleboar: ['#a8744a', '#e8c09a', '#ffffff'], sporecap: ['#b9e27a', '#e0735a', '#fff1b8'], shadewolf: ['#5a5a7a', '#a0a0c8', '#ffffff'],
   webspinner: ['#6a4a7a', '#e8e0f0', '#b6df91'], frostwraith: ['#bfe8ff', '#8ee8ff', '#ffffff'], cragGolem: ['#8a8fa8', '#c8cce0', '#8ee8ff'],
+  emberImp: ['#ffb347', '#ff6b3d', '#fff1b8'], ashScorpion: ['#c9a26e', '#8a5a3a', '#ffd27a'], magmaHulk: ['#ff7a3d', '#5a3a30', '#ffd27a'], cinderTyrant: ['#ff9a3d', '#ff5f3d', '#fff1b8', '#3a2a26'],
   eclipse: ['#1a1030', '#c9b6ff', '#ff6b9a', '#ffffff'],
 };
 export const EXPLORE_CELL = 320;
 const ACTIVE_RANGE = 1700;
 /** Creatures come back this many seconds after being defeated. */
-const RESPAWN_TIME = 60;
+const RESPAWN_TIME = 240;
 /** Consumables a quest can pay out (the rare feather is left to luck and merchants). */
 const QUEST_ITEMS = ITEM_ORDER.filter(id => id !== 'phoenixFeather');
 
@@ -115,6 +145,10 @@ export class GameEngine {
   readonly floating: FloatText[] = [];
   readonly afterimages: Afterimage[] = [];
   readonly slashes: Slash[] = [];
+  readonly marks: Mark[] = [];
+  readonly storms: Storm[] = [];
+  /** Riven: seconds left of Smoke Veil, and whether the next stab is a sure critical hit (after a Shadowstep). */
+  stealthT = 0; nextCrit = false;
   readonly heroId: HeroId;
   /** This hero's abilities, in button order. */
   readonly spellIds: SpellId[];
@@ -159,12 +193,19 @@ export class GameEngine {
   private campfires: WorldObject[];
   private chapterStart = { elapsed: 0, defeated: 0 };
   private foxQueue: string[] = [];
-  /** Counts down while Umbra gathers itself out of the three lands. */
+  /** Counts down while Umbra gathers itself out of the four lands. */
   private finalT = 0;
   private profileDirty = false;
   private markerVersion = 0;
   private markerCache = new Map<string, { mark: '!' | '?'; main: boolean } | null>();
   private markerCacheVersion = -1;
+  /** What "every place", "every chest" and the like mean for the achievements. */
+  private totals: Totals;
+  /** True while a guardian fight goes on without the hero falling (for the Untouchable achievement). */
+  private cleanFight = false;
+  private exploreTick = 0;
+  /** Seconds to wait before the next chapter's opener, so it starts after the chapter banner. */
+  private foxDelay = 0;
 
   constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
     this.heroId = heroId; this.spellIds = HEROES[heroId].spells;
@@ -172,7 +213,7 @@ export class GameEngine {
     this.profile = loadProfile(heroId);
     const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
-    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false };
+    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false, ghostT: 0 };
     this.obstacleGrid = new Grid(256, this.world.obstacles);
     this.roads = new RoadIndex(this.world.roads);
     this.enemies = this.world.enemies.map(seed => this.makeEnemy(seed));
@@ -184,9 +225,11 @@ export class GameEngine {
     this.campfires = this.world.objects.filter(o => o.kind === 'campfire');
     this.exploreCols = Math.ceil(this.world.width / EXPLORE_CELL);
     this.explored = new Uint8Array(this.exploreCols * Math.ceil(this.world.height / EXPLORE_CELL));
+    this.totals = { places: this.world.pois.length, chests: this.world.objects.filter(o => o.kind === 'chest').length, lore: this.world.objects.filter(o => o.kind === 'lore').length, sideQuests: this.world.quests.filter(q => !q.main).length };
     if (saved?.version === 4) this.restore(saved);
     this.regionId = this.regionAt(this.hero.x).id;
     this.markExplored();
+    this.syncAchievements();
     ambience.start(this.regionId);
   }
   dispose() { ambience.stop(); if (this.profileDirty) saveProfile(this.profile); }
@@ -194,7 +237,7 @@ export class GameEngine {
   private makeEnemy(seed: EnemySeed, summoned = false): Enemy {
     const s = ENEMY_STATS[seed.kind];
     const hp = seed.boss ? s.hp : Math.round(s.hp * hpMul(seed.level) * (seed.elite ? 2.6 : 1));
-    return { ...seed, hp, maxHp: hp, r: s.r * (seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: rand(0, 6.28), summoned, rage: 0, stunT: 0, blinkT: rand(3, 6) };
+    return { ...seed, hp, maxHp: hp, r: s.r * (seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: rand(0, 6.28), summoned, rage: 0, stunT: 0, blinkT: rand(3, 6), chillT: 0, frozenT: 0, burrowT: 0 };
   }
   setEventHandler(handler: (event: EngineEvent) => void) { this.eventHandler = handler; }
 
@@ -207,13 +250,21 @@ export class GameEngine {
     if (s.main) { this.main.keys = [...(s.main.keys || [])]; this.main.bosses = [...(s.main.bosses || [])]; this.main.finales = [...(s.main.finales || [])]; }
     for (const [id, st] of Object.entries(s.quests || {})) if (this.quests.has(id) && st?.status) this.quests.set(id, { status: st.status, progress: Number(st.progress) || 0 });
     for (const [set, list] of [[this.got, s.got], [this.opened, s.opened], [this.read, s.read], [this.discovered, s.discovered], [this.blessed, s.blessed]] as Array<[Set<string>, string[]]>) if (Array.isArray(list)) for (const v of list) set.add(v);
-    if (typeof s.explored === 'string') for (let i = 0; i < Math.min(s.explored.length, this.explored.length); i++) this.explored[i] = s.explored.charCodeAt(i) === 49 ? 1 : 0;
+    if (typeof s.explored === 'string') {
+      // Saves from before the Ember Wastes were laid out 92 cells wide; copy them row by row into today's wider grid.
+      const cols = Number(s.exploreCols) || 92, rows = this.explored.length / this.exploreCols;
+      for (let y = 0; y < rows; y++) for (let x = 0; x < Math.min(cols, this.exploreCols); x++) if (s.explored.charCodeAt(y * cols + x) === 49) this.explored[y * this.exploreCols + x] = 1;
+    }
     this.exploredVersion++;
     this.elapsed = Number(s.elapsed) || 0; this.defeated = Number(s.defeated) || 0;
     this.tracked = typeof s.tracked === 'string' && this.quests.has(s.tracked) ? s.tracked : null;
     if (s.chapterStart) this.chapterStart = { elapsed: Number(s.chapterStart.elapsed) || 0, defeated: Number(s.chapterStart.defeated) || 0 };
-    this.awaitingChapter = !!s.awaiting;
+    // There is no chapter-complete screen any more: the story carries straight on. Older saves that were left waiting on
+    // that screen (the "next chapter quest has no arrow" bug) are freed here, and any chapter opener that was never
+    // started is queued again so it begins on its own.
+    this.awaitingChapter = false;
     this.foxQueue = Array.isArray(s.foxQueue) ? s.foxQueue.filter(id => this.quests.has(id)) : [];
+    for (const q of this.world.quests) if (q.giver === 'fox' && this.qs(q.id).status === 'available' && !this.foxQueue.includes(q.id)) this.foxQueue.push(q.id);
     const broken = new Set(Array.isArray(s.brokenPods) ? s.brokenPods : []);
     for (const p of this.pods) if (broken.has(p.id)) p.dead = true;
     for (const e of this.enemies) if (e.boss && this.main.bosses.includes(e.id)) { e.dead = true; e.hp = 0; }
@@ -228,23 +279,14 @@ export class GameEngine {
       version: 4, hero: { x: h.x, y: h.y, hp: h.hp, mana: h.mana }, main: { keys: [...this.main.keys], bosses: [...this.main.bosses], finales: [...this.main.finales] }, quests: Object.fromEntries(this.quests),
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
       brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], tracked: this.tracked,
-      chapterStart: { ...this.chapterStart }, awaiting: this.awaitingChapter, foxQueue: [...this.foxQueue],
+      chapterStart: { ...this.chapterStart }, awaiting: false, foxQueue: [...this.foxQueue], exploreCols: this.exploreCols,
     };
   }
 
   // ───────────────────────────── helpers
   private notice(text: string, tone: NoticeTone = 'info', short?: string) { this.eventHandler({ type: 'notice', text, tone, short }); }
-  /** The story is written for Mira; other heroes get their own name in it. */
-  /** Kael travels alone, so Tuft is written out of his lines. */
-  private personal(lines: string[]) {
-    if (this.heroId === 'mira') return lines;
-    const n = HEROES[this.heroId].name;
-    return lines.map(l => l.replace(/\bMira\b/g, n).replace(/\bgirl with the fox\b/g, 'warrior with the red plume').replace(/\b([Mm])y brave girl\b/g, '$1y brave lad')
-      .replace('(Tuft tugs at your sleeve and points east,', '(You look east,')
-      .replace('(Tuft sniffs the icy wind blowing through the Eastern Gate and whines.)', '(An icy wind howls through the Eastern Gate.)')
-      .replace('(Tuft’s fur stands on end.', '(The hair on your neck stands on end.')
-      .replace(/ and Tuft\b/g, '').replace(/ with Tuft\b/g, '').replace(/\bTuft\b/g, 'the wind'));
-  }
+  /** The story is written for Mira; other heroes get their own name in it, and travel without Tuft the fox. */
+  private personal(lines: string[]) { return lines.map(l => personalize(l, this.heroId)); }
   /** Who speaks the story's nudges between quests: Tuft for Mira, Kael's own thoughts for Kael. */
   get guideVoice() { return this.heroId === 'mira' ? { name: 'Tuft', portrait: '🦊' } : { name: HEROES[this.heroId].name, portrait: `hero:${this.heroId}` }; }
   get hasPet() { return this.heroId === 'mira'; }
@@ -294,6 +336,38 @@ export class GameEngine {
   private ring(x: number, y: number, size: number, color: string, life = .45) { this.particles.push({ x, y, vx: 0, vy: 0, life, max: life, size, color, kind: 'ring', rot: 0, vr: 0, grav: 0, drag: 0, glow: true }); }
   private text(x: number, y: number, text: string, color: string, size = 16) { this.floating.push({ x: x + rand(-8, 8), y, text, life: .9, max: .9, color, size }); }
 
+  // ───────────────────────────── achievements
+  private bump(stat: string, by = 1) { const n = this.profile.ach.n; n[stat] = (n[stat] || 0) + by; this.profileDirty = true; this.checkAch(stat); }
+  /** For counters that are a best-so-far (level, gold carried, biggest combo…). */
+  private statMax(stat: string, v: number, silent = false) { const n = this.profile.ach.n; if ((n[stat] || 0) >= v) return; n[stat] = v; this.profileDirty = true; this.checkAch(stat, silent); }
+  private checkAch(stat: string, silent = false) {
+    const a = this.profile.ach, v = a.n[stat] || 0;
+    for (const d of ACHIEVEMENTS) {
+      if (d.stat !== stat || a.got[d.id] || v < goalOf(d, this.totals)) continue;
+      a.got[d.id] = Date.now(); this.profileDirty = true;
+      if (!silent) { this.eventHandler({ type: 'achievement', id: d.id, name: d.name, description: d.description, icon: d.icon, points: d.points }); this.play('learn'); }
+    }
+  }
+  /** Brings the counters up to date with what this adventure already did, quietly, so older saves get their achievements. */
+  private syncAchievements() {
+    const p = this.profile, s = (k: string, v: number) => this.statMax(k, v, true);
+    s('kills', this.defeated); s('places', this.discovered.size); s('chests', this.opened.size); s('lore', this.read.size);
+    s('sideQuests', this.world.quests.filter(q => !q.main && this.qs(q.id).status === 'done').length);
+    s('level', p.level); s('gold', p.gold); s('slots', SLOT_ORDER.filter(sl => p.equipped[sl]).length);
+    s('stars', Math.max(0, ...this.spellIds.map(id => starsOf(p, id)))); s('smith', Math.max(0, ...Object.values(p.upgrades).map(Number)));
+    for (const id of this.main.bosses) { const e = this.enemies.find(x => x.id === id) || (id.endsWith(':final') ? { kind: 'eclipse' } : null); if (e) s(`boss:${e.kind}`, 1); }
+    for (const r of this.main.finales) s(`chapter:${r}`, 1);
+    s('lands', this.landsSeen()); s('explore', this.exploredPercent());
+    for (const d of ACHIEVEMENTS) this.checkAch(d.stat, true);
+  }
+  private landsSeen() { const set = new Set<RegionId>([this.regionAt(this.hero.x).id]); for (const id of this.discovered) { const p = this.world.pois.find(z => z.id === id); if (p) set.add(p.region); } return set.size; }
+  private exploredPercent() { let n = 0; for (const v of this.explored) n += v; return Math.floor(n / this.explored.length * 100); }
+  /** Every achievement with its progress, for the journal. */
+  achievementRows(): AchRow[] {
+    const a = this.profile.ach;
+    return ACHIEVEMENTS.map(d => { const goal = goalOf(d, this.totals); return { ...d, goal, progress: Math.min(goal, a.n[d.stat] || 0), got: a.got[d.id] || 0 }; });
+  }
+
   // ───────────────────────────── experience and gold
   gainXp(amount: number, x = this.hero.x, y = this.hero.y) {
     const p = this.profile; amount = Math.round(amount * (this.buffs.luckyClover ? 1.5 : 1));
@@ -306,7 +380,7 @@ export class GameEngine {
       const h = this.hero;
       this.emit(h.x, h.y, 60, ['#fff1b8', '#ffd35c', '#ffffff', '#b9f29d'], { speed: 300, life: 1.3, kind: 'star', glow: true, size: 6 });
       this.ring(h.x, h.y, 200, '#ffd35c', .9); this.flash = .45; this.play('levelUp');
-      this.eventHandler({ type: 'levelUp', level: p.level });
+      this.eventHandler({ type: 'levelUp', level: p.level }); this.statMax('level', p.level);
       for (const id of this.spellIds) if (SPELLS[id].level === p.level) this.eventHandler({ type: 'spellLearned', spell: id });
     }
     if (p.level >= MAX_LEVEL) p.xp = 0;
@@ -316,6 +390,7 @@ export class GameEngine {
     n = Math.round(n * (this.buffs.luckyClover ? 1.5 : 1)); if (n <= 0) return;
     this.profile.gold += n; this.profileDirty = true;
     this.text(x, y - 76, `+${n} gold`, '#ffd35c', 14);
+    this.statMax('gold', this.profile.gold);
   }
   private refreshStats(heal: boolean) {
     const h = this.hero, p = this.profile;
@@ -339,6 +414,10 @@ export class GameEngine {
     if (id === 'dash') return this.dash();
     if (id === 'slash') return this.swordSlash();
     if (id === 'charge') return this.charge();
+    if (id === 'frostbolt') return this.frostbolt();
+    if (id === 'blink') return this.blink();
+    if (id === 'stab') return this.stab();
+    if (id === 'shadowstep') return this.shadowstep();
     if (h.cds[id] > 0) { this.play('nope'); return; }
     if (h.mana < info.cost) { this.play('nope'); this.notice('Not enough magic! Break glow pods and defeat creatures for mana.', 'warn', 'No magic'); return; }
     h.mana -= info.cost; h.cds[id] = this.cooldownOf(id); h.castTime = .3;
@@ -347,6 +426,12 @@ export class GameEngine {
     else if (id === 'starfall') this.starfall();
     else if (id === 'slam') this.earthsplitter();
     else if (id === 'bladestorm') this.bladestorm();
+    else if (id === 'frostnova') this.frostnova();
+    else if (id === 'iceBarrier') this.mossShield(id);
+    else if (id === 'blizzard') this.blizzard();
+    else if (id === 'knives') this.fanOfKnives();
+    else if (id === 'veil') this.smokeVeil();
+    else if (id === 'deathmark' && !this.deathmark()) { h.mana += info.cost; h.cds[id] = 0; }
   }
   private attack() {
     const h = this.hero; if (h.cds.spark > 0) return;
@@ -389,13 +474,15 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
     this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(2 + Math.min(4, hits));
   }
-  /** Rushes at the nearest foe (or straight ahead); everything in the way is hurt, knocked aside and stunned. */
+  /** Rushes at the nearest foe (or straight ahead); everything in the way is hurt, knocked aside and stunned.
+   *  A short rush: about 230 px at most, and it stops at the foe it aims for instead of carrying on past it. */
   private charge() {
     const h = this.hero; if (h.cds.charge > 0 || h.dashTime > 0) return;
-    const t = this.nearestTarget(460, true), moving = Math.hypot(this.moveX, this.moveY) > .1;
+    const t = this.nearestTarget(300, true), moving = Math.hypot(this.moveX, this.moveY) > .1;
     let dx = t ? t.x - h.x : moving ? this.moveX : h.faceX, dy = t ? t.y - h.y : moving ? this.moveY : h.faceY;
     const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-    h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = .34; h.charging = true; h.cds.charge = this.cooldownOf('charge'); h.slowT = 0;
+    const reach = t ? clamp((len - ('r' in t ? t.r : 20) - 10) / 1050, .08, .22) : .2;
+    h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = reach; h.charging = true; h.cds.charge = this.cooldownOf('charge'); h.slowT = 0;
     this.chargeHit.clear();
     this.emit(h.x, h.y + 14, 18, ['#ffd0a0', '#ffb35c', '#ffffff'], { speed: 160, life: .45, kind: 'smoke', size: 8, angle: Math.atan2(-dy, -dx), spread: 1.4 });
     this.play('dash'); this.play('roar');
@@ -426,6 +513,139 @@ export class GameEngine {
       }
     }
   }
+  // ───────────────────────────── Lyra's abilities
+  /** A homing shard of ice; it chills whatever it hits. */
+  private frostbolt() {
+    const h = this.hero; if (h.cds.frostbolt > 0) return;
+    h.cds.frostbolt = this.cooldownOf('frostbolt'); h.castTime = .2;
+    const target = this.nearestTarget(580);
+    let dx = h.faceX, dy = h.faceY;
+    if (target) { const d = Math.max(1, dist(h, target)); dx = (target.x - h.x) / d; dy = (target.y - h.y) / d; h.faceX = dx; h.faceY = dy; }
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    const crit = Math.random() < this.critChance;
+    this.projectiles.push({ x: h.x + dx * 26, y: h.y - 16 + dy * 26, vx: dx * 600, vy: dy * 600, life: 1, r: crit ? 9 : 7, damage: 12 * this.sp('frostbolt') * (crit ? 2 : 1), level: 0, owner: 'hero', kind: 'frost', targetId: target && 'kind' in target ? target.id : undefined, crit, spin: Math.atan2(dy, dx) });
+    this.emit(h.x + dx * 26, h.y - 16 + dy * 26, 6, ['#e0f6ff', '#9fe4ff'], { speed: 120, life: .3, size: 3, glow: true, angle: Math.atan2(dy, dx), spread: 1.2 });
+    this.play('spark');
+  }
+  /** A short teleport; the spot left behind bursts into frost that chills. */
+  private blink() {
+    const h = this.hero; if (h.cds.blink > 0) return;
+    let dx = this.moveX, dy = this.moveY;
+    if (Math.hypot(dx, dy) < .1) { dx = h.faceX; dy = h.faceY; }
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    const from = { x: h.x, y: h.y };
+    this.hazards.push({ x: from.x, y: from.y, r: 110, delay: .05, maxDelay: .05, damage: 10 * this.sp('blink'), level: 0, owner: 'hero', kind: 'blizzard', fromX: from.x, fromY: from.y });
+    for (let i = 0; i < 5; i++) this.afterimages.push({ x: from.x + dx * i * 45, y: from.y + dy * i * 45, life: .28 - i * .03, faceX: h.faceX });
+    h.x = clamp(h.x + dx * 230, 40, this.world.width - 40); h.y = clamp(h.y + dy * 230, 40, this.world.height - 40);
+    this.collide(h, 15);
+    h.vx = h.vy = 0; h.ghostT = .35; h.slowT = 0; h.cds.blink = this.cooldownOf('blink');
+    this.emit(from.x, from.y, 20, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 200, life: .5, kind: 'shard', glow: true, size: 4 });
+    this.emit(h.x, h.y, 16, ['#e0f6ff', '#ffffff'], { speed: 160, life: .4, kind: 'star', glow: true });
+    this.play('dash');
+  }
+  private frostnova() {
+    const h = this.hero;
+    this.hazards.push({ x: h.x, y: h.y, r: 175, delay: .08, maxDelay: .08, damage: 28 * this.sp('frostnova'), level: 0, owner: 'hero', kind: 'frostnova', fromX: h.x, fromY: h.y });
+    h.castTime = .3; this.addShake(3); this.play('reflect');
+  }
+  /** A blizzard over the nearest pack (or just ahead) that rains ice for four seconds. */
+  private blizzard() {
+    const h = this.hero, t = this.nearestTarget(620, true);
+    const c = t ? { x: t.x, y: t.y } : { x: h.x + h.faceX * 220, y: h.y + h.faceY * 220 };
+    this.storms.push({ x: c.x, y: c.y, t: 4, tick: 0 }); this.flash = Math.max(this.flash, .15); this.play('starfall');
+  }
+  // ───────────────────────────── Riven's abilities
+  /** Out of Smoke Veil, the first strike is an ambush for triple damage. */
+  private ambush() { if (this.stealthT <= 0) return 1; this.stealthT = 0; this.text(this.hero.x, this.hero.y - 70, 'Ambush!', '#e0c8ff', 18); return 3; }
+  /** Two quick dagger thrusts at up to two foes in front. Critical hits deal triple damage. */
+  private stab() {
+    const h = this.hero; if (h.cds.stab > 0) return;
+    h.cds.stab = this.cooldownOf('stab'); h.castTime = .2;
+    const t = this.nearestTarget(170);
+    if (t) { const d = Math.max(1, dist(h, t)); h.faceX = (t.x - h.x) / d; h.faceY = (t.y - h.y) / d; }
+    const ang = Math.atan2(h.faceY, h.faceX), reach = 94 * this.heroScale, sure = this.nextCrit;
+    this.slashes.push({ x: h.x, y: h.y - 12, angle: ang, life: .16, max: .16, reach, color: '#e0c8ff', narrow: true });
+    let hits = 0, amb = 1;
+    for (const e of this.enemies) {
+      if (hits >= 2) break;
+      if (e.dead || e.spawnT > 0 || e.burrowT > 0 || Math.abs(e.x - h.x) > reach + 60 || Math.abs(e.y - h.y) > reach + 60) continue;
+      const d = dist(h, e); if (d > reach + e.r) continue;
+      let da = Math.atan2(e.y - h.y, e.x - h.x) - ang; da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > .85 && d > e.r + 16) continue;
+      if (!hits) amb = this.ambush();
+      for (let k = 0; k < 2; k++) { const crit = sure || Math.random() < this.critChance; this.damageEnemy(e, 9 * this.sp('stab') * amb * (crit ? 3 : 1), crit); }
+      if (!e.boss) this.knock(e, h, 70); hits++;
+    }
+    if (hits) this.nextCrit = false;
+    for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
+    this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(1.5 + hits);
+  }
+  /** Steps through the shadows to right behind the nearest foe; the next stab is a sure critical hit. */
+  private shadowstep() {
+    const h = this.hero; if (h.cds.shadowstep > 0) return;
+    const t = this.nearestTarget(380, true), from = { x: h.x, y: h.y };
+    if (t) {
+      const d = Math.max(1, dist(h, t)), ux = (t.x - h.x) / d, uy = (t.y - h.y) / d, r = ('r' in t ? t.r : 20) + 30;
+      h.x = t.x + ux * r; h.y = t.y + uy * r; h.faceX = -ux; h.faceY = -uy;
+    } else {
+      let dx = this.moveX, dy = this.moveY; if (Math.hypot(dx, dy) < .1) { dx = h.faceX; dy = h.faceY; }
+      const l = Math.hypot(dx, dy) || 1; h.x += dx / l * 200; h.y += dy / l * 200;
+    }
+    h.x = clamp(h.x, 40, this.world.width - 40); h.y = clamp(h.y, 40, this.world.height - 40); this.collide(h, 15);
+    h.vx = h.vy = 0; h.ghostT = .3; h.slowT = 0; h.cds.shadowstep = this.cooldownOf('shadowstep'); this.nextCrit = true;
+    this.afterimages.push({ x: from.x, y: from.y, life: .28, faceX: h.faceX });
+    for (const p of [from, h]) this.emit(p.x, p.y, 16, ['rgba(60,40,90,.7)', 'rgba(140,110,200,.6)', '#e0c8ff'], { speed: 140, life: .5, kind: 'smoke', size: 12 });
+    this.play('dash');
+  }
+  private fanOfKnives() {
+    const h = this.hero, amb = this.ambush();
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + rand(-.05, .05); this.projectiles.push({ x: h.x, y: h.y - 12, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, life: .55, r: 7, damage: 18 * this.sp('knives') * amb, level: 0, owner: 'hero', kind: 'knife', spin: a }); }
+    h.castTime = .25; this.addShake(2); this.play('thornShot');
+  }
+  private smokeVeil() {
+    const h = this.hero; this.stealthT = this.durationOf('veil', 4);
+    for (const e of this.enemies) if (!e.boss && e.aggro) { e.aggro = false; e.windup = 0; e.lunge = 0; e.cd = Math.max(e.cd, 1); }
+    this.emit(h.x, h.y, 34, ['rgba(60,50,80,.7)', 'rgba(150,140,180,.6)', 'rgba(220,210,240,.5)'], { speed: 200, life: 1.3, kind: 'smoke', size: 22, drag: 2 });
+    this.play('dash');
+  }
+  /** Marks the toughest foe in reach; the mark bursts two seconds later. Returns false when nothing is in reach. */
+  private deathmark() {
+    const h = this.hero;
+    const list = this.enemies.filter(e => !e.dead && e.spawnT <= 0 && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - h.x) < 520 && Math.abs(e.y - h.y) < 520 && dist(h, e) < 520 && !this.marks.some(m => m.e === e));
+    if (!list.length) { this.play('nope'); this.notice('No foe in reach to mark.', 'warn', 'No target'); return false; }
+    const t = list.reduce((a, b) => b.hp > a.hp ? b : a);
+    this.marks.push({ e: t, t: 2, max: 2, mul: this.ambush() });
+    this.ring(t.x, t.y, 60, '#ff6b9a', .5); h.castTime = .3; this.play('voidShot');
+    return true;
+  }
+  /** Death Marks count down and burst; Blizzards rain ice; Smoke Veil and the blink grace fade. */
+  private updateSpells(dt: number) {
+    const h = this.hero;
+    h.ghostT = Math.max(0, h.ghostT - dt);
+    if (this.stealthT > 0) { this.stealthT = Math.max(0, this.stealthT - dt); if (Math.random() < dt * 10) this.emit(h.x + rand(-16, 16), h.y + rand(-24, 14), 1, 'rgba(150,130,200,.5)', { speed: 20, life: .6, kind: 'smoke', size: 7, grav: -20 }); }
+    for (let i = this.marks.length - 1; i >= 0; i--) {
+      const m = this.marks[i]; m.t -= dt;
+      if (m.e.dead) { swapRemove(this.marks, i); continue; }
+      if (m.t > 0) continue;
+      swapRemove(this.marks, i);
+      const e = m.e, dmg = 110 * this.sp('deathmark') * m.mul;
+      this.damageEnemy(e, dmg, true);
+      for (const o of this.enemies) if (o !== e && !o.dead && this.canHurt(o) && Math.abs(o.x - e.x) < 220 && dist(o, e) < 170 + o.r) this.damageEnemy(o, dmg * .4);
+      this.ring(e.x, e.y, 170, '#ff6b9a', .6); this.ring(e.x, e.y, 90, '#ffffff', .35);
+      this.emit(e.x, e.y, 40, ['#ff6b9a', '#2a1838', '#e0c8ff', '#ffffff'], { speed: 360, life: .7, kind: 'star', glow: true, size: 5 });
+      this.flash = Math.max(this.flash, .25); this.addShake(8); this.hitStop = Math.max(this.hitStop, .05); this.play('boom', e);
+    }
+    for (let i = this.storms.length - 1; i >= 0; i--) {
+      const s = this.storms[i]; s.t -= dt; s.tick -= dt;
+      if (s.t <= 0) { swapRemove(this.storms, i); continue; }
+      if (Math.random() < dt * 40 * this.fx) this.emit(s.x + rand(-170, 170), s.y + rand(-150, 90), 1, ['#ffffff', '#dff6ff'], { speed: 40, life: .8, size: 3, grav: 160, angle: Math.PI / 2 + .3, spread: .3 });
+      if (s.tick <= 0) {
+        s.tick = .22;
+        const a = rand(0, 6.28), r = rand(0, 150), x = s.x + Math.cos(a) * r, y = s.y + Math.sin(a) * r * .8;
+        this.hazards.push({ x, y, r: 66, delay: .35, maxDelay: .35, damage: 13 * this.sp('blizzard'), level: 0, owner: 'hero', kind: 'blizzard', fromX: x + 80, fromY: y - 380 });
+      }
+    }
+  }
   private sunfire() {
     const h = this.hero, target = this.nearestTarget(620);
     let dx = h.faceX, dy = h.faceY;
@@ -444,11 +664,13 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && dist({ x, y }, p) < 100) this.breakPod(p);
     this.addShake(9); this.hitStop = .05; this.play('boom', { x, y });
   }
+  /** Moss Shield, Shield Wall and Ice Barrier: a ward that blocks everything, bounces projectiles and shoves foes back. */
   private mossShield(id: SpellId) {
-    const h = this.hero; h.shieldTime = this.durationOf(id, 3); h.slowT = 0;
-    this.ring(h.x, h.y, 70, '#9fe8b0', .4);
-    this.emit(h.x, h.y, 30, ['#9fe8b0', '#d6ffd9', '#5fae4f'], { speed: 200, life: .6, kind: 'leaf', size: 6 });
-    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 110 + e.r) { e.windup = 0; e.cd = Math.max(e.cd, 1.3); this.damageEnemy(e, 10 * this.power); this.knock(e, h, e.boss ? 10 : 220); }
+    const h = this.hero, ice = id === 'iceBarrier'; h.shieldTime = this.durationOf(id, 3); h.slowT = 0;
+    this.ring(h.x, h.y, 70, ice ? '#bfeaff' : '#9fe8b0', .4);
+    if (ice) this.emit(h.x, h.y, 30, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 220, life: .6, kind: 'shard', glow: true, size: 5 });
+    else this.emit(h.x, h.y, 30, ['#9fe8b0', '#d6ffd9', '#5fae4f'], { speed: 200, life: .6, kind: 'leaf', size: 6 });
+    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 110 + e.r) { e.windup = 0; e.cd = Math.max(e.cd, 1.3); this.damageEnemy(e, 10 * this.power); this.knock(e, h, e.boss ? 10 : 220); if (ice) e.chillT = Math.max(e.chillT, 3); }
     this.play('shield');
   }
   private starfall() {
@@ -562,6 +784,8 @@ export class GameEngine {
     this.eventHandler({ type: 'quest', title: q.title, state: 'completed', xp });
     this.gainXp(xp); this.gainGold(this.rewardGold(q));
     this.addItem(this.rewardItem(q));
+    if (!q.main) this.bump('sideQuests');
+    if (q.kind === 'rescue') this.bump('rescues');
     const gear = first ? this.rewardGear(q) : null;
     if (gear) this.addGear(gear);
     if (this.tracked === q.id) this.tracked = this.world.quests.find(x => !x.main && (this.qs(x.id).status === 'active' || this.qs(x.id).status === 'ready'))?.id || null;
@@ -571,16 +795,14 @@ export class GameEngine {
     }
   }
   track(id: string) { if (this.quests.has(id)) this.tracked = id; }
-  /** Tuft's nudges start on their own once no chapter-end screen is showing. */
+  /** Tuft's nudges (the next chapter's opener) start on their own once the fireworks are over. */
   private flushFox() {
-    if (!this.foxQueue.length || this.completeTimer > 0 || this.awaitingChapter) return;
+    if (!this.foxQueue.length || this.completeTimer > 0 || this.foxDelay > 0) return;
     const id = this.foxQueue.shift()!, q = this.quest(id);
     if (!q || this.qs(id).status !== 'available') return;
     const voice = this.guideVoice; this.say(voice.name, voice.portrait, q.text.offer);
     this.acceptQuest(id);
   }
-  /** Called by the UI when the player leaves the chapter-complete screen. */
-  nextChapter() { this.awaitingChapter = false; this.chapterStart = { elapsed: this.elapsed, defeated: this.defeated }; this.flushFox(); }
 
   // ───────────────────────────── rescues
   private spawnGuards(q: QuestDef) {
@@ -619,6 +841,7 @@ export class GameEngine {
     if (id === 'thunderJar' && !this.thunderTargets().length) { this.play('nope'); this.notice('No foes in reach — the lightning would be wasted.', 'warn', 'No foes near'); return; }
     if (have > 1) bag[id] = have - 1; else delete bag[id];
     saveProfile(this.profile);
+    if (info.kind === 'potion') this.bump('potions'); else if (info.kind === 'bomb' && id !== 'smokeBomb') this.bump('bombs');
     switch (id) {
       case 'healthPotion': { const heal = Math.min(h.maxHp - h.hp, Math.round(h.maxHp * .5)); h.hp += heal; this.text(h.x, h.y - 50, `+${heal}`, '#ff9aa8', 20); break; }
       case 'manaPotion': h.mana = h.maxMana; break;
@@ -659,17 +882,47 @@ export class GameEngine {
     p.gold -= price; this.addItem(id); this.play('pickup');
     return true;
   }
+  /** Merchants buy spare consumables back for 40% of their price. */
+  sellItem(id: ItemId) {
+    const bag = this.profile.items, have = bag[id] || 0; if (have <= 0) return 0;
+    const n = Math.max(1, Math.round(ITEMS[id].price * .4));
+    if (have > 1) bag[id] = have - 1; else delete bag[id];
+    this.profile.gold += n; saveProfile(this.profile); this.play('orb');
+    return n;
+  }
   setQuick(id: ItemId) { if (id === 'healthPotion') return; this.profile.quick = id; saveProfile(this.profile); this.play('ui'); }
 
   // ───────────────────────────── equipment
-  /** Puts a piece in the bag; if the bag is full it is sold on the spot instead. */
+  /** Puts on a piece for an empty slot; anything else goes in the bag, or is sold on the spot if the bag is full. */
   addGear(g: GearItem) {
     const p = this.profile, c = RARITY[g.rarity].color;
     if (p.gear.some(x => x.uid === g.uid) || SLOT_ORDER.some(s => p.equipped[s]?.uid === g.uid)) g = { ...g, uid: `${g.uid}-${Date.now().toString(36)}` };
+    if (g.rarity === 'epic') this.bump('epics'); else if (g.rarity === 'legendary') this.bump('legendaries');
+    if (!p.equipped[g.slot]) {
+      const before = this.hero.maxHp; p.equipped[g.slot] = g; this.statsChanged(before);
+      this.statMax('slots', SLOT_ORDER.filter(s => p.equipped[s]).length);
+      this.text(this.hero.x, this.hero.y - 88, `${g.name} · equipped`, c, 15);
+      this.emit(this.hero.x, this.hero.y - 10, 18, [c, '#ffffff'], { speed: 140, life: .6, kind: 'star', glow: true });
+      this.eventHandler({ type: 'loot', item: g, equipped: true });
+      return;
+    }
     if (bagUsed(p) >= BAG_SIZE) { const n = sellPrice(g); p.gold += n; this.profileDirty = true; this.notice(`Your bag is full — ${g.name} was sold for ${n} gold.`, 'warn', 'Bag full · sold'); return; }
     p.gear.push(g); saveProfile(p);
     this.text(this.hero.x, this.hero.y - 88, g.name, c, 15);
     this.eventHandler({ type: 'loot', item: g });
+  }
+  /** The armourer's shelf in the land the hero stands in. It is restocked every time the hero levels up. */
+  armoury(): ShopGear[] {
+    const p = this.profile, r = this.heroRegion;
+    return armouryStock(p.hero, r.id, p.level, r.levels).map(s => ({ ...s, sold: p.bought.includes(s.item.uid) }));
+  }
+  buyGear(uid: string) {
+    const p = this.profile, s = this.armoury().find(x => x.item.uid === uid);
+    if (!s || s.sold || p.gold < s.price || p.level < s.needLevel || (p.equipped[s.item.slot] && bagUsed(p) >= BAG_SIZE)) { this.play('nope'); return false; }
+    p.gold -= s.price; p.bought = [...p.bought, uid].slice(-60); this.play('orb'); this.bump('bought');
+    this.addGear({ ...s.item, uid: `b${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}` });
+    saveProfile(p);
+    return true;
   }
   private dropGear(x: number, y: number, ilvl: number, rarity: Rarity) {
     const g = makeGear({ ilvl, rarity }), a = rand(0, 6.28), v = rand(140, 260);
@@ -685,6 +938,7 @@ export class GameEngine {
     const g = p.gear[i], old = p.equipped[g.slot], before = this.hero.maxHp;
     p.gear.splice(i, 1); if (old) p.gear.splice(i, 0, old);
     p.equipped[g.slot] = g; this.statsChanged(before);
+    this.statMax('slots', SLOT_ORDER.filter(s => p.equipped[s]).length);
     this.emit(this.hero.x, this.hero.y - 10, 18, [RARITY[g.rarity].color, '#ffffff'], { speed: 140, life: .6, kind: 'star', glow: true }); this.play('pickup');
     return true;
   }
@@ -710,7 +964,7 @@ export class GameEngine {
   upgradeSpell(id: SpellId) {
     const r = this.spellRank(id), p = this.profile;
     if (!r.canBuy) { this.play('nope'); return false; }
-    p.gold -= r.cost; p.stars[id] = r.rank + 1; saveProfile(p);
+    p.gold -= r.cost; p.stars[id] = r.rank + 1; saveProfile(p); this.statMax('stars', r.rank + 1);
     this.play('learn'); this.flash = .2;
     this.emit(this.hero.x, this.hero.y - 10, 30, [SPELLS[id].color, '#ffffff', '#ffd35c'], { speed: 200, life: .8, kind: 'star', glow: true });
     return true;
@@ -719,7 +973,7 @@ export class GameEngine {
   buyUpgrade(id: UpgradeId) {
     const p = this.profile, rank = rankOf(p, id), cost = upgradeCost(rank);
     if (rank >= MAX_RANK || p.gold < cost) { this.play('nope'); return false; }
-    p.gold -= cost; p.upgrades[id] = rank + 1;
+    p.gold -= cost; p.upgrades[id] = rank + 1; this.statMax('smith', rank + 1);
     const before = this.hero.maxHp; this.refreshStats(false); this.hero.hp += Math.max(0, this.hero.maxHp - before);
     saveProfile(p); this.play('learn'); this.flash = .25;
     this.emit(this.hero.x, this.hero.y, 30, ['#ffd35c', '#ffffff', '#ffb05c'], { speed: 200, life: .8, kind: 'star', glow: true });
@@ -784,7 +1038,7 @@ export class GameEngine {
         const n = 4 + Math.floor(Math.random() * 4);
         for (let i = 0; i < n; i++) this.spawnOrb(o.x, o.y - 8, Math.random() < .25 ? 'heart' : 'mana');
         for (let i = 0; i < 4; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(6 + reg.levels[0] * 2.5));
-        this.notice(`You opened the ${o.name.toLowerCase()}!`, 'good'); this.gainXp(35 * reg.xpScale, o.x, o.y);
+        this.notice(`You opened the ${o.name.toLowerCase()}!`, 'good'); this.gainXp(35 * reg.xpScale, o.x, o.y); this.bump('chests');
         this.addItem(rollItem()); if (Math.random() < .35) this.addItem(rollItem());
         if (Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
         return;
@@ -792,7 +1046,7 @@ export class GameEngine {
       case 'lore': {
         const first = !this.read.has(o.id); this.read.add(o.id); this.play('page');
         this.say(o.name, '🪨', o.text || []);
-        if (first) this.gainXp(30 * reg.xpScale, o.x, o.y);
+        if (first) { this.gainXp(30 * reg.xpScale, o.x, o.y); this.bump('lore'); }
         return;
       }
       case 'sign': this.play('page'); this.say(o.name, '🪧', o.text || []); return;
@@ -841,7 +1095,7 @@ export class GameEngine {
     const ready = this.world.quests.find(q => this.qs(q.id).status === 'ready' && this.reportTo(q) === n.id);
     if (ready) return this.finish(ready, n, ready.text.complete);
     const offer = this.offerFrom(n); if (offer) return this.offerQuest(offer, n);
-    if (n.role === 'merchant' || n.role === 'smith') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
+    if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
@@ -862,7 +1116,7 @@ export class GameEngine {
     const next = this.offerFrom(n);
     if (next) this.offerQuest(next, n, lines); else this.say(n.name, n.portrait, lines);
   }
-  /** Called by the UI once the finale dialogue closes: fireworks, then the chapter ends. */
+  /** Called by the UI once the finale dialogue closes: fireworks, then the chapter is complete and the story walks on. */
   celebrate() {
     if (this.completeTimer > 0) return;
     this.completeTimer = 3.2; this.fireworkTimer = 0; this.flash = .8; this.addShake(8); this.play('victory');
@@ -875,22 +1129,24 @@ export class GameEngine {
   private nearestTarget(maxRange: number, creaturesOnly = false): Enemy | Pod | null {
     let best: Enemy | Pod | null = null, bestD = maxRange;
     const h = this.hero;
-    for (const e of this.enemies) { if (e.dead || e.spawnT > 0 || !this.canHurt(e) || Math.abs(e.x - h.x) > maxRange || Math.abs(e.y - h.y) > maxRange) continue; const d = dist(h, e); if (d < bestD) { best = e; bestD = d; } }
+    for (const e of this.enemies) { if (e.dead || e.spawnT > 0 || e.burrowT > 0 || !this.canHurt(e) || Math.abs(e.x - h.x) > maxRange || Math.abs(e.y - h.y) > maxRange) continue; const d = dist(h, e); if (d < bestD) { best = e; bestD = d; } }
     if (!best && !creaturesOnly) for (const p of this.pods) { if (p.dead || Math.abs(p.x - h.x) > 260 || Math.abs(p.y - h.y) > 260) continue; const d = dist(h, p); if (d < Math.min(bestD, 260)) { best = p; bestD = d; } }
     return best;
   }
   private knock(e: Enemy, from: Point, force: number) {
-    if (e.kind === 'cragGolem') force *= .25;
+    if (e.kind === 'cragGolem' || e.kind === 'magmaHulk') force *= .25;
     if (this.buffs.giantBrew) force *= 1.8;
     const dx = e.x - from.x, dy = e.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     e.kx += dx / d * force; e.ky += dy / d * force;
   }
   private damageEnemy(e: Enemy, amount: number, crit = false) {
-    if (e.dead) return;
+    if (e.dead || e.burrowT > 0) return;
     if (!this.canHurt(e)) { this.notice(this.region(e.region).script.sealed, 'warn', 'Sealed'); this.emit(e.x, e.y, 8, '#c9b6ff', { speed: 120, glow: true }); return; }
     amount = Math.max(1, Math.round(amount * this.dealMul(e.level)));
     e.hp -= amount; e.hitFlash = .14; e.aggro = true;
     this.combo++; this.comboTime = 2.4;
+    if (crit) this.bump('crits');
+    if (this.combo >= 15) this.statMax('combo', this.combo);
     this.text(e.x, e.y - e.r - 18, crit ? `${amount}!` : `${amount}`, crit ? '#ffd35c' : '#fff3c0', crit ? 24 : 17);
     this.emit(e.x, e.y, crit ? 12 : 7, ['#ffffff', '#fff3c0', this.region(e.region).palette.accent], { speed: 200, life: .35, glow: true, size: 3 });
     this.play(crit ? 'crit' : 'hit', e);
@@ -898,8 +1154,8 @@ export class GameEngine {
     if (e.hp <= 0) this.killEnemy(e);
   }
   private killEnemy(e: Enemy) {
-    e.dead = true; e.deadT = 0; e.action = null;
-    if (!e.summoned) this.defeated++;
+    e.dead = true; e.deadT = 0; e.action = null; e.burrowT = 0; e.chillT = 0; e.frozenT = 0;
+    if (!e.summoned) { this.defeated++; this.bump('kills'); if (e.elite) this.bump('elites'); if (e.level - this.profile.level >= 4) this.statMax('underdog', 1); }
     const colors = KILL_COLORS[e.kind] || [this.region(e.region).palette.accent, '#ffffff', '#ffd27a', '#ff9a4a'];
     this.emit(e.x, e.y, e.boss ? 140 : 22, colors, { speed: e.boss ? 520 : 240, life: e.boss ? 1.8 : .8, kind: 'star', glow: true, size: e.boss ? 7 : 4, drag: 2 });
     this.emit(e.x, e.y, e.boss ? 36 : 8, ['#8fd46b', '#b9f29d', '#f2a1b8'], { speed: 200, life: 1.6, kind: 'leaf', size: 7, grav: 60 });
@@ -917,6 +1173,7 @@ export class GameEngine {
     if (e.kind === 'sporecap') this.addHazard(e.x, e.y, 110, .7, 'spore', e, hitAt(e.level) * .8, e.level);
     if (e.boss) {
       this.main.bosses.push(e.id); this.slowMo = 1.4;
+      this.statMax(`boss:${e.kind}`, 1); if (this.cleanFight) this.statMax('flawless', 1); this.cleanFight = false;
       this.flash = 1; this.addShake(22); this.play('bossDie');
       for (const other of this.enemies) if (other.summoned && !other.dead) this.killEnemy(other);
       this.clearThreats = true;
@@ -945,8 +1202,13 @@ export class GameEngine {
   /** `amount` is in health points before level, armour and potion reductions. */
   private hurt(amount: number, from: Point, level: number) {
     const h = this.hero;
-    if (h.hurtTime > 0 || h.dashTime > 0 || this.completeTimer > 0) return;
-    if (h.shieldTime > 0) { this.ring(h.x, h.y, 50, '#9fe8b0', .25); this.play('reflect'); return; }
+    if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0) return;
+    if (h.shieldTime > 0) {
+      this.ring(h.x, h.y, 50, this.heroId === 'lyra' ? '#bfeaff' : '#9fe8b0', .25); this.play('reflect');
+      // Ice Barrier chills whatever strikes it.
+      if (this.heroId === 'lyra' && 'chillT' in from) (from as Enemy).chillT = Math.max((from as Enemy).chillT, 3);
+      return;
+    }
     const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1) * (h.stormT > 0 ? .5 : 1)));
     h.hp -= dmg; h.hurtTime = .9; this.damageFlash = .35; this.combo = 0;
     const dx = h.x - from.x, dy = h.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
@@ -961,7 +1223,7 @@ export class GameEngine {
     const h = this.hero, bag = this.profile.items;
     if ((bag.phoenixFeather || 0) > 1) bag.phoenixFeather!--; else delete bag.phoenixFeather;
     saveProfile(this.profile);
-    h.hp = Math.round(h.maxHp * .6); h.hurtTime = 2.5; h.vx = h.vy = 0;
+    h.hp = Math.round(h.maxHp * .6); h.hurtTime = 2.5; h.vx = h.vy = 0; this.bump('rebirths');
     this.emit(h.x, h.y, 70, ['#ff9a4a', '#ffd35c', '#ff5f3d', '#fff1b8'], { speed: 360, life: 1.2, kind: 'ember', glow: true, size: 6, grav: -80 });
     this.ring(h.x, h.y, 220, '#ff9a4a', .9); this.flash = .7; this.slowMo = .8; this.play('levelUp');
     for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 240 + e.r) { this.damageEnemy(e, 30 * this.power); if (!e.boss) this.knock(e, h, 380); }
@@ -971,7 +1233,8 @@ export class GameEngine {
     const h = this.hero;
     h.hp = h.maxHp; h.mana = Math.max(40, h.mana); h.x = this.checkpoint.x; h.y = this.checkpoint.y; h.vx = h.vy = 0; h.hurtTime = 2; h.slowT = 0;
     const lost = Math.floor(this.profile.gold * .1); this.profile.gold -= lost; this.profileDirty = true;
-    this.respawnFade = 1; this.clearThreats = true;
+    this.respawnFade = 1; this.clearThreats = true; this.cleanFight = false; this.bump('deaths');
+    this.marks.length = 0; this.storms.length = 0; this.stealthT = 0;
     for (const e of this.enemies) {
       if (e.dead) continue;
       if (e.summoned) { e.dead = true; continue; }
@@ -1021,9 +1284,11 @@ export class GameEngine {
     this.slowTick -= dt;
     if (this.slowTick <= 0) {
       this.slowTick = .25; this.updateZone(); this.markExplored(); this.updateSoundscape(); this.respawnEnemies(); this.flushFox();
+      if (++this.exploreTick % 16 === 0) this.statMax('explore', this.exploredPercent());
       if (this.profileDirty) { this.profileDirty = false; saveProfile(this.profile); }
     }
     if (this.completeTimer > 0) this.updateCelebration(dt);
+    if (this.foxDelay > 0) this.foxDelay -= dt;
     if (this.clearThreats) {
       // Deferred so no update loop sees its array change underneath it.
       this.clearThreats = false;
@@ -1049,7 +1314,7 @@ export class GameEngine {
     }
   }
   private updateHero(dt: number) {
-    const h = this.hero, speed = (this.heroId === 'kael' ? 255 : 270) * this.moveSpeed * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
+    const h = this.hero, speed = HEROES[this.heroId].speed * this.moveSpeed * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
     if (h.dashTime > 0) {
       h.dashTime -= dt; const ds = h.charging ? 1050 : 900; h.vx = h.dashX * ds; h.vy = h.dashY * ds;
       if (Math.random() < .9) this.afterimages.push({ x: h.x, y: h.y, life: .28, faceX: h.faceX });
@@ -1072,13 +1337,15 @@ export class GameEngine {
     for (let i = this.afterimages.length - 1; i >= 0; i--) { this.afterimages[i].life -= dt; if (this.afterimages[i].life <= 0) swapRemove(this.afterimages, i); }
     for (let i = this.slashes.length - 1; i >= 0; i--) { this.slashes[i].life -= dt; if (this.slashes[i].life <= 0) swapRemove(this.slashes, i); }
     this.updateWarrior(dt);
+    this.updateSpells(dt);
     if (h.shieldTime > 0 && Math.random() < dt * 12) this.emit(h.x + rand(-30, 30), h.y + rand(-30, 20), 1, '#9fe8b0', { speed: 30, life: .7, kind: 'leaf', size: 5, grav: -20 });
     sfx.setListener(h.x, h.y);
   }
   groundAt(x: number, y: number) {
     if (this.roads.dist(x, y, 60) < 46) return 'path' as const;
     const p = this.poiAt({ x, y }); if (p && (p.kind === 'ruins' || p.kind === 'shrine' || p.kind === 'finale' || p.kind === 'city')) return 'stone' as const;
-    return this.regionAt(x).ground === 'snow' ? 'snow' as const : 'grass' as const;
+    const g = this.regionAt(x).ground;
+    return g === 'snow' ? 'snow' as const : g === 'ash' ? 'path' as const : 'grass' as const;
   }
   private pushOut(p: Point, x: number, y: number, min: number) {
     const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
@@ -1094,6 +1361,10 @@ export class GameEngine {
       if (far && !e.aggro) continue; // creatures far away sleep
       e.hitFlash = Math.max(0, e.hitFlash - dt); e.lunge = Math.max(0, e.lunge - dt);
       if (e.spawnT > 0) { e.spawnT -= dt; continue; }
+      if (e.frozenT > 0) e.frozenT = Math.max(0, e.frozenT - dt);
+      // A chilled creature lives a little slower: it moves, winds up and recovers at 55% speed.
+      if (e.chillT > 0) { e.chillT = Math.max(0, e.chillT - dt); if (Math.random() < dt * 5) this.emit(e.x + rand(-e.r, e.r), e.y - e.r * .5, 1, '#dff6ff', { speed: 15, life: .5, glow: true, size: 2, grav: 30 }); }
+      const edt = e.chillT > 0 ? dt * (e.boss ? .8 : .55) : dt;
       const rage = !e.aggro ? 0 : e.windup > 0 || e.lunge > 0 || e.action ? 1 : .55;
       e.rage += (rage - e.rage) * Math.min(1, dt * 7);
       e.x += e.kx * dt; e.y += e.ky * dt; e.kx *= Math.pow(.004, dt); e.ky *= Math.pow(.004, dt);
@@ -1102,15 +1373,15 @@ export class GameEngine {
       const d = dist(h, e);
       if (e.aggro && d < 650) threats += e.boss ? 3 : 1;
       if (e.aggro && d < 480 && this.canHurt(e)) near = true;
-      if (e.boss) { this.updateBoss(e, dt, d); continue; }
-      if (!e.aggro && d < 380 && !this.buffs.smokeBomb) { e.aggro = true; this.text(e.x, e.y - e.r - 26, '!', '#ffd35c', 22); this.play('squeak', e); }
+      if (e.boss) { this.updateBoss(e, edt, d); continue; }
+      if (!e.aggro && d < 380 && !this.buffs.smokeBomb && this.stealthT <= 0) { e.aggro = true; this.text(e.x, e.y - e.r - 26, '!', '#ffd35c', 22); this.play('squeak', e); }
       if (e.aggro && (d > 820 || dist(e, { x: e.homeX, y: e.homeY }) > 950)) { e.aggro = false; e.windup = 0; e.lunge = 0; }
       if (!e.aggro) { this.wander(e, dt); continue; }
       if (e.stunT > 0) { e.stunT -= dt; if (Math.random() < dt * 12) this.emit(e.x + rand(-e.r, e.r), e.y - e.r, 1, '#8fd8ff', { speed: 40, life: .3, glow: true, size: 2 }); continue; }
-      e.cd = Math.max(0, e.cd - dt);
-      this.enemyAct(e, dt, d);
+      e.cd = Math.max(0, e.cd - edt);
+      this.enemyAct(e, edt, d);
       const hit = hitAt(e.level) * ENEMY_STATS[e.kind].dmg;
-      if (d < e.r + 16 && e.kind !== 'thornling' && e.kind !== 'sporecap') this.hurt(hit * (e.kind === 'bristleboar' && e.lunge > 0 ? 1.5 : e.kind === 'webspinner' && h.slowT > 0 ? 1 : .6), e, e.level);
+      if (d < e.r + 16 && e.kind !== 'thornling' && e.kind !== 'sporecap' && e.kind !== 'emberImp' && e.burrowT <= 0) this.hurt(hit * (e.kind === 'bristleboar' && e.lunge > 0 ? 1.5 : e.kind === 'webspinner' && h.slowT > 0 ? 1 : .6), e, e.level);
     }
     this.combat += (clamp(threats / 4, 0, 1) - this.combat) * Math.min(1, dt * 1.5);
     this.danger += (Number(near) - this.danger) * Math.min(1, dt * (near ? 5 : 2));
@@ -1205,6 +1476,40 @@ export class GameEngine {
         else if (d > 80) { e.x += dx * sp * dt; e.y += dy * sp * dt; }
         break;
       }
+      case 'emberImp': {
+        // Hovers just out of reach and lobs fire, weaving side to side.
+        e.angle += dt * 2.2;
+        const side = Math.sin(e.angle) * sp * .5, want = d > 300 ? sp : d < 210 ? -sp : 0;
+        e.x += (dx * want - dy * side) * dt; e.y += (dy * want + dx * side) * dt;
+        if (Math.random() < dt * 6) this.emit(e.x, e.y + 4, 1, ['#ffb347', '#ff6b3d'], { speed: 20, life: .5, glow: true, size: 3, grav: -40, kind: 'ember' });
+        if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { const a0 = Math.atan2(dy, dx); for (const off of e.elite ? [-.25, 0, .25] : [-.12, .12]) this.enemyShot(e, a0 + off, 300, 'fire', hit * .75); e.cd = 1.9; this.play('sunfire', e); } }
+        else if (e.cd <= 0 && d < 440) e.windup = .5;
+        break;
+      }
+      case 'ashScorpion': {
+        if (e.burrowT > 0) {
+          // Swims under the sand toward the hero, then bursts out beneath them: the ring on the ground is the warning.
+          e.burrowT -= dt; e.x += dx * sp * 2.1 * dt; e.y += dy * sp * 2.1 * dt;
+          if (Math.random() < dt * 16) this.emit(e.x + rand(-12, 12), e.y + 10, 1, 'rgba(200,160,110,.55)', { speed: 50, life: .5, kind: 'smoke', size: 8 });
+          if (d < 60 || e.burrowT <= 0) { e.burrowT = 0; e.windup = .5; this.addHazard(e.x, e.y, 92, .5, 'slam', e, hit * 1.25, e.level); this.play('slam', e); }
+          break;
+        }
+        if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) e.cd = 2.2; break; }
+        if (e.cd <= 0 && d > 160 && d < 520) { e.burrowT = 2.4; e.cd = 4.5; this.emit(e.x, e.y + 8, 14, 'rgba(200,160,110,.6)', { speed: 120, life: .6, kind: 'smoke', size: 10 }); break; }
+        if (e.lunge <= 0 && e.cd <= 0 && d < 95) { e.lunge = .25; e.kx += dx * 600; e.ky += dy * 600; this.hurt(hit, e, e.level); e.cd = 1.6; this.play('squeak', e); }
+        else if (d > 60) { e.x += dx * sp * dt; e.y += dy * sp * dt; }
+        break;
+      }
+      case 'magmaHulk': {
+        // Raises its fists: the ground cracks open around it and under the hero.
+        if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) e.cd = 3.4; }
+        else if (e.cd <= 0 && d < 220) {
+          e.windup = 1.1; this.addHazard(e.x, e.y, 150, 1.1, 'lava', e, hit * 1.2, e.level);
+          for (let i = 0; i < 3; i++) { const a2 = rand(0, 6.28), r2 = i ? rand(90, 200) : 0; this.addHazard(h.x + Math.cos(a2) * r2, h.y + Math.sin(a2) * r2, 70, 1.3 + i * .25, 'lava', e, hit, e.level); }
+          this.play('roar', e);
+        } else if (d > 90) { e.x += dx * sp * dt; e.y += dy * sp * dt; }
+        break;
+      }
     }
   }
   private respawnEnemies() {
@@ -1214,7 +1519,7 @@ export class GameEngine {
       if (!e.dead) continue;
       if (e.summoned || e.guard) { if (e.deadT > 2) swapRemove(this.enemies, i); continue; }
       if (e.boss || e.deadT < RESPAWN_TIME || Math.hypot(e.homeX - h.x, e.homeY - h.y) < 560) continue;
-      const fresh = this.makeEnemy(e); fresh.x = e.homeX; fresh.y = e.homeY; fresh.spawnT = .6;
+      const fresh = this.makeEnemy({ id: e.id, kind: e.kind, x: e.homeX, y: e.homeY, level: e.level, region: e.region, elite: e.elite }); fresh.spawnT = .6;
       Object.assign(e, fresh);
       if (Math.abs(e.x - h.x) < 1400 && Math.abs(e.y - h.y) < 1000) { this.emit(e.x, e.y, 16, ['#c9b6ff', '#1a1030', '#ffffff'], { speed: 140, life: .6, kind: 'smoke', size: 10 }); this.ring(e.x, e.y, 50, '#c9b6ff', .4); }
     }
@@ -1224,10 +1529,10 @@ export class GameEngine {
     if (e.wanderT <= 0) { e.wanderT = rand(1.5, 4); const a = rand(0, 6.28), r = rand(0, 110); e.wanderX = e.homeX + Math.cos(a) * r; e.wanderY = e.homeY + Math.sin(a) * r; }
     const dx = e.wanderX - e.x, dy = e.wanderY - e.y, d = Math.hypot(dx, dy);
     if (d > 6) { e.x += dx / d * 40 * dt; e.y += dy / d * 40 * dt; }
-    if (e.kind === 'wisp' || e.kind === 'frostwraith') e.angle += dt * 2;
+    if (e.kind === 'wisp' || e.kind === 'frostwraith' || e.kind === 'emberImp') e.angle += dt * 2;
   }
-  private enemyShot(e: Enemy, angle: number, speed: number, kind: 'thorn' | 'void' | 'web' | 'ice', damage: number) {
-    this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 2.6, r: kind === 'void' || kind === 'web' ? 9 : 7, damage, level: e.level, owner: 'enemy', kind, spin: angle });
+  private enemyShot(e: Enemy, angle: number, speed: number, kind: 'thorn' | 'void' | 'web' | 'ice' | 'fire', damage: number) {
+    this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 2.6, r: kind === 'void' || kind === 'web' || kind === 'fire' ? 9 : 7, damage, level: e.level, owner: 'enemy', kind, spin: angle });
   }
 
   // ───────────────────────────── villagers and wildlife
@@ -1335,7 +1640,7 @@ export class GameEngine {
       if (home > 20) { e.x += (e.homeX - e.x) / home * 90 * dt; e.y += (e.homeY - e.y) / home * 90 * dt; }
       if (d > 540) return;
       e.aggro = true; e.cd = 1.4;
-      if (!this.bossIntroShown.has(e.id)) { this.bossIntroShown.add(e.id); this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.play('roar'); this.addShake(12); this.ring(e.x, e.y, 260, '#ff8f7a', .8); }
+      if (!this.bossIntroShown.has(e.id)) { this.bossIntroShown.add(e.id); this.cleanFight = true; this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.play('roar'); this.addShake(12); this.ring(e.x, e.y, 260, '#ff8f7a', .8); }
     }
     if (d > 1200) { e.aggro = false; e.action = null; return; }
     const phases = BOSS_PATTERNS[e.kind].length, frac = e.hp / e.maxHp;
@@ -1343,7 +1648,7 @@ export class GameEngine {
     if (phase > e.phase) { e.phase = phase; this.play('roar'); this.addShake(14); this.flash = .4; this.ring(e.x, e.y, 300, '#ff6b5b', .8); this.notice(`${this.bossName(e)} is enraged!`, 'epic', 'Enraged!'); e.action = null; e.cd = .6; }
     const thresholds = e.kind === 'eclipse' ? [.85, .6, .35, .15] : [.7, .35];
     if (e.summons < thresholds.length && e.hp <= e.maxHp * thresholds[e.summons]) { e.summons++; this.summonMinions(e); }
-    if (Math.random() < dt * 8) this.emit(e.x + rand(-e.r, e.r), e.y + rand(-e.r, e.r * .5), 1, e.kind === 'eclipse' ? ['#1a1030', '#c9b6ff', '#ff6b9a'] : e.kind === 'hollowStar' ? ['#c9b6ff', '#6a4bd6'] : e.kind === 'brambleWarden' ? ['#b6df91', '#ff8f7a'] : ['#a3c46a', '#e8ffb0'], { speed: 20, life: 1, glow: e.kind === 'hollowStar' || e.kind === 'eclipse', size: 4, grav: -40, kind: e.kind === 'hollowStar' || e.kind === 'eclipse' ? 'star' : 'leaf' });
+    if (Math.random() < dt * 8) this.emit(e.x + rand(-e.r, e.r), e.y + rand(-e.r, e.r * .5), 1, e.kind === 'eclipse' ? ['#1a1030', '#c9b6ff', '#ff6b9a'] : e.kind === 'hollowStar' ? ['#c9b6ff', '#6a4bd6'] : e.kind === 'cinderTyrant' ? ['#ff9a3d', '#ff5f3d', '#ffd27a'] : e.kind === 'brambleWarden' ? ['#b6df91', '#ff8f7a'] : ['#a3c46a', '#e8ffb0'], { speed: 20, life: 1, glow: e.kind !== 'mossback' && e.kind !== 'brambleWarden', size: 4, grav: -40, kind: e.kind === 'hollowStar' || e.kind === 'eclipse' ? 'star' : e.kind === 'cinderTyrant' ? 'ember' : 'leaf' });
     if (d < e.r + 18 && e.action !== 'blink') this.hurt(this.bossHit(e) * .7, e, e.level);
     if (e.action) { this.runBossAction(e, dt); return; }
     const sp = ENEMY_STATS[e.kind].speed * (1 + (e.phase - 1) * .25);
@@ -1386,7 +1691,7 @@ export class GameEngine {
       case 'spiral': e.actionT = p ? 2.6 : 2.1; e.angle = rand(0, 6.28); break;
       case 'meteors': {
         e.actionT = 1.8; const n = 8 + p * 4 + (e.kind === 'eclipse' ? 3 : 0);
-        for (let i = 0; i < n; i++) { const a2 = rand(0, 6.28), r = i < 2 ? rand(0, 30) : rand(50, 280); const x = h.x + Math.cos(a2) * r, y = h.y + Math.sin(a2) * r; this.addHazard(x, y, 64, .9 + i * .1, 'meteor', { x: x - 220, y: y - 600 }); }
+        for (let i = 0; i < n; i++) { const a2 = rand(0, 6.28), r = i < 2 ? rand(0, 30) : rand(50, 280); const x = h.x + Math.cos(a2) * r, y = h.y + Math.sin(a2) * r; this.addHazard(x, y, 64, .9 + i * .1, e.kind === 'cinderTyrant' ? 'lava' : 'meteor', { x: x - 220, y: y - 600, level: e.level }); }
         break;
       }
       case 'blink': e.actionT = 1.4; break;
@@ -1398,7 +1703,7 @@ export class GameEngine {
     const passed = (t: number) => before > t && e.actionT <= t;
     switch (e.action) {
       case 'nova': {
-        const kind = e.kind === 'hollowStar' ? 'void' : e.kind === 'eclipse' ? (e.pattern % 2 ? 'void' : 'thorn') : 'thorn';
+        const kind = e.kind === 'hollowStar' ? 'void' : e.kind === 'cinderTyrant' ? 'fire' : e.kind === 'eclipse' ? (e.pattern % 3 === 2 ? 'fire' : e.pattern % 2 ? 'void' : 'thorn') : 'thorn';
         const count = (p2 ? 18 : 14) + (e.kind === 'eclipse' ? 6 : 0);
         if (passed(p2 ? .75 : .4)) this.novaRing(e, count, 0, kind, hit * .7);
         if (p2 && passed(.35)) this.novaRing(e, count, Math.PI / count, kind, hit * .7);
@@ -1409,7 +1714,7 @@ export class GameEngine {
           e.x += e.chargeX * 820 * dt; e.y += e.chargeY * 820 * dt;
           e.x = clamp(e.x, 60, this.world.width - 60); e.y = clamp(e.y, 60, this.world.height - 60);
           if (Math.random() < .6) this.emit(e.x, e.y + e.r * .6, 2, ['#8a6a4a', '#b6df91'], { speed: 80, life: .6, kind: 'smoke', size: 10 });
-          if ((e.kind === 'brambleWarden' || e.kind === 'eclipse') && Math.random() < dt * 14) this.enemyShot(e, Math.atan2(e.chargeY, e.chargeX) + Math.PI + rand(-.9, .9), 170, 'thorn', hit * .6);
+          if ((e.kind === 'brambleWarden' || e.kind === 'eclipse' || e.kind === 'cinderTyrant') && Math.random() < dt * 14) this.enemyShot(e, Math.atan2(e.chargeY, e.chargeX) + Math.PI + rand(-.9, .9), 170, e.kind === 'cinderTyrant' ? 'fire' : 'thorn', hit * .6);
           if (dist(e, h) < e.r + 24) this.hurt(hit, e, e.level);
         }
         if (passed(.75)) { this.addShake(6); this.play('roar'); }
@@ -1438,29 +1743,31 @@ export class GameEngine {
     }
     if (e.actionT <= 0) { e.action = null; e.cd = e.phase === 3 ? .7 : p2 ? .9 : 1.4; }
   }
-  private novaRing(e: Enemy, count: number, offset: number, kind: 'thorn' | 'void', damage: number) {
+  private novaRing(e: Enemy, count: number, offset: number, kind: 'thorn' | 'void' | 'fire', damage: number) {
     for (let i = 0; i < count; i++) this.enemyShot(e, offset + (i / count) * Math.PI * 2, 250, kind, damage);
-    this.ring(e.x, e.y, 80, kind === 'void' ? '#c9b6ff' : '#b6df91', .3); this.addShake(4); this.play(kind === 'void' ? 'voidShot' : 'thornShot', e);
+    this.ring(e.x, e.y, 80, kind === 'void' ? '#c9b6ff' : kind === 'fire' ? '#ff9a3d' : '#b6df91', .3); this.addShake(4); this.play(kind === 'thorn' ? 'thornShot' : 'voidShot', e);
   }
   private addHazard(x: number, y: number, r: number, delay: number, kind: Hazard['kind'], from: Point & { level?: number; boss?: boolean }, damage?: number, level?: number) {
     const lv = level ?? from.level ?? 1;
     this.hazards.push({ x, y, r, delay, maxDelay: delay, damage: damage ?? hitAt(lv) * 1.5, level: lv, owner: 'enemy', kind, fromX: from.x, fromY: from.y });
   }
-  /** Umbra rises out of the three lands: shadow streams race in from the west and up from the Cradle, then it takes shape. */
+  /** Umbra rises out of the four lands: shadow streams race in from the west and up from the Cradle, then it takes shape. */
   private spawnFinal(rising: boolean) {
     if (this.enemies.some(e => e.kind === 'eclipse' && !e.dead)) return;
     if (rising) { this.finalT = 5; this.flash = .6; this.addShake(16); this.play('roar'); this.notice('The shadows of every land are gathering…', 'epic', 'Umbra rises…'); return; }
     this.createFinal(false);
   }
+  /** Umbra rises at the last land's finale: once the Cinder Tyrant falls, at the Dawn Forge. */
+  private get lastRegion() { return this.world.regions[this.world.regions.length - 1].id; }
   private createFinal(aggro: boolean) {
-    const cradle = this.finaleOf('summit'); if (!cradle) return;
-    const e = this.makeEnemy({ id: 'summit:final', kind: 'eclipse', x: cradle.x - 40, y: cradle.y - 150, boss: true, level: 20, region: 'summit' });
+    const last = this.lastRegion, cradle = this.finaleOf(last); if (!cradle) return;
+    const e = this.makeEnemy({ id: `${last}:final`, kind: 'eclipse', x: cradle.x - 40, y: cradle.y - 150, boss: true, level: 26, region: last });
     e.aggro = aggro; e.spawnT = aggro ? 1.2 : 0; e.homeX = cradle.x - 40; e.homeY = cradle.y - 150;
     this.enemies.push(e);
-    if (aggro) { this.bossIntroShown.add(e.id); this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.flash = 1; this.addShake(22); this.play('roar'); this.ring(e.x, e.y, 420, '#c9b6ff', 1.2); }
+    if (aggro) { this.bossIntroShown.add(e.id); this.cleanFight = true; this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.flash = 1; this.addShake(22); this.play('roar'); this.ring(e.x, e.y, 420, '#c9b6ff', 1.2); }
   }
   private updateFinalRise(dt: number) {
-    const cradle = this.finaleOf('summit'); if (!cradle) { this.finalT = 0; return; }
+    const cradle = this.finaleOf(this.lastRegion); if (!cradle) { this.finalT = 0; return; }
     this.finalT -= dt;
     const tx = cradle.x - 40, ty = cradle.y - 150;
     // Two streams from the west (the Beacon and the Bell), one rising from the Cradle's own shadow.
@@ -1481,20 +1788,24 @@ export class GameEngine {
       if (p.kind === 'spark' && p.targetId) {
         const t = this.enemies.find(e => e.id === p.targetId && !e.dead);
         if (t) { const dx = t.x - p.x, dy = t.y - p.y, d = Math.max(1, Math.hypot(dx, dy)), sp = Math.hypot(p.vx, p.vy); p.vx += (dx / d * sp - p.vx) * Math.min(1, dt * 8); p.vy += (dy / d * sp - p.vy) * Math.min(1, dt * 8); }
+      } else if (p.kind === 'frost' && p.targetId) {
+        const t = this.enemies.find(e => e.id === p.targetId && !e.dead);
+        if (t) { const dx = t.x - p.x, dy = t.y - p.y, d = Math.max(1, Math.hypot(dx, dy)), sp = Math.hypot(p.vx, p.vy); p.vx += (dx / d * sp - p.vx) * Math.min(1, dt * 7); p.vy += (dy / d * sp - p.vy) * Math.min(1, dt * 7); p.spin = Math.atan2(p.vy, p.vx); }
       }
       p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; p.spin += dt * 10;
       if (Math.random() < .7) {
         if (p.kind === 'sunfire') this.emit(p.x, p.y, 2, ['#ffd27a', '#ff9a4a', '#ff6b3d'], { speed: 50, life: .45, kind: 'ember', glow: true, size: 6 });
         else if (p.kind === 'spark') this.emit(p.x, p.y, 1, p.crit ? '#ffd35c' : '#fff6c4', { speed: 20, life: .25, glow: true, size: 3 });
         else if (p.kind === 'void' && Math.random() < .5) this.emit(p.x, p.y, 1, '#a78bfa', { speed: 15, life: .35, glow: true, size: 3 });
-        else if (p.kind === 'ice' && Math.random() < .5) this.emit(p.x, p.y, 1, '#dff6ff', { speed: 15, life: .3, glow: true, size: 2 });
+        else if ((p.kind === 'ice' || p.kind === 'frost') && Math.random() < .5) this.emit(p.x, p.y, 1, '#dff6ff', { speed: 15, life: .3, glow: true, size: p.kind === 'frost' ? 3 : 2 });
+        else if (p.kind === 'fire' && Math.random() < .6) this.emit(p.x, p.y, 1, ['#ffd27a', '#ff6b3d'], { speed: 25, life: .35, kind: 'ember', glow: true, size: 4 });
       }
       let hit = false;
       if (p.owner === 'hero') {
         for (const e of this.enemies) {
-          if (e.dead || e.spawnT > 0 || Math.abs(e.x - p.x) > 90 || Math.abs(e.y - p.y) > 90 || dist(p, e) > e.r + p.r) continue;
+          if (e.dead || e.spawnT > 0 || e.burrowT > 0 || Math.abs(e.x - p.x) > 90 || Math.abs(e.y - p.y) > 90 || dist(p, e) > e.r + p.r) continue;
           if (p.kind === 'sunfire') this.explodeSunfire(p.x, p.y);
-          else { this.damageEnemy(e, p.damage, p.crit); if (!e.boss) this.knock(e, { x: p.x - p.vx, y: p.y - p.vy }, 90); }
+          else { this.damageEnemy(e, p.damage, p.crit); if (!e.boss) this.knock(e, { x: p.x - p.vx, y: p.y - p.vy }, 90); if (p.kind === 'frost') e.chillT = Math.max(e.chillT, 2); }
           hit = true; break;
         }
         if (!hit) for (const pod of this.pods) {
@@ -1506,15 +1817,15 @@ export class GameEngine {
       } else {
         const d = dist(p, { x: h.x, y: h.y - 10 });
         if (h.shieldTime > 0 && d < 46) {
-          p.owner = 'hero'; p.vx *= -1.35; p.vy *= -1.35; p.life = 1.4; p.damage = 20 * this.power; if (p.kind === 'web' || p.kind === 'ice') p.kind = 'thorn';
-          this.emit(p.x, p.y, 8, '#9fe8b0', { speed: 150, life: .3, glow: true }); this.play('reflect'); continue;
+          p.owner = 'hero'; p.vx *= -1.35; p.vy *= -1.35; p.life = 1.4; p.damage = 20 * this.power; if (p.kind === 'web' || p.kind === 'ice' || p.kind === 'fire') p.kind = this.heroId === 'lyra' ? 'frost' : 'thorn';
+          this.emit(p.x, p.y, 8, this.heroId === 'lyra' ? '#bfeaff' : '#9fe8b0', { speed: 150, life: .3, glow: true }); this.play('reflect'); continue;
         }
         if (d < p.r + 14) {
           if (p.kind === 'web' && h.dashTime <= 0 && h.shieldTime <= 0) { h.slowT = 2.2; this.notice('Webbed! Dash to break free.', 'warn', 'Webbed!'); }
           this.hurt(p.damage, p, p.level); hit = true;
         }
       }
-      if (!hit && p.owner === 'enemy') for (const o of this.obstacleGrid.near(p.x, p.y, 60)) if (!o.w && dist(p, o) < o.r && o.kind !== 'fence') { hit = true; this.emit(p.x, p.y, 5, p.kind === 'void' ? '#a78bfa' : p.kind === 'ice' ? '#dff6ff' : '#9fd46b', { speed: 90, life: .3 }); break; }
+      if (!hit && p.owner === 'enemy') for (const o of this.obstacleGrid.near(p.x, p.y, 60)) if (!o.w && dist(p, o) < o.r && o.kind !== 'fence') { hit = true; this.emit(p.x, p.y, 5, p.kind === 'void' ? '#a78bfa' : p.kind === 'ice' ? '#dff6ff' : p.kind === 'fire' ? '#ff9a3d' : '#9fd46b', { speed: 90, life: .3 }); break; }
       if (hit || p.life <= 0) swapRemove(this.projectiles, i);
     }
   }
@@ -1527,9 +1838,13 @@ export class GameEngine {
       if (z.owner === 'enemy') {
         if (dist(h, z) < z.r + 8) this.hurt(z.damage, z, z.level);
       } else {
-        for (const e of this.enemies) if (!e.dead && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) { this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : z.kind === 'frostbomb' ? 0 : z.kind === 'firebomb' ? 260 : 160);
-          const stun = z.kind === 'slam' ? 1.2 : z.kind === 'frostbomb' ? 3 : z.kind === 'lightning' ? .6 : 0;
-          if (stun && (!e.boss || z.kind === 'frostbomb')) { e.stunT = e.boss ? .8 : stun; e.windup = 0; e.lunge = 0; } }
+        for (const e of this.enemies) if (!e.dead && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) {
+          const frost = z.kind === 'frostbomb' || z.kind === 'frostnova';
+          this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : frost || z.kind === 'blizzard' ? 0 : z.kind === 'firebomb' ? 260 : 160);
+          const stun = z.kind === 'slam' ? 1.2 : z.kind === 'frostbomb' ? 3 : z.kind === 'frostnova' ? 2 : z.kind === 'lightning' ? .6 : 0;
+          if (stun && (!e.boss || frost)) { e.stunT = e.boss ? .8 : stun; e.windup = 0; e.lunge = 0; if (frost) e.frozenT = e.stunT; }
+          if (frost || z.kind === 'blizzard') e.chillT = Math.max(e.chillT, frost ? 4 : 2.2);
+        }
         for (const p of this.pods) if (!p.dead && dist(p, z) < z.r) this.breakPod(p);
       }
       this.detonateFx(z);
@@ -1574,6 +1889,20 @@ export class GameEngine {
         this.ring(z.x, z.y, z.r * 1.2, '#ffe96b', .35);
         this.emit(z.x, z.y, 18, ['#fff8c0', '#ffe96b', '#ffffff'], { speed: 300, life: .4, glow: true, size: 3 });
         this.flash = Math.max(this.flash, .2); this.addShake(5); this.play('crit', z); break;
+      case 'lava':
+        this.ring(z.x, z.y, z.r * 1.1, '#ff7a3d', .45);
+        this.emit(z.x, z.y, 30, ['#ffd27a', '#ff7a3d', '#ff3d1f', '#3a2420'], { speed: 320, life: .8, kind: 'ember', glow: true, size: 5, grav: 260, angle: -Math.PI / 2, spread: 2.2 });
+        this.emit(z.x, z.y, 8, 'rgba(60,40,36,.55)', { speed: 90, life: 1.1, kind: 'smoke', size: 18 });
+        this.addShake(z.r > 120 ? 10 : 5); this.play('slam', z); break;
+      case 'frostnova':
+        this.ring(z.x, z.y, z.r * 1.1, '#bfeaff', .55); this.ring(z.x, z.y, z.r * .55, '#ffffff', .35);
+        this.emit(z.x, z.y, 46, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 420, life: .7, kind: 'shard', glow: true, size: 6, grav: 120 });
+        this.flash = Math.max(this.flash, .15); this.addShake(6); this.play('reflect', z); break;
+      case 'blizzard':
+        this.ring(z.x, z.y, z.r, '#dff6ff', .35);
+        this.emit(z.x, z.y, 12, ['#ffffff', '#dff6ff', '#9fe4ff'], { speed: 200, life: .45, kind: 'shard', glow: true, size: 4, grav: 200 });
+        this.addShake(1.5); this.play('hit', z); break;
+      case 'mark': break;
     }
   }
   private updateOrbs(dt: number) {
@@ -1610,6 +1939,7 @@ export class GameEngine {
     if (reg.id !== this.regionId) {
       this.regionId = reg.id; ambience.start(reg.id);
       this.eventHandler({ type: 'region', region: reg.id, danger: this.profile.level < reg.levels[0] - 1 });
+      this.statMax('lands', this.landsSeen());
     }
     const p = this.poiAt(this.hero);
     if (!p) { this.zoneName = ''; return; }
@@ -1618,7 +1948,7 @@ export class GameEngine {
     const first = !this.discovered.has(p.id);
     this.eventHandler({ type: 'zone', name: p.name, discovered: first });
     if (!first) return;
-    this.discovered.add(p.id); this.play('discover');
+    this.discovered.add(p.id); this.play('discover'); this.bump('places'); this.statMax('lands', this.landsSeen());
     this.gainXp(20 * this.region(p.region).xpScale);
     if (p.kind === 'village' || p.kind === 'start' || p.kind === 'camp' || p.kind === 'city') this.setCheckpoint();
     for (const q of this.world.quests) if (q.kind === 'visit' && q.place === p.id) this.advance(q, 1);
@@ -1647,9 +1977,13 @@ export class GameEngine {
       this.emit(x, y, 40, [c, '#ffffff'], { speed: 300, life: 1.3, kind: 'star', glow: true, size: 4, grav: 90, drag: 1.8 }); this.ring(x, y, 70, c, .5); this.play('kill', { x, y });
     }
     if (this.completeTimer <= 0) {
-      this.completeTimer = 0; this.awaitingChapter = true;
-      const side = this.sideQuests(this.completeRegion), done = side.filter(q => this.qs(q.id).status === 'done').length;
-      this.eventHandler({ type: 'levelComplete', region: this.completeRegion, stats: { stars: this.earnedStars(this.completeRegion), time: this.elapsed - this.chapterStart.elapsed, defeated: this.defeated - this.chapterStart.defeated, quests: done, totalQuests: side.length, level: this.profile.level } });
+      // The chapter is complete: an achievement marks it, and the next chapter's opener starts on its own.
+      this.completeTimer = 0;
+      const r = this.completeRegion, side = this.sideQuests(r), done = side.filter(q => this.qs(q.id).status === 'done').length;
+      this.eventHandler({ type: 'levelComplete', region: r, last: r === this.lastRegion, stats: { stars: this.earnedStars(r), time: this.elapsed - this.chapterStart.elapsed, defeated: this.defeated - this.chapterStart.defeated, quests: done, totalQuests: side.length, level: this.profile.level } });
+      this.statMax(`chapter:${r}`, 1);
+      this.chapterStart = { elapsed: this.elapsed, defeated: this.defeated };
+      this.foxDelay = 6.2;
     }
   }
 
@@ -1718,13 +2052,13 @@ export class GameEngine {
   }
   private mainRow() {
     const cur = this.currentMain();
-    if (!cur) { const all = this.world.quests.filter(q => q.main && q.region === 'summit'); return { title: 'The valley is saved', step: 'Every light is shining', progress: 0, count: 0, index: all.length, total: all.length }; }
+    if (!cur) { const all = this.world.quests.filter(q => q.main && q.region === this.lastRegion); return { title: 'The valley is saved', step: 'Every light is shining', progress: 0, count: 0, index: all.length, total: all.length }; }
     const list = this.world.quests.filter(q => q.main && q.region === cur.region), row = this.rowFor(cur);
     return { title: cur.title, step: row.goal, progress: row.progress, count: row.count, index: list.indexOf(cur) + 1, total: list.length };
   }
   private questRows(main: boolean): QuestRow[] {
     const chapter = this.chapter;
-    const rows = this.world.quests.filter(q => !!q.main === main && this.qs(q.id).status !== 'locked' && (!main || this.region(q.region).chapter === Math.min(chapter, 3))).map(q => this.rowFor(q));
+    const rows = this.world.quests.filter(q => !!q.main === main && this.qs(q.id).status !== 'locked' && (!main || this.region(q.region).chapter === Math.min(chapter, this.world.regions.length))).map(q => this.rowFor(q));
     if (main) return rows;
     const order = { ready: 0, active: 1, available: 2, done: 3, locked: 4 };
     const here = this.heroRegion.chapter;
@@ -1732,7 +2066,7 @@ export class GameEngine {
   }
   private nearAction(n: Npc) {
     if (this.npcMarker(n)) return 'Talk';
-    return n.role === 'merchant' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
+    return n.role === 'merchant' || n.role === 'armorer' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
   }
   snapshot(): GameSnapshot {
     const near = this.nearest(), h = this.hero, p = this.profile;

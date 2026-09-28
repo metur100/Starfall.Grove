@@ -14,17 +14,21 @@ export type Profile = {
   stars: Partial<Record<SpellId, number>>;
   /** The consumable on the second quick button. */
   quick: ItemId;
+  /** Armourer pieces already bought, so they can't be bought twice. */
+  bought: string[];
+  /** Achievements: when each was earned, and the running counters they are measured by. */
+  ach: { got: Record<string, number>; n: Record<string, number> };
 };
 /** Bag slots: every kind of consumable held takes one, every piece of equipment takes one. */
 export const BAG_SIZE = 36;
 export const bagUsed = (p: Profile) => p.gear.length + ITEM_ORDER.filter(id => (p.items[id] || 0) > 0).length;
 
-export const MAX_LEVEL = 20;
+export const MAX_LEVEL = 25;
 /** Health is shown as a bar; one "heart" of the old design is worth this many points. */
 export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
-const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion' });
+const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} } });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
 export type UpgradeInfo = { name: string; icon: string; description: string; per: string };
@@ -40,9 +44,9 @@ export const rankOf = (p: Profile, id: UpgradeId) => p.upgrades[id] || 0;
 
 /** Experience needed to go from `level` to `level + 1`. */
 export const xpToNext = (level: number) => level >= MAX_LEVEL ? 0 : Math.round(60 * Math.pow(level, 1.5) / 5) * 5;
-const heartsAt = (p: Profile) => Math.min(22, HEROES[p.hero].hearts + Number(p.level >= 4) + Number(p.level >= 8) + Number(p.level >= 12) + Number(p.level >= 16) + p.bonusHearts);
+const heartsAt = (p: Profile) => Math.min(26, HEROES[p.hero].hearts + Number(p.level >= 4) + Number(p.level >= 8) + Number(p.level >= 12) + Number(p.level >= 16) + Number(p.level >= 20) + p.bonusHearts);
 export const gearOf = (p: Profile) => sumGear(p.equipped);
-export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * (p.hero === 'kael' ? 11 : 8) + rankOf(p, 'amulet') * 30 + gearOf(p).health;
+export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * HEROES[p.hero].hpPerLevel + rankOf(p, 'amulet') * 30 + gearOf(p).health;
 export const manaAt = (p: Profile) => 100 + (p.level - 1) * 6 + p.bonusMana + gearOf(p).mana;
 export const regenAt = (p: Profile) => HEROES[p.hero].regen + (p.level - 1) * .14 + p.regen + gearOf(p).regen;
 /** Damage multiplier from level, the weapon upgrade and worn gear. */
@@ -73,6 +77,9 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     const stars: Profile['stars'] = {};
     for (const id of HEROES[hero].spells) { const n = Math.floor(Number(raw.stars?.[id]) || 0); if (n > 0) stars[id] = Math.min(MAX_STARS, n); }
     p.stars = stars;
+    p.bought = Array.isArray(raw.bought) ? raw.bought.filter(x => typeof x === 'string').slice(-60) : [];
+    const num = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, Number(v)]));
+    p.ach = { got: num(raw.ach?.got), n: num(raw.ach?.n) };
     p.quick = ITEM_ORDER.includes(raw.quick as ItemId) && raw.quick !== 'healthPotion' ? raw.quick as ItemId : 'manaPotion';
     return p;
   } catch { return blank(hero); }

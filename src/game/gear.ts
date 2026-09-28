@@ -41,16 +41,16 @@ const SLOT_STATS: Record<GearSlot, { main: GearStat[]; extra: GearStat[] }> = {
 /** How much of a stat one budget point buys. */
 const PER_POINT: Record<GearStat, number> = { armor: .1, power: .12, health: 1.3, mana: .8, regen: .03, speed: .09, crit: .09 };
 
-/** Base names by slot for the three lands (levels 1–6, 7–12, 13–20). */
-const BASES: Record<GearSlot, [string[], string[], string[]]> = {
-  head: [['Wool Hood', 'Leather Cap', 'Farmhand’s Hat'], ['Mossweave Cowl', 'Rootbound Helm', 'Lantern Hood'], ['Starsilver Crown', 'Frostforged Helm', 'Skyhold Circlet']],
-  shoulders: [['Padded Shoulders', 'Hide Mantle'], ['Barkplate Pauldrons', 'Webspun Mantle'], ['Comet Spaulders', 'Glacier Pauldrons']],
-  back: [['Travel Cloak', 'Patchwork Cape'], ['Mossy Shroud', 'Owl-feather Cloak'], ['Starsilver Cloak', 'Aurora Drape']],
-  chest: [['Quilted Vest', 'Leather Jerkin'], ['Rootweave Robe', 'Bramble Cuirass'], ['Nightsky Robe', 'Crystal Breastplate']],
-  hands: [['Work Gloves', 'Leather Mitts'], ['Thornguard Gloves', 'Spider-silk Wraps'], ['Stargrip Gauntlets', 'Frostbite Gloves']],
-  waist: [['Rope Belt', 'Buckled Girdle'], ['Vine Sash', 'Lantern Belt'], ['Meteor Girdle', 'Moonstone Sash']],
-  legs: [['Wool Trousers', 'Hide Leggings'], ['Rootwalker Greaves', 'Moss Leggings'], ['Starwoven Leggings', 'Avalanche Greaves']],
-  feet: [['Worn Boots', 'Soft Shoes'], ['Mossy Treads', 'Shadow Striders'], ['Skywalker Boots', 'Comet Sabatons']],
+/** Base names by slot for the four lands (levels 1–6, 7–12, 13–18, 19–26). */
+const BASES: Record<GearSlot, [string[], string[], string[], string[]]> = {
+  head: [['Wool Hood', 'Leather Cap', 'Farmhand’s Hat'], ['Mossweave Cowl', 'Rootbound Helm', 'Lantern Hood'], ['Starsilver Crown', 'Frostforged Helm', 'Skyhold Circlet'], ['Obsidian Helm', 'Cinderveil Hood', 'Ashen Crown']],
+  shoulders: [['Padded Shoulders', 'Hide Mantle'], ['Barkplate Pauldrons', 'Webspun Mantle'], ['Comet Spaulders', 'Glacier Pauldrons'], ['Magmaplate Pauldrons', 'Emberwing Mantle']],
+  back: [['Travel Cloak', 'Patchwork Cape'], ['Mossy Shroud', 'Owl-feather Cloak'], ['Starsilver Cloak', 'Aurora Drape'], ['Phoenix Cloak', 'Smoulder Drape']],
+  chest: [['Quilted Vest', 'Leather Jerkin'], ['Rootweave Robe', 'Bramble Cuirass'], ['Nightsky Robe', 'Crystal Breastplate'], ['Forgeheart Cuirass', 'Cinderweave Robe']],
+  hands: [['Work Gloves', 'Leather Mitts'], ['Thornguard Gloves', 'Spider-silk Wraps'], ['Stargrip Gauntlets', 'Frostbite Gloves'], ['Brimstone Gauntlets', 'Ashgrip Wraps']],
+  waist: [['Rope Belt', 'Buckled Girdle'], ['Vine Sash', 'Lantern Belt'], ['Meteor Girdle', 'Moonstone Sash'], ['Lavalink Girdle', 'Smoke-silk Sash']],
+  legs: [['Wool Trousers', 'Hide Leggings'], ['Rootwalker Greaves', 'Moss Leggings'], ['Starwoven Leggings', 'Avalanche Greaves'], ['Basalt Greaves', 'Emberstride Leggings']],
+  feet: [['Worn Boots', 'Soft Shoes'], ['Mossy Treads', 'Shadow Striders'], ['Skywalker Boots', 'Comet Sabatons'], ['Firewalker Boots', 'Obsidian Sabatons']],
 };
 const SUFFIX: Record<GearStat, string> = { armor: 'of Warding', power: 'of Fury', health: 'of Vigor', mana: 'of Starlight', regen: 'of the Tide', speed: 'of the Wind', crit: 'of Precision' };
 const EPIC_PREFIX = ['Sunforged', 'Moonlit', 'Eclipse-touched', 'Wardens’', 'Starborn', 'Everbloom'];
@@ -70,9 +70,9 @@ export function rollRarity(r: () => number, luck = 0): Rarity {
 }
 
 export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; rand?: () => number; uid?: string }): GearItem {
-  const r = opts.rand || Math.random, ilvl = Math.max(1, Math.min(20, Math.round(opts.ilvl))), rarity = opts.rarity;
+  const r = opts.rand || Math.random, ilvl = Math.max(1, Math.min(26, Math.round(opts.ilvl))), rarity = opts.rarity;
   const slot = opts.slot || pickOf(r, SLOT_ORDER), spec = SLOT_STATS[slot], info = RARITY[rarity];
-  const tier = ilvl <= 6 ? 0 : ilvl <= 12 ? 1 : 2;
+  const tier = gearTier(ilvl);
   const budget = (4 + ilvl * 1.6) * info.mul;
   // The first main stat takes most of the budget; the rest is shared between the others.
   const picks: GearStat[] = [spec.main[0]];
@@ -91,6 +91,34 @@ export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; 
   return { uid: opts.uid || `g${Date.now().toString(36)}${Math.floor(r() * 1e9).toString(36)}`, slot, rarity, ilvl, name, stats };
 }
 
+export const gearTier = (ilvl: number) => ilvl <= 6 ? 0 : ilvl <= 12 ? 1 : ilvl <= 18 ? 2 : 3;
+
+/**
+ * The colour a piece is drawn in on the hero. Each land has its own materials (leather and wool, moss and bark, starsilver,
+ * obsidian and ember) and the rarity picks the dye, so a new piece visibly changes how the hero looks.
+ */
+const DYES: Record<Rarity, string[]> = {
+  common: ['#8a7058', '#7d7466', '#9a8a6a', '#6f6a60'],
+  uncommon: ['#4f8a4a', '#6a9a4a', '#3f7a5a', '#7a8f3f'],
+  rare: ['#3f6ab8', '#4a86c8', '#3a5a9a', '#5a7ad0'],
+  epic: ['#7a4ab8', '#9a4ac0', '#6a3aa0', '#a05ad0'],
+  legendary: ['#e08a2a', '#d0a040', '#e06a2a', '#f0b040'],
+};
+const TIER_TONE = [0, .08, .16, -.08];
+export function gearColor(g: GearItem): string {
+  let h = 0; for (let i = 0; i < g.name.length; i++) h = (h * 31 + g.name.charCodeAt(i)) >>> 0;
+  const list = DYES[g.rarity], base = list[h % list.length], f = TIER_TONE[gearTier(g.ilvl)];
+  const n = parseInt(base.slice(1), 16), mix = (c: number) => Math.round(f >= 0 ? c + (255 - c) * f : c * (1 + f));
+  return `#${[n >> 16 & 255, n >> 8 & 255, n & 255].map(c => mix(c).toString(16).padStart(2, '0')).join('')}`;
+}
+/** Worn pieces as the renderers need them: a colour per slot, and whether the piece glows (epic and legendary). */
+export type Look = Partial<Record<GearSlot, { color: string; glow: boolean; tier: number }>>;
+export function lookOf(equipped: Partial<Record<GearSlot, GearItem>>): Look {
+  const out: Look = {};
+  for (const s of SLOT_ORDER) { const g = equipped[s]; if (g) out[s] = { color: gearColor(g), glow: g.rarity === 'epic' || g.rarity === 'legendary', tier: gearTier(g.ilvl) }; }
+  return out;
+}
+
 /** Everything worn, added up and capped. */
 export function sumGear(equipped: Partial<Record<GearSlot, GearItem>>): Required<GearStats> {
   const t: Required<GearStats> = { armor: 0, power: 0, health: 0, mana: 0, regen: 0, speed: 0, crit: 0 };
@@ -107,4 +135,21 @@ export function sellPrice(g: GearItem) { return Math.max(3, Math.round((3 + g.il
 export function validGear(g: unknown): g is GearItem {
   const x = g as GearItem;
   return !!x && typeof x.uid === 'string' && SLOT_ORDER.includes(x.slot) && RARITY_ORDER.includes(x.rarity) && typeof x.name === 'string' && !!x.stats && typeof x.stats === 'object';
+}
+
+/** What an armourer asks for a piece: many times what merchants pay, so bought gear is a real goal. */
+export function buyPrice(g: GearItem) { return Math.round(sellPrice(g) * (g.rarity === 'legendary' ? 12 : g.rarity === 'epic' ? 10 : 8) / 5) * 5; }
+/** An armourer's shelf: six pieces rolled for this hero, land and level, so the stock only changes when the hero levels up.
+ *  The best pieces are above the hero's level and stay locked until they catch up. */
+export function armouryStock(hero: string, region: string, level: number, levels: [number, number]) {
+  const r = seeded(`armoury:${hero}:${region}:${level}`);
+  const tiers: Rarity[] = ['uncommon', 'rare', 'rare', 'rare', 'epic', r() < .2 ? 'legendary' : 'epic'];
+  const base = Math.max(levels[0], Math.min(level, levels[1] + 2));
+  // Six different slots, so the shelf never shows three chests.
+  const slots = [...SLOT_ORDER].map(s => [r(), s] as const).sort((x, y) => x[0] - y[0]).map(x => x[1]);
+  return tiers.map((rarity, i) => {
+    const ilvl = Math.min(26, base + (i >= 4 ? 2 : r() < .35 ? 1 : 0));
+    const item = makeGear({ ilvl, rarity, slot: slots[i], rand: r, uid: `shop-${hero}-${region}-${level}-${i}` });
+    return { item, price: buyPrice(item), needLevel: ilvl };
+  });
 }

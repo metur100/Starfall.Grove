@@ -1,13 +1,14 @@
 import type { Captive, NpcLook, QuestDef, RegionId } from './types';
 
-// The main story: one tale told across the valley's three regions.
+// The main story: one tale told across the valley's four regions.
 //
 // The night the star fell, Master Orrin vanished. Mira, his apprentice, follows his trail with her fox Tuft and learns
 // that the Beacon, the Bell and the Star were lit long ago to seal away Umbra, the Eclipse. Orrin's lost pupil Sable,
 // who has carried a painful shadow since birth, is putting the lights out one by one because Umbra promised her relief.
 // The truth comes out on the Summit: Orrin pulled the star down trying to "cure" Sable, and Umbra crept inside it.
-// Mira frees Orrin, wins Sable back with the flowers she loved as a child, cracks the Hollow Star, and faces Umbra
-// itself, which rises out of every land at once.
+// Mira frees Orrin, wins Sable back with the flowers she loved as a child and cracks the Hollow Star, but Umbra slips out
+// of the broken shell and flees east into the Ember Wastes. There the Cinder Tyrant guards the cold Dawn Forge, and once
+// he falls Umbra rises out of every land at once for the last battle.
 //
 // Each chapter is a chain: every quest unlocks the next. Quest ids are local to their region (the world builder adds
 // the region prefix); a `requires` with a colon points into another region. Quests from `fox` are Tuft nudging Mira
@@ -133,10 +134,43 @@ const summit: StoryQuest[] = [
   m({ id: 'm18', title: 'Together Again', giver: 'sable', kind: 'talk', count: 1, to: 'orrin', requires: 'm17', summary: 'Bring Sable’s words to Orrin in Skyhold.', reward: { xp: 110 },
     text: { offer: ['Go on. I’ll follow when I’m brave enough.'], progress: ['Orrin is in Skyhold.'], complete: [], after: [],
       deliver: ['She’s… coming home? After everything I did?', 'Then we face the star together — Ilsa, Vale, the monks, Sable and me. You have the shards, Mira. It is time.'] } }),
-  m({ id: 'm19', title: 'The Hollow Star', giver: 'orrin', kind: 'boss', count: 1, boss: 'boss', requires: 'm18', summary: 'Defeat the Hollow Star at the Star Cradle.', reward: { xp: 380, hearts: 1 },
-    text: { offer: ['The Star Cradle lies at the top of the world, in the far east. The Hollow Star spirals void-light, rains meteors and blinks right beside you.', 'Crack its shell with the shards.', 'But be ready, Mira. When the shell breaks, Umbra will have nowhere left to hide.'], progress: ['The Star Cradle is in the far east.'], complete: [], after: ['Be brave.'] } }),
-  m({ id: 'm20', title: 'Umbra, the Eclipse', giver: 'fox', kind: 'boss', count: 1, boss: 'final', finale: true, requires: 'm19', summary: 'Defeat Umbra and return the shards to the Star Cradle.', reward: { xp: 600, hearts: 2 },
-    text: { offer: ['(The Hollow Star shatters — and from its heart a darkness pours out, vast and hungry.)', '(Far to the west, black light rises from the Beacon Rise. From the Old Bell. From the Cradle itself. The shadows of every guardian gather into one.)', '(Tuft’s fur stands on end. Umbra, the Eclipse, is here.)'], progress: ['Defeat Umbra at the Star Cradle.'], complete: [], after: [] } }),
+  m({ id: 'm19', title: 'The Hollow Star', giver: 'orrin', kind: 'boss', count: 1, boss: 'boss', finale: true, requires: 'm18', summary: 'Defeat the Hollow Star and return the shards to the Star Cradle.', reward: { xp: 420, hearts: 1 },
+    text: { offer: ['The Star Cradle lies at the top of the world, north-east of the Spire. The Hollow Star spirals void-light, rains meteors and blinks right beside you.', 'Crack its shell, then lay the three shards in the Cradle.', 'But be ready, Mira. When the shell breaks, Umbra will have nowhere left to hide.'], progress: ['The Star Cradle is in the far north-east.'], complete: [], after: ['The star is home.'] } }),
 ];
 
-export const STORY: Record<RegionId, StoryQuest[]> = { meadow, woods, summit };
+// ═════════════════════════════ Chapter IV · The Dawn Forge (13)
+const ember: StoryQuest[] = [
+  m({ id: 'm1', title: 'Into the Ember Wastes', giver: 'fox', kind: 'talk', count: 1, to: 'guide', requires: 'summit:m19', summary: 'Follow Umbra’s trail through the Eastern Gate and find Captain Ashka.', reward: { xp: 80 },
+    text: { offer: ['(Tuft stares east, where a thread of black smoke crawls over the Summit’s last ridge.)', 'Umbra escaped the broken star. It fled through the Eastern Gate, into the Ember Wastes. Captain Ashka keeps the outpost there.'], progress: ['Take the road east through the gate.'], complete: [], after: [],
+      deliver: ['A traveller from the Summit? Then the sky-fire we saw was real.', 'Something black fell out of the east wind two nights ago. Since then the imps have gone mad, and the old Dawn Forge has gone cold.'] } }),
+  m({ id: 'm2', title: 'Imps in the Smoke', giver: 'guide', kind: 'slay', count: 6, enemy: 'emberImp', requires: 'm1', summary: 'Drive off six ember imps around the outpost.', reward: { xp: 90 },
+    text: { offer: ['Ember imps hover out of range and lob fire. Close in fast, or keep moving.', 'Six of them, and the road to Kilnhollow is safe again.'], progress: ['Imps hang back and throw fireballs. Keep moving.'], complete: ['Six imps! The lads can breathe without swallowing sparks.', 'Kiln-mother Hessa in Kilnhollow knows these wastes better than anyone. Go and see her.'], after: ['Watch the sky for sparks.'] } }),
+  m({ id: 'm3', title: 'The Kiln-mother', giver: 'guide', kind: 'talk', count: 1, to: 'hessa', requires: 'm2', summary: 'Find Kiln-mother Hessa in Kilnhollow.', reward: { xp: 80 },
+    text: { offer: ['Kilnhollow lies south-east of the outpost, where the glass-kilns never go out.'], progress: ['Kilnhollow is south-east.'], complete: [], after: [],
+      deliver: ['The Dawn Forge lit the sunrise over these wastes for a thousand years. Now it sleeps, and the dark walks in its shadow.', 'Its fire lived in three ember cores. Pyrrhus — the Cinder Tyrant — tore them out and hid them.'] } }),
+  m({ id: 'm4', title: 'Cooling Salts', giver: 'hessa', kind: 'collect', count: 5, near: 'farm', item: 'Cooling salt', icon: 'gem', requires: 'm3', summary: 'Gather cooling salts around Saltglass Farm.', reward: { xp: 100 },
+    text: { offer: ['An ember core burns the hand that holds it. You’ll need cooling salts to carry one.', 'Five crystals, from around Saltglass Farm to the south.'], progress: ['Saltglass Farm lies south-west of here.'], complete: ['Good, clean salt. Wrap a core in this and it won’t scorch you.', 'Forgemaster Tovan in Brasshaven can tell you where Pyrrhus hid the cores.'], after: ['Salt and fire, fire and salt.'] } }),
+  m({ id: 'm5', title: 'The Brass City', giver: 'hessa', kind: 'talk', count: 1, to: 'tovan', requires: 'm4', summary: 'Meet Forgemaster Tovan in Brasshaven.', reward: { xp: 80 },
+    text: { offer: ['Brasshaven is the great city of the wastes, east of here. Tovan works the biggest anvil.'], progress: ['Brasshaven lies to the east.'], complete: [], after: [],
+      deliver: ['Hessa sent you? Then you’re serious.', 'One core glows in the Obsidian Maze to the north-west. The other two… the Tyrant’s creatures carried them off.'] } }),
+  m({ id: 'm6', title: 'The Obsidian Maze', giver: 'tovan', kind: 'key', count: 1, keys: [0], requires: 'm5', summary: 'Recover the first ember core from the Obsidian Maze.', reward: { xp: 130 },
+    text: { offer: ['The Obsidian Maze is far to the north-west. Its walls are sharp as knives.', 'Bring the core back to me.'], progress: ['The Obsidian Maze lies north-west.'], complete: ['The first core! Feel that heat — the forge remembers it already.', 'A salt caravan came in screaming last night. Its master was taken at the camp in the south-east.'], after: ['One of three.'] } }),
+  m({ id: 'm7', title: 'The Salt Caravan', giver: 'tovan', kind: 'rescue', count: 1, place: 'caravan', guards: 6, requires: 'm6', summary: 'Free Caravan-master Oona at the Salt Caravan Camp.',
+    captive: person('Caravan-master Oona', '👳‍♀️', { robe: '#c9a24c', hat: 'scarf', hatColor: '#8a3b2f', hair: '#2e2420' }), reward: { xp: 150, hearts: 1 },
+    text: { offer: ['Oona’s caravan carries the salt the whole city lives on. Scorpions and imps have her caged at the camp.', 'Bring her home.'], progress: ['The Salt Caravan Camp lies south-east of the city. Defeat the guards, then open the cage.'],
+      deliver: ['Sand in my teeth and a scorpion on my chest — I thought I was done.', 'The creatures took the second core into the Scorpion Burrows. I watched them drag it underground.'], complete: ['Oona is safe. The salt will flow again.', 'The Scorpion Burrows are south-west of the city. Mind the ground — they swim through the sand.'], after: ['The caravan owes you.'] } }),
+  m({ id: 'm8', title: 'Under the Sand', giver: 'tovan', kind: 'key', count: 1, keys: [1], requires: 'm7', summary: 'Take the second ember core from the Scorpion Burrows.', reward: { xp: 150 },
+    text: { offer: ['Ash scorpions burrow and come up right under your feet. When the sand bulges, move!', 'The second core is in their burrows, south-west of the city.'], progress: ['The Scorpion Burrows lie south-west.'], complete: ['Two cores! Hotter than the first. The forge is waking.', 'The last one is in the Old Foundry, north-east. Magma hulks guard it.'], after: ['Two of three.'] } }),
+  m({ id: 'm9', title: 'Hulks of the Foundry', giver: 'tovan', kind: 'slay', count: 4, enemy: 'magmaHulk', requires: 'm8', summary: 'Break four magma hulks.', reward: { xp: 160 },
+    text: { offer: ['Magma hulks are slow, but when they raise their fists, fire bursts out of the ground around them.', 'Break four and the foundry road opens.'], progress: ['Hulks roam the east of the wastes. Stay out of the glowing cracks.'], complete: ['Four hulks! Now the foundry itself.'], after: ['The anvils are ringing.'] } }),
+  m({ id: 'm10', title: 'The Last Ember Core', giver: 'tovan', kind: 'key', count: 1, keys: [2], requires: 'm9', turnIn: 'seer', summary: 'Take the last ember core from the Old Foundry, then find Ember-seer Ilyana at Ashfall Watch.', reward: { xp: 170 },
+    text: { offer: ['The Old Foundry lies north-east. Take the last core.', 'Then climb to Ashfall Watch in the north. Ember-seer Ilyana has been watching the forge for weeks.'], progress: ['The Old Foundry is north-east. Ashfall Watch is north of the city.'], complete: ['Three cores, all together. The forge will listen now.', 'But the Tyrant will not let you near it without a fight — and Umbra waits in his shadow.'], after: ['The flames speak of you.'] } }),
+  m({ id: 'm11', title: 'Phoenix Water', giver: 'seer', kind: 'visit', count: 1, place: 'spring', requires: 'm10', summary: 'Stand in the Phoenix Spring, then return to Ilyana.', reward: { xp: 150 },
+    text: { offer: ['The Phoenix Spring in the east is where the first dawn was born. Bathe in it, and the Tyrant’s fire will not take you.', 'Then come back to me.'], progress: ['The Phoenix Spring lies east of the city.'], complete: ['You glow like sunrise. Good.', 'Now go to the Dawn Forge in the far north-east and face Pyrrhus.'], after: ['Walk in the light.'] } }),
+  m({ id: 'm12', title: 'The Cinder Tyrant', giver: 'seer', kind: 'boss', count: 1, boss: 'boss', requires: 'm11', summary: 'Defeat Pyrrhus, the Cinder Tyrant, at the Dawn Forge.', reward: { xp: 480, hearts: 1 },
+    text: { offer: ['Pyrrhus slams the earth, rains fire and charges like a landslide. Never stand still.', 'Break him, and the forge is yours.', 'And Mira — when he falls, Umbra will come. It has nowhere else to go.'], progress: ['The Dawn Forge is in the far north-east.'], complete: [], after: ['Be brave.'] } }),
+  m({ id: 'm13', title: 'Umbra, the Eclipse', giver: 'fox', kind: 'boss', count: 1, boss: 'final', finale: true, requires: 'm12', summary: 'Defeat Umbra and light the Dawn Forge.', reward: { xp: 900, hearts: 2 },
+    text: { offer: ['(Pyrrhus crumbles to cinders — and the ash around the forge turns black and begins to crawl.)', '(Far to the west, dark light rises from the Beacon Rise. From the Old Bell. From the Star Cradle. The shadows of every guardian gather into one.)', '(Tuft’s fur stands on end. Umbra, the Eclipse, is here.)'], progress: ['Defeat Umbra at the Dawn Forge.'], complete: [], after: [] } }),
+];
+
+export const STORY: Record<RegionId, StoryQuest[]> = { meadow, woods, summit, ember };

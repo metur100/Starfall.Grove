@@ -217,7 +217,7 @@ export function footstep(ground: Ground, speed = 1) {
 }
 
 // ───────────────────────────── ambient soundscapes
-export type AmbienceId = 'meadow' | 'woods' | 'summit' | null;
+export type AmbienceId = 'meadow' | 'woods' | 'summit' | 'ember' | null;
 type Loop = { src: AudioBufferSourceNode; gain: GainNode; filter: BiquadFilterNode; lfo?: OscillatorNode };
 const amb = { id: null as AmbienceId, bed: [] as Loop[], water: null as Loop | null, fire: null as Loop | null, timer: 0, gain: null as GainNode | null };
 
@@ -255,6 +255,16 @@ function chime(a: Core, out: AudioNode) {
   const o: Out = { node: g, t: a.ac.currentTime }, notes = [1319, 1568, 1760, 1976, 2349, 2637];
   for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) bell(o, notes[Math.floor(Math.random() * notes.length)], 2.4, .5, i * r(.15, .4));
 }
+/** A slow lava bubble: a low bloop that bends upward. */
+function bubble(a: Core, out: AudioNode) {
+  const g = a.ac.createGain(), p = a.ac.createStereoPanner(); g.gain.value = r(.04, .08); p.pan.value = r(-.8, .8); g.connect(p); p.connect(out);
+  tone({ node: g, t: a.ac.currentTime }, r(70, 110), .25, { to: r(160, 240), vol: .8, attack: .02, filter: 600 });
+}
+function crackle(a: Core, out: AudioNode) {
+  const g = a.ac.createGain(), p = a.ac.createStereoPanner(); g.gain.value = r(.03, .06); p.pan.value = r(-1, 1); g.connect(p); p.connect(out);
+  const o = { node: g, t: a.ac.currentTime };
+  for (let i = 0; i < 4 + Math.floor(Math.random() * 5); i++) noise(o, .012, { vol: r(.5, 1), freq: r(2500, 6000), type: 'bandpass', q: 3, delay: r(0, .5) });
+}
 function drip(a: Core, out: AudioNode) {
   const g = a.ac.createGain(), p = a.ac.createStereoPanner(); g.gain.value = .04; p.pan.value = r(-.8, .8); g.connect(p); p.connect(out);
   const s = a.ac.createGain(); s.gain.value = .8; g.connect(s); s.connect(a.reverb);
@@ -269,14 +279,17 @@ export const ambience = {
     const g = a.ac.createGain(); g.gain.value = 0; g.connect(a.ambience); g.gain.setTargetAtTime(1, a.ac.currentTime, 1.2); amb.gain = g;
     if (id === 'meadow') amb.bed = [loop(a, g, 'pink', 'bandpass', 500, .5, .05, .07, 250), loop(a, g, 'pink', 'highpass', 5000, .3, .008)];
     else if (id === 'woods') amb.bed = [loop(a, g, 'brown', 'lowpass', 380, .7, .12, .05, 120), loop(a, g, 'pink', 'bandpass', 1500, .6, .02, .11, 700)];
+    else if (id === 'ember') amb.bed = [loop(a, g, 'brown', 'lowpass', 150, .6, .2, .04, 60), loop(a, g, 'pink', 'bandpass', 900, 1.2, .05, .08, 500)];
     else amb.bed = [loop(a, g, 'pink', 'bandpass', 700, 4, .09, .06, 450), loop(a, g, 'brown', 'lowpass', 250, .5, .18, .03, 90)];
-    amb.water = loop(a, g, 'pink', 'bandpass', 1800, .5, 0, .6, 500);
+    // In the wastes the "water" is lava: a deep rumble instead of a babbling brook.
+    amb.water = id === 'ember' ? loop(a, g, 'brown', 'lowpass', 220, .8, 0, .5, 80) : loop(a, g, 'pink', 'bandpass', 1800, .5, 0, .6, 500);
     amb.fire = loop(a, g, 'brown', 'lowpass', 900, .5, 0);
     const tick = () => {
       if (!core || amb.id !== id || settings.muted) return;
       const roll = Math.random();
       if (id === 'meadow') { if (roll < .55) birdCall(core, g); }
       else if (id === 'woods') { if (roll < .6) cricket(core, g); else if (roll < .66) owl(core, g); else if (roll < .8) drip(core, g); else if (roll < .86) birdCall(core, g); }
+      else if (id === 'ember') { if (roll < .3) crackle(core, g); else if (roll < .42) bubble(core, g); }
       else if (roll < .3) chime(core, g);
       if (amb.fire && amb.fire.gain.gain.value > .01 && Math.random() < .9) for (let i = 0; i < 3; i++) { const o = { node: amb.fire.gain, t: core.ac.currentTime }; noise(o, .015, { vol: r(.5, 1.2), freq: r(2000, 5000), type: 'bandpass', q: 3, delay: r(0, .6) }); }
     };

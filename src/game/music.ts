@@ -3,7 +3,7 @@
 // optional audio-file overrides via public/music/manifest.json. Shares the context and mixer of audio.ts.
 import { audioCore } from './audio';
 
-export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'boss' | 'victory';
+export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'ember' | 'boss' | 'victory';
 type Core = NonNullable<ReturnType<typeof audioCore>>;
 
 // ───────────────────────────── notes, chords, melodies
@@ -285,6 +285,30 @@ const TRACKS: Record<TrackId, Def> = {
     },
     groove: { k: [0, 2.5], t: [0, 1.5, 3], s: .5, p: 1 },
   },
+  // "The Ember Wastes": E phrygian dominant over a drone, hand drums and a winding desert flute.
+  ember: {
+    bpm: 92, scale: [4, 5, 8, 9, 11, 0, 2], lead: 'flute', form: 'AABA',
+    sec: {
+      A: {
+        ch: ['E', 'F', 'E', 'Dm', 'Am', 'G', 'F', 'E'],
+        mel: ['E5:1 F5:.5 G#5:.5 A5:1 G#5:1', 'F5:1.5 E5:.5 D5:1 C5:1', 'B4:.5 C5:.5 B4:.5 G#4:.5 E4:2', ['F4:1 A4:1 D5:1 F5:1', 'A4:1 D5:1 F5:1.5 E5:.5'],
+          'E5:1.5 C5:.5 A4:1 C5:1', 'D5:1 B4:.5 G4:.5 B4:1 D5:1', 'C5:1 A4:.5 F4:.5 A4:1 C5:.5 B4:.5', ['G#4:3 r:1', 'B4:1 G#4:1 E4:2']],
+      },
+      B: {
+        ch: ['Am', 'Dm', 'G', 'C', 'F', 'Dm', 'F', 'E7'],
+        mel: ['A5:1.5 G#5:.5 A5:1 E5:1', 'F5:1.5 E5:.5 D5:1 A4:1', 'B4:1 D5:1 G5:1.5 F5:.5', 'E5:3 r:1', 'F5:1 A5:1 C6:1 A5:1', 'F5:1.5 E5:.5 D5:2',
+          'C5:1 D5:1 E5:1 F5:1', ['G#5:2 F5:1 E5:1', 'E5:3 r:1']],
+      },
+    },
+    parts: b => {
+      if (b.i % 2 === 0) b.at(0, t => { for (const m of [40, 47]) pad(b.x.bus.pad, t, hz(m), 8 * b.spb + .2, .5, 1.2); });
+      padBar(b, 52, .24);
+      arp(b, [0, 1, 2, 1, 0, 2, 3, 2], .5, 55, .45, .8);
+      bassLine(b, [[0, 0, 1], [1.5, 0, .4], [2.5, 7, .5], [3, 0, 1]], 36, .75);
+      if (b.rnd() < .3) sparkle(b, 1, 76, .22);
+    },
+    groove: { k: [0, 1.5, 2.5], t: [1, 2, 3.5], s: .5, p: .5 },
+  },
   // Boss: D harmonic minor, driving drums, 8th-note bass, brass stabs and an urgent brass lead.
   boss: {
     bpm: 144, scale: [2, 4, 5, 7, 9, 10, 1], lead: 'brass', oct: -12, form: 'AABA', mix: { pad: .8 },
@@ -463,7 +487,7 @@ function sync() {
 export const music = {
   /** Crossfades to a track; the same track is a no-op, null fades out. Safe to call before the audio is unlocked. */
   play(track: TrackId | null) { want = track; sync(); },
-  /** 0..1 combat intensity: fades the percussion/pulse layer of meadow, woods and summit. Cheap to call every frame. */
+  /** 0..1 combat intensity: fades the percussion/pulse layer of the chapter tracks. Cheap to call every frame. */
   setIntensity(v: number) {
     try {
       const x = Math.max(0, Math.min(1, v || 0));
