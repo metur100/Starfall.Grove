@@ -477,7 +477,7 @@ function App() {
             <span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Bag</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>Y</kbd> Achievements</span><span><kbd>M</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
-          <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }} title="Back to the main menu">⏏ Leave game</button>
+          <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }} title="Back to the main menu">⌂ Main menu</button>
           <div className="pause-row">
             <button className="btn ghost" onClick={() => { setSettingsOpen(true); sfx.play('page'); }}>⚙ Settings</button>
             <button className="btn ghost" onClick={toggleMute}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
