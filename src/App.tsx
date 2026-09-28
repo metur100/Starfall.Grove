@@ -98,7 +98,7 @@ function App() {
   const [panel, setPanel] = useState<Panel>(null);
   const [sheetTab, setSheetTab] = useState<SheetTab>('bag');
   /** The "do you really want to leave?" question on the title screen, and the note shown if the app can't close itself. */
-  const [exitAsk, setExitAsk] = useState<'ask' | 'manual' | null>(null);
+  const [exitAsk, setExitAsk] = useState<'ask' | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [muted, setMuted] = useState(sfx.isMuted());
   const [graphics, setGraphics] = useState<GraphicsSettings>(loadGraphics);
@@ -331,10 +331,12 @@ function App() {
   const leaveGame = () => {
     sfx.play('ui');
     if (exitApp()) return;
-    // No native way to close from here: step out of the history trap so the next back press closes the app.
-    trapArmed.current = false;
-    try { history.back(); } catch { /* ignore */ }
-    setExitAsk('manual');
+    // No native way to close from here: step past the history trap and the game's own entry, which closes an
+    // installed app (or returns to the previous page) without asking for another back press.
+    trapArmed.current = false; setExitAsk(null);
+    try { history.go(-2); } catch { /* ignore */ }
+    // Still here (nothing to go back to): re-arm the trap so the back button keeps working.
+    window.setTimeout(() => { if (!trapArmed.current && document.visibilityState === 'visible') { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } }, 700);
   };
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
@@ -363,13 +365,8 @@ function App() {
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
     {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={() => { wipeHero(hero); startGame(true); }} onDeleteAll={deleteAll} />}
     {mode === 'title' && exitAsk && <div className="overlay exit-overlay" onClick={() => setExitAsk(null)}><div className="panel pause-panel exit-panel" onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true">
-      {exitAsk === 'ask' ? <>
-        <small className="eyebrow">Leave Starfall Grove</small><h2>Do you really want to leave the game?</h2><p>Your adventure is saved. The valley will wait for you.</p>
-        <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); }} autoFocus>Stay</button><button className="btn primary" onClick={leaveGame}>Leave game</button></div>
-      </> : <>
-        <small className="eyebrow">Leave Starfall Grove</small><h2>Press back once more to close.</h2><p>Your adventure is saved.</p>
-        <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } }}>Stay</button></div>
-      </>}
+      <small className="eyebrow">Leave Starfall Grove</small><h2>Do you really want to leave the game?</h2><p>Your adventure is saved. The valley will wait for you.</p>
+      <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); }} autoFocus>Stay</button><button className="btn primary" onClick={leaveGame}>Leave game</button></div>
     </div></div>}
     {mode === 'select' && <CharacterSelect hero={hero} summary={heroSummary} touch={touch} onHero={chooseHero} onEnter={() => startGame()} onBack={() => setMode('title')} />}
 
@@ -468,6 +465,7 @@ function App() {
         </div>}
 
         {paused && settingsOpen && <div className="overlay"><div className="panel pause-panel settings-panel">
+          <button className="icon-button settings-close" onClick={() => { setSettingsOpen(false); sfx.play('page'); }} aria-label="Close settings" title="Close">✕</button>
           <SettingsBody graphics={graphics} onGraphics={changeGraphics} />
           <button className="btn primary" onClick={() => setSettingsOpen(false)}>Back <b>←</b></button>
           <DangerZone hero={hero} onStartOver={startOver} onDeleteAll={deleteAll} />
@@ -479,11 +477,11 @@ function App() {
             <span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>U</kbd> Spellbook</span><span><kbd>I</kbd> Bag</span><span><kbd>O</kbd> Quest log</span><span><kbd>P</kbd> Character</span><span><kbd>Y</kbd> Achievements</span><span><kbd>M</kbd> Map</span>
           </div>
           <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
+          <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }} title="Back to the main menu">⏏ Leave game</button>
           <div className="pause-row">
             <button className="btn ghost" onClick={() => { setSettingsOpen(true); sfx.play('page'); }}>⚙ Settings</button>
             <button className="btn ghost" onClick={toggleMute}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
           </div>
-          <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }}>⏏ Leave game</button>
         </div></div>}
       </section>
     </main>}
@@ -526,8 +524,9 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
     </section>
     {!touch && <footer className="title-foot"><span><kbd>WASD</kbd> move</span><span><kbd>L</kbd> attack</span><span><kbd>E</kbd> dash / charge</span><span><kbd>K J H</kbd> abilities</span><span><kbd>Space</kbd> interact</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>I</kbd> bag</span><span><kbd>M</kbd> map</span></footer>}
     {settings && <div className="overlay" onClick={() => onSettings(false)}><div onClick={e => e.stopPropagation()} className="panel pause-panel settings-panel">
+      <button className="icon-button settings-close" onClick={() => { onSettings(false); sfx.play('page'); }} aria-label="Close settings" title="Close">✕</button>
       <SettingsBody graphics={graphics} onGraphics={onGraphics} />
-      <button className="btn primary" onClick={() => onSettings(false)}>Done <b>←</b></button>
+      <button className="btn primary" onClick={() => onSettings(false)}>Back <b>←</b></button>
       <DangerZone hero={hero} onStartOver={onStartOver} onDeleteAll={onDeleteAll} />
     </div></div>}
   </main>;

@@ -466,7 +466,8 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .story li { display: flex; gap: 8px; align-items: center; color: #fff1c0; }
 .story li span { width: 16px; color: var(--main-q); text-align: center; }
 .story li.done { color: var(--muted); }
-.settings-panel { text-align: left; }
+.settings-panel { text-align: left; position: relative; }
+.settings-panel .settings-close { position: sticky; top: 0; float: right; margin: -14px -12px -36px 0; width: 36px; height: 36px; z-index: 2; background: rgba(16, 20, 38, .96); }
 .settings-panel h2, .settings-panel > small, .settings-panel > p { text-align: center; }
 .settings-panel .eyebrow { display: flex; justify-content: center; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
@@ -636,7 +637,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .exit-panel h2 { font-size: 30px; line-height: 1.15; }
 .exit-actions { display: flex; gap: 10px; }
 .exit-actions .btn { flex: 1; }
-.pause-panel .leave-btn { width: 100%; margin-top: 12px; border-color: rgba(255, 150, 120, .4); }
+.pause-panel .leave-btn { width: 100%; margin-top: 10px; border-color: rgba(255, 150, 120, .4); }
 
 /* ─────────── 3D hero stage */
 .hero-stage { position: relative; min-height: 0; }
