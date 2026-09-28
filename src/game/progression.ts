@@ -1,20 +1,30 @@
 import { ITEM_ORDER } from './items';
-import { HEROES } from './spells';
-import type { HeroId, ItemId, UpgradeId } from './types';
+import { SLOT_ORDER, sumGear, validGear } from './gear';
+import { HEROES, MAX_STARS } from './spells';
+import type { GearItem, GearSlot, HeroId, ItemId, SpellId, UpgradeId } from './types';
 
 // Hero progression that carries across the whole valley: level, experience, gold, permanent rewards, upgrades and the bag.
 // Every hero has a profile of their own.
 export type Profile = {
   version: 1; hero: HeroId; level: number; xp: number; gold: number; bonusHearts: number; bonusMana: number; regen: number;
   claimed: string[]; items: Partial<Record<ItemId, number>>; upgrades: Partial<Record<UpgradeId, number>>;
+  /** Equipment carried in the bag, and what is worn. */
+  gear: GearItem[]; equipped: Partial<Record<GearSlot, GearItem>>;
+  /** Upgrade stars bought for each ability. */
+  stars: Partial<Record<SpellId, number>>;
+  /** The consumable on the second quick button. */
+  quick: ItemId;
 };
+/** Bag slots: every kind of consumable held takes one, every piece of equipment takes one. */
+export const BAG_SIZE = 36;
+export const bagUsed = (p: Profile) => p.gear.length + ITEM_ORDER.filter(id => (p.items[id] || 0) > 0).length;
 
 export const MAX_LEVEL = 20;
 /** Health is shown as a bar; one "heart" of the old design is worth this many points. */
 export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
-const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1 }, upgrades: {} });
+const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion' });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
 export type UpgradeInfo = { name: string; icon: string; description: string; per: string };
@@ -31,13 +41,15 @@ export const rankOf = (p: Profile, id: UpgradeId) => p.upgrades[id] || 0;
 /** Experience needed to go from `level` to `level + 1`. */
 export const xpToNext = (level: number) => level >= MAX_LEVEL ? 0 : Math.round(60 * Math.pow(level, 1.5) / 5) * 5;
 const heartsAt = (p: Profile) => Math.min(22, HEROES[p.hero].hearts + Number(p.level >= 4) + Number(p.level >= 8) + Number(p.level >= 12) + Number(p.level >= 16) + p.bonusHearts);
-export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * (p.hero === 'kael' ? 11 : 8) + rankOf(p, 'amulet') * 30;
-export const manaAt = (p: Profile) => 100 + (p.level - 1) * 6 + p.bonusMana;
-export const regenAt = (p: Profile) => HEROES[p.hero].regen + (p.level - 1) * .14 + p.regen;
-/** Damage multiplier from level and the weapon upgrade. */
-export const powerAt = (p: Profile) => (1 + (p.level - 1) * .12) * (1 + rankOf(p, 'staff') * .08);
-/** Share of damage that gets through: the hero's own toughness times the mantle. */
-export const armorAt = (p: Profile) => HEROES[p.hero].armor * (1 - rankOf(p, 'mantle') * .06);
+export const gearOf = (p: Profile) => sumGear(p.equipped);
+export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * (p.hero === 'kael' ? 11 : 8) + rankOf(p, 'amulet') * 30 + gearOf(p).health;
+export const manaAt = (p: Profile) => 100 + (p.level - 1) * 6 + p.bonusMana + gearOf(p).mana;
+export const regenAt = (p: Profile) => HEROES[p.hero].regen + (p.level - 1) * .14 + p.regen + gearOf(p).regen;
+/** Damage multiplier from level, the weapon upgrade and worn gear. */
+export const powerAt = (p: Profile) => (1 + (p.level - 1) * .12) * (1 + rankOf(p, 'staff') * .08) * (1 + gearOf(p).power / 100);
+/** Share of damage that gets through: the hero's own toughness times the mantle and worn armour. */
+export const armorAt = (p: Profile) => HEROES[p.hero].armor * (1 - rankOf(p, 'mantle') * .06) * (1 - gearOf(p).armor / 100);
+export const starsOf = (p: Profile, id: SpellId) => p.stars[id] || 0;
 
 export function loadProfile(hero: HeroId = 'mira'): Profile {
   try {
@@ -54,6 +66,14 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     const upgrades: Profile['upgrades'] = {};
     for (const id of UPGRADE_ORDER) { const n = Math.floor(Number(raw.upgrades?.[id]) || 0); if (n > 0) upgrades[id] = Math.min(MAX_RANK, n); }
     p.upgrades = upgrades;
+    p.gear = Array.isArray(raw.gear) ? raw.gear.filter(validGear).slice(0, BAG_SIZE) : [];
+    const equipped: Profile['equipped'] = {};
+    for (const slot of SLOT_ORDER) { const g = raw.equipped?.[slot]; if (validGear(g) && g.slot === slot) equipped[slot] = g; }
+    p.equipped = equipped;
+    const stars: Profile['stars'] = {};
+    for (const id of HEROES[hero].spells) { const n = Math.floor(Number(raw.stars?.[id]) || 0); if (n > 0) stars[id] = Math.min(MAX_STARS, n); }
+    p.stars = stars;
+    p.quick = ITEM_ORDER.includes(raw.quick as ItemId) && raw.quick !== 'healthPotion' ? raw.quick as ItemId : 'manaPotion';
     return p;
   } catch { return blank(hero); }
 }

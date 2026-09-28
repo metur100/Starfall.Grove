@@ -1,4 +1,5 @@
 import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle } from './engine';
+import { RARITY } from './gear';
 import { Grid } from './spatial';
 import { REGION_W, fbm } from './worldgen';
 import type { Captive, Decor, ItemIcon, NpcLook, Obstacle, Palette, Point, Poi, Region, WorldDefinition, WorldObject } from './types';
@@ -196,9 +197,9 @@ export class Renderer {
     for (const n of e.npcs) if (inView(n.x, n.y) && e.npcVisible(n)) draws.push({ y: n.y + 22, run: () => this.drawNpc(ctx, n, e) });
     for (const c of e.critters) if (inView(c.x, c.y)) draws.push({ y: c.y + (c.state === 'fly' ? 400 : 6), run: () => this.drawCritter(ctx, c, e) });
     for (const en of e.enemies) if (!en.dead && inView(en.x, en.y)) draws.push({ y: en.y + en.r * .7, run: () => this.drawEnemy(ctx, en, e) });
-    this.updateFox(e, dt);
-    draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) });
-    draws.push({ y: hero.y + 22, run: () => this.drawHero(ctx, e) });
+    // Tuft trots beside Mira; Kael travels alone.
+    if (e.hasPet) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
+    draws.push({ y: hero.y + 22, run: () => this.drawHeroScaled(ctx, e) });
     draws.sort((a, b) => a.y - b.y);
     for (const d of draws) d.run();
 
@@ -1154,6 +1155,17 @@ export class Renderer {
     if (Math.random() < .05) this.pushAmbient({ x: x - f.flip * 22, y: y - 3, vx: rand(-10, 10), vy: rand(-20, -5), life: .8, max: .8, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#ffe38a', phase: 0 });
     this.lights.push({ x, y, r: 60, a: .4 });
   }
+  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb leaves them half see-through. */
+  private drawHeroScaled(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined;
+    if (s === 1 && !hidden) return this.drawHero(ctx, e);
+    ctx.save();
+    if (hidden) ctx.globalAlpha = .45 + Math.sin(this.time * 6) * .1;
+    ctx.translate(h.x, h.y + 20); ctx.scale(s, s); ctx.translate(-h.x, -h.y - 20);
+    if (s > 1.05) glow(ctx, h.x, h.y - 10, 60 * s, '#c98aff', .35);
+    this.drawHero(ctx, e);
+    ctx.restore();
+  }
   private drawHero(ctx: CanvasRenderingContext2D, e: GameEngine) {
     if (e.heroId === 'kael') return this.drawWarrior(ctx, e);
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1;
@@ -1574,7 +1586,7 @@ export class Renderer {
   // ───────────────────────────── combat visuals
   private drawHazardGround(ctx: CanvasRenderingContext2D, z: Hazard) {
     const p = 1 - z.delay / z.maxDelay, t = this.time;
-    const hero = z.owner === 'hero', c = hero ? '#ffe38a' : z.kind === 'meteor' ? '#c9b6ff' : z.kind === 'spore' ? '#a8e060' : '#ff6b5b';
+    const hero = z.owner === 'hero', c = z.kind === 'firebomb' ? '#ff8a3d' : z.kind === 'frostbomb' ? '#8fd8ff' : z.kind === 'lightning' ? '#ffe96b' : hero ? '#ffe38a' : z.kind === 'meteor' ? '#c9b6ff' : z.kind === 'spore' ? '#a8e060' : '#ff6b5b';
     ctx.save(); ctx.translate(z.x, z.y); ctx.scale(1, .62);
     ctx.fillStyle = alpha(c, .1 + p * .14); ctx.beginPath(); ctx.arc(0, 0, z.r, 0, TAU); ctx.fill();
     ctx.fillStyle = alpha(c, .25); ctx.beginPath(); ctx.arc(0, 0, z.r * p, 0, TAU); ctx.fill();
@@ -1584,10 +1596,33 @@ export class Renderer {
     if (z.kind === 'root' && p > .6) { ctx.fillStyle = '#6f5337'; for (let i = 0; i < 3; i++) { const a = i * 2.1; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 10 - 4, Math.sin(a) * 10); ctx.lineTo(Math.cos(a) * 10, Math.sin(a) * 10 - 18 * (p - .6) * 2.5); ctx.lineTo(Math.cos(a) * 10 + 4, Math.sin(a) * 10); ctx.fill(); } }
     ctx.restore();
     if (z.kind === 'boulder' || z.kind === 'meteor' || z.kind === 'starfall') shadow(ctx, z.x, z.y, z.r * .5 * p, z.r * .22 * p, .35);
+    else if (z.kind === 'firebomb' || z.kind === 'frostbomb') shadow(ctx, z.x, z.y, 14 * p, 6 * p, .35);
   }
   private drawHazardAir(ctx: CanvasRenderingContext2D, z: Hazard) {
     const p = 1 - z.delay / z.maxDelay;
-    if (z.kind === 'boulder') {
+    if (z.kind === 'firebomb' || z.kind === 'frostbomb') {
+      // A round bomb with a sparking fuse, lobbed in a high arc.
+      const fire = z.kind === 'firebomb', x = z.fromX + (z.x - z.fromX) * p, y = z.fromY + (z.y - z.fromY) * p - Math.sin(p * Math.PI) * 170;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(p * 10);
+      circle(ctx, 0, 0, 11, fire ? '#3a2a30' : '#3a4a60'); circle(ctx, -3.5, -3.5, 3.5, 'rgba(255,255,255,.35)');
+      ctx.fillStyle = fire ? '#ff7a3d' : '#8fd8ff'; ctx.fillRect(-4, -14, 8, 4);
+      ctx.restore();
+      glow(ctx, x, y - 14, 16, fire ? '#ffd27a' : '#dff6ff', 1);
+      if (Math.random() < .6) this.pushAmbient({ x, y: y - 12, vx: rand(-30, 30), vy: rand(-40, 0), life: .4, max: .4, size: 2, rot: 0, vr: 0, kind: 'mote', color: fire ? '#ffd27a' : '#dff6ff', phase: 0 });
+      this.lights.push({ x, y, r: 70, color: fire ? '#ffb05c' : '#8fd8ff', a: .8 });
+    } else if (z.kind === 'lightning') {
+      // A jagged bolt from the sky in the last moment before it lands.
+      if (p < .55) return;
+      const k = (p - .55) / .45, steps = 9;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (const [w, col] of [[10, 'rgba(255,233,107,.35)'], [3.5, '#fffbe0']] as const) {
+        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(z.fromX, z.fromY);
+        for (let i = 1; i <= steps; i++) { const f = i / steps; ctx.lineTo(z.fromX + (z.x - z.fromX) * f + (i < steps ? Math.sin(i * 7.3 + z.fromX) * 26 : 0), z.fromY + (z.y - z.fromY) * f * Math.min(1, k * 1.6)); }
+        ctx.stroke();
+      }
+      ctx.restore();
+      this.lights.push({ x: z.x, y: z.y, r: 180, color: '#ffe96b', a: 1 });
+    } else if (z.kind === 'boulder') {
       const x = z.fromX + (z.x - z.fromX) * p, y = z.fromY + (z.y - z.fromY) * p - Math.sin(p * Math.PI) * 240;
       ctx.save(); ctx.translate(x, y); ctx.rotate(p * 9);
       ctx.fillStyle = '#7d8070'; ctx.beginPath(); ctx.moveTo(-16, -6); ctx.lineTo(-6, -16); ctx.lineTo(12, -13); ctx.lineTo(17, 4); ctx.lineTo(6, 16); ctx.lineTo(-13, 12); ctx.closePath(); ctx.fill();
@@ -1672,6 +1707,17 @@ export class Renderer {
     for (const o of e.orbs) {
       const fade = o.age > 13 ? (Math.floor(t * 10) % 2 ? .3 : 1) : 1, y = o.y - 8 + Math.sin(t * 5 + o.x) * 3;
       ctx.globalAlpha = fade;
+      if (o.kind === 'loot') {
+        // A little loot sack glowing in its rarity colour; epic and legendary pieces send up a beam of light.
+        const c = o.gear ? RARITY[o.gear.rarity].color : '#ffffff', big = o.gear && (o.gear.rarity === 'epic' || o.gear.rarity === 'legendary');
+        if (big) { const g = ctx.createLinearGradient(o.x, y - 160, o.x, y); g.addColorStop(0, alpha(c, 0)); g.addColorStop(1, alpha(c, .45)); ctx.fillStyle = g; ctx.fillRect(o.x - 9, y - 160, 18, 160); }
+        glow(ctx, o.x, y, 30, c, .9);
+        ellipse(ctx, o.x, y + 3, 9, 8, '#a8743f'); ellipse(ctx, o.x - 2, y, 4, 3, 'rgba(255,255,255,.25)');
+        ctx.fillStyle = '#8a5a2f'; ctx.beginPath(); ctx.moveTo(o.x - 5, y - 4); ctx.lineTo(o.x, y - 9); ctx.lineTo(o.x + 5, y - 4); ctx.fill();
+        ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(o.x - 5, y - 4); ctx.lineTo(o.x + 5, y - 4); ctx.stroke();
+        ctx.globalAlpha = 1; this.lights.push({ x: o.x, y, r: big ? 110 : 60, color: c, a: .8 });
+        continue;
+      }
       if (o.kind === 'heart') { glow(ctx, o.x, y, 22, '#ff7a8a', .9); heart(ctx, o.x, y + 2, 8, '#ff5f74'); circle(ctx, o.x - 3, y - 2, 1.6, '#ffd1d8'); }
       else if (o.kind === 'gold') { const sq = Math.abs(Math.cos(t * 5 + o.x)); glow(ctx, o.x, y, 16, '#ffd35c', .8); ellipse(ctx, o.x, y, 6 * sq + 1, 6, '#e8a93a'); ellipse(ctx, o.x, y, 4.2 * sq + .6, 4.2, '#ffe38a'); }
       else { glow(ctx, o.x, y, 18, '#7fc8ff', .9); circle(ctx, o.x, y, 4.5, '#dff2ff'); }

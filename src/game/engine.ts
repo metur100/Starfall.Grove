@@ -1,13 +1,14 @@
 import { ambience, footstep, sfx, type Sfx } from './audio';
 import { ITEMS, ITEM_ORDER, rollItem } from './items';
-import { HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, upgradeCost, xpToNext, type Profile } from './progression';
-import { HEROES, SPELLS } from './spells';
+import { RARITY, SLOT_ORDER, makeGear, rollRarity, seeded, sellPrice } from './gear';
+import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
+import { HEROES, MAX_STARS, SPELLS, SPELL_UPGRADES, starCost, starLevel, upgradeText } from './spells';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
 import type {
-  CritterKind, EngineEvent, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
-  QuestDef, QuestOffer, QuestRow, QuestState, Region, RegionId, SpellId, UpgradeId, WorldDefinition, WorldObject,
+  CritterKind, EngineEvent, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, NoticeTone, NpcDef, Obstacle, Point, Poi,
+  QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
 export type Hero = {
@@ -33,9 +34,10 @@ export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: numbe
 export type Critter = { kind: CritterKind; x: number; y: number; homeX: number; homeY: number; tx: number; ty: number; state: 'idle' | 'move' | 'flee' | 'fly'; t: number; face: number; alt: number; hop: number; seed: number };
 type BossAction = 'slam' | 'boulders' | 'nova' | 'roots' | 'charge' | 'spiral' | 'meteors' | 'blink';
 export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice'; targetId?: string; crit?: boolean; spin: number };
-export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore'; fromX: number; fromY: number };
+export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning'; fromX: number; fromY: number };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 'dot' | 'leaf' | 'ember' | 'star' | 'smoke' | 'ring' | 'shard'; rot: number; vr: number; grav: number; drag: number; glow: boolean };
-export type Orb = { x: number; y: number; vx: number; vy: number; kind: 'mana' | 'heart' | 'gold'; age: number; value: number };
+/** A `loot` orb carries a piece of equipment and is drawn as a small bag glowing in its rarity colour. */
+export type Orb = { x: number; y: number; vx: number; vy: number; kind: 'mana' | 'heart' | 'gold' | 'loot'; age: number; value: number; gear?: GearItem };
 export type Pod = { id: number; x: number; y: number; dead: boolean; hitT: number };
 export type FloatText = { x: number; y: number; text: string; life: number; max: number; color: string; size: number };
 export type Afterimage = { x: number; y: number; life: number; faceX: number };
@@ -93,6 +95,8 @@ export const EXPLORE_CELL = 320;
 const ACTIVE_RANGE = 1700;
 /** Creatures come back this many seconds after being defeated. */
 const RESPAWN_TIME = 60;
+/** Consumables a quest can pay out (the rare feather is left to luck and merchants). */
+const QUEST_ITEMS = ITEM_ORDER.filter(id => id !== 'phoenixFeather');
 
 export class GameEngine {
   readonly world: WorldDefinition;
@@ -231,7 +235,19 @@ export class GameEngine {
   // ───────────────────────────── helpers
   private notice(text: string, tone: NoticeTone = 'info', short?: string) { this.eventHandler({ type: 'notice', text, tone, short }); }
   /** The story is written for Mira; other heroes get their own name in it. */
-  private personal(lines: string[]) { if (this.heroId === 'mira') return lines; const n = HEROES[this.heroId].name; return lines.map(l => l.replace(/\bMira\b/g, n).replace(/\bgirl with the fox\b/g, 'lad with the fox').replace(/\b([Mm])y brave girl\b/g, '$1y brave lad')); }
+  /** Kael travels alone, so Tuft is written out of his lines. */
+  private personal(lines: string[]) {
+    if (this.heroId === 'mira') return lines;
+    const n = HEROES[this.heroId].name;
+    return lines.map(l => l.replace(/\bMira\b/g, n).replace(/\bgirl with the fox\b/g, 'warrior with the red plume').replace(/\b([Mm])y brave girl\b/g, '$1y brave lad')
+      .replace('(Tuft tugs at your sleeve and points east,', '(You look east,')
+      .replace('(Tuft sniffs the icy wind blowing through the Eastern Gate and whines.)', '(An icy wind howls through the Eastern Gate.)')
+      .replace('(Tuft’s fur stands on end.', '(The hair on your neck stands on end.')
+      .replace(/ and Tuft\b/g, '').replace(/ with Tuft\b/g, '').replace(/\bTuft\b/g, 'the wind'));
+  }
+  /** Who speaks the story's nudges between quests: Tuft for Mira, Kael's own thoughts for Kael. */
+  get guideVoice() { return this.heroId === 'mira' ? { name: 'Tuft', portrait: '🦊' } : { name: HEROES[this.heroId].name, portrait: `hero:${this.heroId}` }; }
+  get hasPet() { return this.heroId === 'mira'; }
   private say(speaker: string, portrait: string, lines: string[], then?: 'complete') { if (!lines.length) return; sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker, portrait, lines: this.personal(lines), then }); }
   private play(s: Sfx, pos?: Point) { sfx.play(s, pos); }
   regionAt(x: number): Region { const r = this.world.regions; return r[clamp(Math.floor(x / REGION_W), 0, r.length - 1)]; }
@@ -247,7 +263,15 @@ export class GameEngine {
   private canHurt(e: Enemy) { return !e.boss || this.bossUnlocked(e); }
   keysFound(region: RegionId) { return this.main.keys.filter(k => k.startsWith(`${region}:`)).length; }
   spellUnlocked(id: SpellId) { return this.profile.level >= SPELLS[id].level; }
-  get power() { return powerAt(this.profile) * (this.buffs.powerElixir ? 1.35 : 1); }
+  get power() { return powerAt(this.profile) * (this.buffs.powerElixir ? 1.35 : 1) * (this.buffs.giantBrew ? 1.4 : 1); }
+  /** Damage multiplier of one ability: overall power times its upgrade stars. */
+  private sp(id: SpellId) { const u = SPELL_UPGRADES[id]; return this.power * (u.stat === 'damage' ? 1 + starsOf(this.profile, id) * u.per / 100 : 1); }
+  cooldownOf(id: SpellId) { const u = SPELL_UPGRADES[id]; return SPELLS[id].cooldown * (u.stat === 'cooldown' ? 1 - starsOf(this.profile, id) * u.per / 100 : 1); }
+  private durationOf(id: SpellId, base: number) { const u = SPELL_UPGRADES[id]; return base * (u.stat === 'duration' ? 1 + starsOf(this.profile, id) * u.per / 100 : 1); }
+  get critChance() { return .15 + gearOf(this.profile).crit / 100; }
+  get moveSpeed() { return (this.buffs.swiftTonic ? 1.4 : 1) * (1 + gearOf(this.profile).speed / 100) * (this.buffs.giantBrew ? .9 : 1); }
+  /** How big the hero is drawn: Giant's Brew makes them huge. */
+  get heroScale() { const t = this.buffs.giantBrew; return t === undefined ? 1 : 1 + .45 * Math.min(1, t * 2, (ITEMS.giantBrew.duration - t) * 3 + .01); }
   get bossFight() { return this.enemies.some(e => e.boss && !e.dead && e.aggro && this.canHurt(e)); }
   get regionTrack() { return this.regionId; }
   addShake(n: number) { this.shake = Math.min(22, this.shake + n); }
@@ -272,7 +296,7 @@ export class GameEngine {
 
   // ───────────────────────────── experience and gold
   gainXp(amount: number, x = this.hero.x, y = this.hero.y) {
-    const p = this.profile; amount = Math.round(amount);
+    const p = this.profile; amount = Math.round(amount * (this.buffs.luckyClover ? 1.5 : 1));
     if (amount <= 0 || p.level >= MAX_LEVEL) return;
     p.xp += amount;
     this.text(x, y - 60, `+${amount} XP`, '#c9f29d', 15);
@@ -289,7 +313,7 @@ export class GameEngine {
     saveProfile(p);
   }
   private gainGold(n: number, x = this.hero.x, y = this.hero.y) {
-    n = Math.round(n); if (n <= 0) return;
+    n = Math.round(n * (this.buffs.luckyClover ? 1.5 : 1)); if (n <= 0) return;
     this.profile.gold += n; this.profileDirty = true;
     this.text(x, y - 76, `+${n} gold`, '#ffd35c', 14);
   }
@@ -317,22 +341,22 @@ export class GameEngine {
     if (id === 'charge') return this.charge();
     if (h.cds[id] > 0) { this.play('nope'); return; }
     if (h.mana < info.cost) { this.play('nope'); this.notice('Not enough magic! Break glow pods and defeat creatures for mana.', 'warn', 'No magic'); return; }
-    h.mana -= info.cost; h.cds[id] = info.cooldown; h.castTime = .3;
+    h.mana -= info.cost; h.cds[id] = this.cooldownOf(id); h.castTime = .3;
     if (id === 'sunfire') this.sunfire();
-    else if (id === 'shield' || id === 'guard') this.mossShield();
+    else if (id === 'shield' || id === 'guard') this.mossShield(id);
     else if (id === 'starfall') this.starfall();
     else if (id === 'slam') this.earthsplitter();
     else if (id === 'bladestorm') this.bladestorm();
   }
   private attack() {
     const h = this.hero; if (h.cds.spark > 0) return;
-    h.cds.spark = SPELLS.spark.cooldown; h.castTime = .18;
+    h.cds.spark = this.cooldownOf('spark'); h.castTime = .18;
     const target = this.nearestTarget(560);
     let dx = h.faceX, dy = h.faceY;
     if (target) { const d = Math.max(1, dist(h, target)); dx = (target.x - h.x) / d; dy = (target.y - h.y) / d; h.faceX = dx; h.faceY = dy; }
     const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-    const crit = Math.random() < .15;
-    this.projectiles.push({ x: h.x + dx * 26, y: h.y - 14 + dy * 26, vx: dx * 640, vy: dy * 640, life: 1, r: crit ? 9 : 7, damage: 10 * this.power * (crit ? 2 : 1), level: 0, owner: 'hero', kind: 'spark', targetId: target && 'kind' in target ? target.id : undefined, crit, spin: 0 });
+    const crit = Math.random() < this.critChance;
+    this.projectiles.push({ x: h.x + dx * 26, y: h.y - 14 + dy * 26, vx: dx * 640, vy: dy * 640, life: 1, r: crit ? 9 : 7, damage: 10 * this.sp('spark') * (crit ? 2 : 1), level: 0, owner: 'hero', kind: 'spark', targetId: target && 'kind' in target ? target.id : undefined, crit, spin: 0 });
     this.emit(h.x + dx * 26, h.y - 14 + dy * 26, 6, ['#fff6c4', '#ffe38a'], { speed: 120, life: .3, size: 3, glow: true, angle: Math.atan2(dy, dx), spread: 1.2 });
     this.play('spark');
   }
@@ -341,7 +365,7 @@ export class GameEngine {
     let dx = this.moveX, dy = this.moveY;
     if (Math.hypot(dx, dy) < .1) { dx = h.faceX; dy = h.faceY; }
     const len = Math.hypot(dx, dy) || 1;
-    h.dashX = dx / len; h.dashY = dy / len; h.dashTime = .18; h.cds.dash = SPELLS.dash.cooldown; h.slowT = 0;
+    h.dashX = dx / len; h.dashY = dy / len; h.dashTime = .18; h.cds.dash = this.cooldownOf('dash'); h.slowT = 0;
     this.emit(h.x, h.y + 14, 14, ['#e9f7ff', '#bfe8ff', '#ffffff'], { speed: 140, life: .45, kind: 'smoke', size: 7, angle: Math.atan2(-dy, -dx), spread: 1.6 });
     this.play('dash');
   }
@@ -349,10 +373,10 @@ export class GameEngine {
   /** A wide sword arc in front of Kael; it turns toward the nearest foe in reach. */
   private swordSlash() {
     const h = this.hero; if (h.cds.slash > 0) return;
-    h.cds.slash = SPELLS.slash.cooldown; h.castTime = .26;
+    h.cds.slash = this.cooldownOf('slash'); h.castTime = .26;
     const t = this.nearestTarget(190);
     if (t) { const d = Math.max(1, dist(h, t)); h.faceX = (t.x - h.x) / d; h.faceY = (t.y - h.y) / d; }
-    const ang = Math.atan2(h.faceY, h.faceX), reach = 118, crit = Math.random() < .15;
+    const ang = Math.atan2(h.faceY, h.faceX), reach = 118 * this.heroScale, crit = Math.random() < this.critChance;
     this.slashes.push({ x: h.x, y: h.y - 12, angle: ang, life: .22, max: .22, reach });
     let hits = 0;
     for (const e of this.enemies) {
@@ -360,7 +384,7 @@ export class GameEngine {
       const d = dist(h, e); if (d > reach + e.r) continue;
       let da = Math.atan2(e.y - h.y, e.x - h.x) - ang; da = Math.atan2(Math.sin(da), Math.cos(da));
       if (Math.abs(da) > 1.25 && d > e.r + 20) continue;
-      this.damageEnemy(e, 15 * this.power * (crit ? 2 : 1), crit); if (!e.boss) this.knock(e, h, 170); hits++;
+      this.damageEnemy(e, 15 * this.sp('slash') * (crit ? 2 : 1), crit); if (!e.boss) this.knock(e, h, 170); hits++;
     }
     for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
     this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(2 + Math.min(4, hits));
@@ -371,7 +395,7 @@ export class GameEngine {
     const t = this.nearestTarget(460, true), moving = Math.hypot(this.moveX, this.moveY) > .1;
     let dx = t ? t.x - h.x : moving ? this.moveX : h.faceX, dy = t ? t.y - h.y : moving ? this.moveY : h.faceY;
     const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-    h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = .34; h.charging = true; h.cds.charge = SPELLS.charge.cooldown; h.slowT = 0;
+    h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = .34; h.charging = true; h.cds.charge = this.cooldownOf('charge'); h.slowT = 0;
     this.chargeHit.clear();
     this.emit(h.x, h.y + 14, 18, ['#ffd0a0', '#ffb35c', '#ffffff'], { speed: 160, life: .45, kind: 'smoke', size: 8, angle: Math.atan2(-dy, -dx), spread: 1.4 });
     this.play('dash'); this.play('roar');
@@ -379,7 +403,7 @@ export class GameEngine {
   /** A shockwave around Kael that hurts and stuns. */
   private earthsplitter() {
     const h = this.hero;
-    this.hazards.push({ x: h.x, y: h.y, r: 175, delay: .22, maxDelay: .22, damage: 45 * this.power, level: 0, owner: 'hero', kind: 'slam', fromX: h.x, fromY: h.y });
+    this.hazards.push({ x: h.x, y: h.y, r: 175, delay: .22, maxDelay: .22, damage: 45 * this.sp('slam'), level: 0, owner: 'hero', kind: 'slam', fromX: h.x, fromY: h.y });
     h.castTime = .3; this.addShake(4); this.play('roar');
   }
   private bladestorm() { const h = this.hero; h.stormT = 3; h.stormTick = 0; this.play('dash'); this.flash = Math.max(this.flash, .15); }
@@ -388,7 +412,7 @@ export class GameEngine {
     if (h.dashTime <= 0) h.charging = false;
     if (h.charging) for (const e of this.enemies) {
       if (e.dead || e.spawnT > 0 || this.chargeHit.has(e) || Math.abs(e.x - h.x) > 90 || Math.abs(e.y - h.y) > 90 || dist(e, h) > e.r + 34) continue;
-      this.chargeHit.add(e); this.damageEnemy(e, 22 * this.power);
+      this.chargeHit.add(e); this.damageEnemy(e, 22 * this.sp('charge'));
       if (!e.boss) { e.stunT = 1; e.windup = 0; e.lunge = 0; this.knock(e, { x: e.x - h.dashY * 30 - h.dashX * 10, y: e.y + h.dashX * 30 - h.dashY * 10 }, 420); }
       this.addShake(6); this.hitStop = Math.max(this.hitStop, .04);
     }
@@ -397,7 +421,7 @@ export class GameEngine {
       if (Math.random() < dt * 20) { const a = rand(0, 6.28); this.emit(h.x + Math.cos(a) * 60, h.y - 10 + Math.sin(a) * 40, 1, ['#ffd0a0', '#ffffff', '#ff8a6b'], { speed: 120, life: .3, glow: true, size: 3, angle: a + 1.6, spread: .4 }); }
       if (h.stormTick <= 0) {
         h.stormTick = .25; this.play('dash');
-        for (const e of this.enemies) if (!e.dead && e.spawnT <= 0 && Math.abs(e.x - h.x) < 200 && Math.abs(e.y - h.y) < 200 && dist(e, h) < 150 + e.r) { this.damageEnemy(e, 14 * this.power); if (!e.boss) this.knock(e, h, 90); }
+        for (const e of this.enemies) if (!e.dead && e.spawnT <= 0 && Math.abs(e.x - h.x) < 200 && Math.abs(e.y - h.y) < 200 && dist(e, h) < 150 + e.r) { this.damageEnemy(e, 14 * this.sp('bladestorm')); if (!e.boss) this.knock(e, h, 90); }
         for (const p of this.pods) if (!p.dead && dist(h, p) < 150) this.breakPod(p);
       }
     }
@@ -407,7 +431,7 @@ export class GameEngine {
     let dx = h.faceX, dy = h.faceY;
     if (target) { const d = Math.max(1, dist(h, target)); dx = (target.x - h.x) / d; dy = (target.y - h.y) / d; }
     const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-    this.projectiles.push({ x: h.x + dx * 30, y: h.y - 14 + dy * 30, vx: dx * 470, vy: dy * 470, life: 1.3, r: 14, damage: 40 * this.power, level: 0, owner: 'hero', kind: 'sunfire', spin: 0 });
+    this.projectiles.push({ x: h.x + dx * 30, y: h.y - 14 + dy * 30, vx: dx * 470, vy: dy * 470, life: 1.3, r: 14, damage: 40 * this.sp('sunfire'), level: 0, owner: 'hero', kind: 'sunfire', spin: 0 });
     this.emit(h.x + dx * 30, h.y - 14 + dy * 30, 16, ['#ffd27a', '#ff9a4a', '#fff1b8'], { speed: 180, life: .4, kind: 'ember', glow: true, angle: Math.atan2(dy, dx), spread: 1.4 });
     this.addShake(3); this.play('sunfire');
   }
@@ -416,12 +440,12 @@ export class GameEngine {
     this.emit(x, y, 36, ['#ffd27a', '#ff9a4a', '#ff6b3d', '#fff1b8'], { speed: 360, life: .7, kind: 'ember', glow: true, size: 5 });
     this.emit(x, y, 10, 'rgba(90,60,50,.5)', { speed: 90, life: 1, kind: 'smoke', size: 16 });
     this.flash = Math.max(this.flash, .25);
-    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist({ x, y }, e) < 100 + e.r) { this.damageEnemy(e, 40 * this.power); this.knock(e, { x, y }, e.boss ? 15 : 200); }
+    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist({ x, y }, e) < 100 + e.r) { this.damageEnemy(e, 40 * this.sp('sunfire')); this.knock(e, { x, y }, e.boss ? 15 : 200); }
     for (const p of this.pods) if (!p.dead && dist({ x, y }, p) < 100) this.breakPod(p);
     this.addShake(9); this.hitStop = .05; this.play('boom', { x, y });
   }
-  private mossShield() {
-    const h = this.hero; h.shieldTime = 3; h.slowT = 0;
+  private mossShield(id: SpellId) {
+    const h = this.hero; h.shieldTime = this.durationOf(id, 3); h.slowT = 0;
     this.ring(h.x, h.y, 70, '#9fe8b0', .4);
     this.emit(h.x, h.y, 30, ['#9fe8b0', '#d6ffd9', '#5fae4f'], { speed: 200, life: .6, kind: 'leaf', size: 6 });
     for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 110 + e.r) { e.windup = 0; e.cd = Math.max(e.cd, 1.3); this.damageEnemy(e, 10 * this.power); this.knock(e, h, e.boss ? 10 : 220); }
@@ -432,7 +456,7 @@ export class GameEngine {
     const targets = this.enemies.filter(e => !e.dead && this.canHurt(e) && Math.abs(e.x - h.x) < 480 && dist(h, e) < 480).sort((a, b) => dist(h, a) - dist(h, b)).slice(0, 5);
     const spots: Point[] = targets.map(t => ({ x: t.x, y: t.y }));
     while (spots.length < 9) { const a = rand(0, 6.28), r = rand(60, 300); spots.push({ x: h.x + Math.cos(a) * r, y: h.y + Math.sin(a) * r }); }
-    spots.forEach((s, i) => { const delay = .35 + i * .12; this.hazards.push({ x: s.x, y: s.y, r: 72, delay, maxDelay: delay, damage: 34 * this.power, level: 0, owner: 'hero', kind: 'starfall', fromX: s.x + 260, fromY: s.y - 560 }); });
+    spots.forEach((s, i) => { const delay = .35 + i * .12; this.hazards.push({ x: s.x, y: s.y, r: 72, delay, maxDelay: delay, damage: 34 * this.sp('starfall'), level: 0, owner: 'hero', kind: 'starfall', fromX: s.x + 260, fromY: s.y - 560 }); });
     this.flash = .3; this.play('starfall');
   }
 
@@ -463,7 +487,14 @@ export class GameEngine {
     return found;
   }
   /** Every quest also pays out one item; quests without a set one get a fixed pick so the offer can name it. */
-  rewardItem(q: QuestDef): ItemId { return q.reward.item ?? ITEM_ORDER[[...q.id].reduce((a, c) => a + c.charCodeAt(0), 0) % ITEM_ORDER.length]; }
+  rewardItem(q: QuestDef): ItemId { return q.reward.item ?? QUEST_ITEMS[[...q.id].reduce((a, c) => a + c.charCodeAt(0), 0) % QUEST_ITEMS.length]; }
+  /** Side quests pay a rare piece of equipment, guardians an epic one. It is fixed per quest and hero, so the offer can show it. */
+  rewardGear(q: QuestDef): GearItem | null {
+    const rarity: Rarity | null = !q.main ? 'rare' : q.kind === 'boss' ? 'epic' : q.kind === 'rescue' ? 'rare' : null;
+    if (!rarity) return null;
+    const lv = this.region(q.region).levels, r = seeded(`${q.id}:${this.heroId}`);
+    return makeGear({ ilvl: q.kind === 'boss' ? lv[1] + 1 : Math.round(lv[0] + (lv[1] - lv[0]) * .6), rarity, rand: r, uid: `q-${q.id}` });
+  }
   private rewardXp(q: QuestDef) { return Math.round(q.reward.xp * this.region(q.region).xpScale); }
   private rewardGold(q: QuestDef) { return q.reward.gold ?? Math.round(q.reward.xp * this.region(q.region).xpScale * .3 / 5) * 5; }
   rewardText(q: QuestDef) {
@@ -472,6 +503,7 @@ export class GameEngine {
     if (r.mana) parts.push(`+${r.mana} max magic`);
     if (r.regen) parts.push('faster magic');
     parts.push(ITEMS[this.rewardItem(q)].name);
+    const g = this.rewardGear(q); if (g) parts.push(`${g.name} (${RARITY[g.rarity].name})`);
     return parts.join(' · ');
   }
   private offerQuest(q: QuestDef, n: Npc, before: string[] = []) {
@@ -530,6 +562,8 @@ export class GameEngine {
     this.eventHandler({ type: 'quest', title: q.title, state: 'completed', xp });
     this.gainXp(xp); this.gainGold(this.rewardGold(q));
     this.addItem(this.rewardItem(q));
+    const gear = first ? this.rewardGear(q) : null;
+    if (gear) this.addGear(gear);
     if (this.tracked === q.id) this.tracked = this.world.quests.find(x => !x.main && (this.qs(x.id).status === 'active' || this.qs(x.id).status === 'ready'))?.id || null;
     for (const other of this.world.quests) if (other.requires === q.id && this.qs(other.id).status === 'locked') {
       this.qs(other.id).status = 'available';
@@ -542,7 +576,7 @@ export class GameEngine {
     if (!this.foxQueue.length || this.completeTimer > 0 || this.awaitingChapter) return;
     const id = this.foxQueue.shift()!, q = this.quest(id);
     if (!q || this.qs(id).status !== 'available') return;
-    this.say('Tuft', '🦊', q.text.offer);
+    const voice = this.guideVoice; this.say(voice.name, voice.portrait, q.text.offer);
     this.acceptQuest(id);
   }
   /** Called by the UI when the player leaves the chapter-complete screen. */
@@ -569,7 +603,9 @@ export class GameEngine {
 
   // ───────────────────────────── inventory, shops, upgrades
   addItem(id: ItemId, count = 1) {
-    const bag = this.profile.items; bag[id] = Math.min(99, (bag[id] || 0) + count); saveProfile(this.profile);
+    const bag = this.profile.items;
+    if (!bag[id] && bagUsed(this.profile) >= BAG_SIZE) { this.gainGold(ITEMS[id].price * .4 * count); this.notice(`Your bag is full — ${ITEMS[id].name} was sold.`, 'warn', 'Bag full'); return; }
+    bag[id] = Math.min(99, (bag[id] || 0) + count); saveProfile(this.profile);
     this.text(this.hero.x, this.hero.y - 70, `+${count} ${ITEMS[id].name}`, ITEMS[id].color, 15);
     this.eventHandler({ type: 'item', id, count });
   }
@@ -579,18 +615,104 @@ export class GameEngine {
     if (have <= 0) { this.play('nope'); this.notice(`You have no ${info.name} left. Buy more from a city merchant.`, 'warn', `No ${info.name}`); return; }
     if (id === 'healthPotion' && h.hp >= h.maxHp) { this.play('nope'); this.notice('Your health is already full.', 'warn', 'Health full'); return; }
     if (id === 'manaPotion' && h.mana >= h.maxMana - .5) { this.play('nope'); this.notice('Your magic is already full.', 'warn', 'Magic full'); return; }
+    if (id === 'phoenixFeather') { this.play('nope'); this.notice('The Phoenix Feather works by itself: keep it in your bag and it saves you when you fall.', 'info', 'Works by itself'); return; }
+    if (id === 'thunderJar' && !this.thunderTargets().length) { this.play('nope'); this.notice('No foes in reach — the lightning would be wasted.', 'warn', 'No foes near'); return; }
     if (have > 1) bag[id] = have - 1; else delete bag[id];
     saveProfile(this.profile);
-    if (id === 'healthPotion') { const heal = Math.min(h.maxHp - h.hp, Math.round(h.maxHp * .5)); h.hp += heal; this.text(h.x, h.y - 50, `+${heal}`, '#ff9aa8', 20); }
-    else if (id === 'manaPotion') h.mana = h.maxMana;
-    else { this.buffs[id] = info.duration; this.notice(`${info.name}: ${info.description}`, 'good', info.name); }
+    switch (id) {
+      case 'healthPotion': { const heal = Math.min(h.maxHp - h.hp, Math.round(h.maxHp * .5)); h.hp += heal; this.text(h.x, h.y - 50, `+${heal}`, '#ff9aa8', 20); break; }
+      case 'manaPotion': h.mana = h.maxMana; break;
+      case 'fireBomb': case 'frostBomb': return this.throwBomb(id);
+      case 'thunderJar': return this.thunder();
+      case 'smokeBomb': this.smoke(); break;
+      case 'hourglass': for (const s of this.spellIds) h.cds[s] = 0; this.buffs.hourglass = info.duration; this.notice(`${info.name}: every ability is ready!`, 'good', 'Cooldowns reset'); break;
+      case 'giantBrew': this.buffs.giantBrew = info.duration; this.addShake(8); this.play('roar'); this.notice(`${info.name}: you are ENORMOUS!`, 'good', 'Giant!'); break;
+      default: this.buffs[id] = info.duration; this.notice(`${info.name}: ${info.description}`, 'good', info.name);
+    }
     this.emit(h.x, h.y - 10, 22, [info.color, '#ffffff'], { speed: 160, life: .8, kind: 'star', glow: true, grav: -60 });
     this.ring(h.x, h.y, 70, info.color, .5); this.play('drink');
   }
+  /** Bombs are lobbed at the nearest creature (or straight ahead) and burst when they land. */
+  private throwBomb(id: 'fireBomb' | 'frostBomb') {
+    const h = this.hero, t = this.nearestTarget(560, true), fire = id === 'fireBomb';
+    const to = t ? { x: t.x, y: t.y } : { x: h.x + h.faceX * 240, y: h.y + h.faceY * 240 };
+    this.hazards.push({ x: to.x, y: to.y, r: fire ? 150 : 210, delay: .6, maxDelay: .6, damage: (fire ? 70 : 16) * this.power, level: 0, owner: 'hero', kind: fire ? 'firebomb' : 'frostbomb', fromX: h.x, fromY: h.y - 24 });
+    h.castTime = .3; this.play('dash');
+  }
+  private thunderTargets() {
+    const h = this.hero;
+    return this.enemies.filter(e => !e.dead && e.spawnT <= 0 && this.canHurt(e) && Math.abs(e.x - h.x) < 520 && Math.abs(e.y - h.y) < 520 && dist(h, e) < 520).sort((a, b) => dist(h, a) - dist(h, b)).slice(0, 6);
+  }
+  private thunder() {
+    this.thunderTargets().forEach((e, i) => { const d = .08 + i * .12; this.hazards.push({ x: e.x, y: e.y, r: 64, delay: d, maxDelay: d, damage: 50 * this.power, level: 0, owner: 'hero', kind: 'lightning', fromX: e.x + rand(-60, 60), fromY: e.y - 640 }); });
+    this.flash = Math.max(this.flash, .35); this.play('starfall');
+  }
+  private smoke() {
+    const h = this.hero;
+    for (const e of this.enemies) if (!e.dead && !e.boss && dist(h, e) < 700) { e.aggro = false; e.windup = 0; e.lunge = 0; e.cd = Math.max(e.cd, 2); }
+    this.emit(h.x, h.y, 40, ['rgba(200,195,215,.7)', 'rgba(160,155,180,.6)', 'rgba(230,228,240,.6)'], { speed: 220, life: 1.6, kind: 'smoke', size: 26, drag: 2 });
+    this.buffs.smokeBomb = ITEMS.smokeBomb.duration; this.notice('You vanish in smoke. Creatures lose track of you.', 'good', 'Vanished');
+  }
   buyItem(id: ItemId) {
     const price = ITEMS[id].price, p = this.profile;
-    if (p.gold < price) { this.play('nope'); return false; }
+    if (p.gold < price || (!p.items[id] && bagUsed(p) >= BAG_SIZE)) { this.play('nope'); return false; }
     p.gold -= price; this.addItem(id); this.play('pickup');
+    return true;
+  }
+  setQuick(id: ItemId) { if (id === 'healthPotion') return; this.profile.quick = id; saveProfile(this.profile); this.play('ui'); }
+
+  // ───────────────────────────── equipment
+  /** Puts a piece in the bag; if the bag is full it is sold on the spot instead. */
+  addGear(g: GearItem) {
+    const p = this.profile, c = RARITY[g.rarity].color;
+    if (p.gear.some(x => x.uid === g.uid) || SLOT_ORDER.some(s => p.equipped[s]?.uid === g.uid)) g = { ...g, uid: `${g.uid}-${Date.now().toString(36)}` };
+    if (bagUsed(p) >= BAG_SIZE) { const n = sellPrice(g); p.gold += n; this.profileDirty = true; this.notice(`Your bag is full — ${g.name} was sold for ${n} gold.`, 'warn', 'Bag full · sold'); return; }
+    p.gear.push(g); saveProfile(p);
+    this.text(this.hero.x, this.hero.y - 88, g.name, c, 15);
+    this.eventHandler({ type: 'loot', item: g });
+  }
+  private dropGear(x: number, y: number, ilvl: number, rarity: Rarity) {
+    const g = makeGear({ ilvl, rarity }), a = rand(0, 6.28), v = rand(140, 260);
+    this.orbs.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, kind: 'loot', age: 0, value: 0, gear: g });
+    if (rarity === 'epic' || rarity === 'legendary') this.ring(x, y, 90, RARITY[rarity].color, .8);
+  }
+  private statsChanged(before: number) {
+    this.refreshStats(false); this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + Math.max(0, this.hero.maxHp - before));
+    saveProfile(this.profile);
+  }
+  equip(uid: string) {
+    const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return false;
+    const g = p.gear[i], old = p.equipped[g.slot], before = this.hero.maxHp;
+    p.gear.splice(i, 1); if (old) p.gear.splice(i, 0, old);
+    p.equipped[g.slot] = g; this.statsChanged(before);
+    this.emit(this.hero.x, this.hero.y - 10, 18, [RARITY[g.rarity].color, '#ffffff'], { speed: 140, life: .6, kind: 'star', glow: true }); this.play('pickup');
+    return true;
+  }
+  unequip(slot: GearSlot) {
+    const p = this.profile, g = p.equipped[slot]; if (!g) return false;
+    if (bagUsed(p) >= BAG_SIZE) { this.play('nope'); this.notice('Your bag is full.', 'warn', 'Bag full'); return false; }
+    const before = this.hero.maxHp; delete p.equipped[slot]; p.gear.push(g); this.statsChanged(before); this.play('page');
+    return true;
+  }
+  discardGear(uid: string) { const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return; p.gear.splice(i, 1); saveProfile(p); this.play('page'); }
+  sellGear(uid: string) {
+    const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return 0;
+    const n = sellPrice(p.gear[i]); p.gear.splice(i, 1); p.gold += n; saveProfile(p); this.play('orb');
+    return n;
+  }
+
+  // ───────────────────────────── spell stars
+  spellRank(id: SpellId): SpellRank {
+    const rank = starsOf(this.profile, id), next = rank < MAX_STARS ? rank + 1 : 0;
+    const cost = next ? starCost(id, next) : 0, needLevel = next ? starLevel(id, next) : 0;
+    return { rank, max: MAX_STARS, bonus: rank ? upgradeText(id, rank) : 'No upgrades yet', next: next ? upgradeText(id, next) : null, cost, needLevel, canBuy: !!next && this.spellUnlocked(id) && this.profile.level >= needLevel && this.profile.gold >= cost };
+  }
+  upgradeSpell(id: SpellId) {
+    const r = this.spellRank(id), p = this.profile;
+    if (!r.canBuy) { this.play('nope'); return false; }
+    p.gold -= r.cost; p.stars[id] = r.rank + 1; saveProfile(p);
+    this.play('learn'); this.flash = .2;
+    this.emit(this.hero.x, this.hero.y - 10, 30, [SPELLS[id].color, '#ffffff', '#ffd35c'], { speed: 200, life: .8, kind: 'star', glow: true });
     return true;
   }
   upgradeRank(id: UpgradeId) { return rankOf(this.profile, id); }
@@ -664,6 +786,7 @@ export class GameEngine {
         for (let i = 0; i < 4; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(6 + reg.levels[0] * 2.5));
         this.notice(`You opened the ${o.name.toLowerCase()}!`, 'good'); this.gainXp(35 * reg.xpScale, o.x, o.y);
         this.addItem(rollItem()); if (Math.random() < .35) this.addItem(rollItem());
+        if (Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
         return;
       }
       case 'lore': {
@@ -758,6 +881,7 @@ export class GameEngine {
   }
   private knock(e: Enemy, from: Point, force: number) {
     if (e.kind === 'cragGolem') force *= .25;
+    if (this.buffs.giantBrew) force *= 1.8;
     const dx = e.x - from.x, dy = e.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     e.kx += dx / d * force; e.ky += dy / d * force;
   }
@@ -787,6 +911,9 @@ export class GameEngine {
     const xp = ENEMY_STATS[e.kind].xp * (e.boss ? 1 : .5 * (1 + .2 * (e.level - 1)) * (e.elite ? 3 : e.summoned ? .3 : 1) * grey);
     if (e.boss) { this.addItem(rollItem()); this.addItem('healthPotion'); }
     else if (e.elite ? Math.random() < .45 : !e.summoned && Math.random() < .04) this.addItem(e.elite ? rollItem() : 'healthPotion');
+    // Equipment: guardians always drop an epic (sometimes a legendary too), elites often, ordinary creatures now and then.
+    if (e.boss) { this.dropGear(e.x, e.y, e.level, 'epic'); this.dropGear(e.x, e.y, e.level, Math.random() < .3 ? 'legendary' : 'rare'); }
+    else if (!e.summoned && (e.elite ? Math.random() < .35 : Math.random() < .045 * grey)) { const r = rollRarity(Math.random, e.elite ? .4 : 0); this.dropGear(e.x, e.y, e.level, e.elite && r === 'common' ? 'uncommon' : r); }
     if (e.kind === 'sporecap') this.addHazard(e.x, e.y, 110, .7, 'spore', e, hitAt(e.level) * .8, e.level);
     if (e.boss) {
       this.main.bosses.push(e.id); this.slowMo = 1.4;
@@ -820,14 +947,25 @@ export class GameEngine {
     const h = this.hero;
     if (h.hurtTime > 0 || h.dashTime > 0 || this.completeTimer > 0) return;
     if (h.shieldTime > 0) { this.ring(h.x, h.y, 50, '#9fe8b0', .25); this.play('reflect'); return; }
-    const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1) * (h.stormT > 0 ? .5 : 1)));
+    const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1) * (h.stormT > 0 ? .5 : 1)));
     h.hp -= dmg; h.hurtTime = .9; this.damageFlash = .35; this.combo = 0;
     const dx = h.x - from.x, dy = h.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     h.vx += dx / d * 520; h.vy += dy / d * 520;
     this.text(h.x, h.y - 50, `-${dmg}`, '#ff8f7a', 20);
     this.emit(h.x, h.y, 18, ['#ff8f7a', '#ffd1ae', '#ffffff'], { speed: 220, life: .5, glow: true });
     this.addShake(10); this.hitStop = .08; this.play('hurt');
-    if (h.hp <= 0) this.respawn();
+    if (h.hp <= 0) { if (this.profile.items.phoenixFeather) this.rebirth(); else this.respawn(); }
+  }
+  /** The Phoenix Feather burns up and the hero rises again on the spot. */
+  private rebirth() {
+    const h = this.hero, bag = this.profile.items;
+    if ((bag.phoenixFeather || 0) > 1) bag.phoenixFeather!--; else delete bag.phoenixFeather;
+    saveProfile(this.profile);
+    h.hp = Math.round(h.maxHp * .6); h.hurtTime = 2.5; h.vx = h.vy = 0;
+    this.emit(h.x, h.y, 70, ['#ff9a4a', '#ffd35c', '#ff5f3d', '#fff1b8'], { speed: 360, life: 1.2, kind: 'ember', glow: true, size: 6, grav: -80 });
+    this.ring(h.x, h.y, 220, '#ff9a4a', .9); this.flash = .7; this.slowMo = .8; this.play('levelUp');
+    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 240 + e.r) { this.damageEnemy(e, 30 * this.power); if (!e.boss) this.knock(e, h, 380); }
+    this.notice('The Phoenix Feather bursts into flame — you rise again!', 'epic', 'Reborn!');
   }
   private respawn() {
     const h = this.hero;
@@ -861,7 +999,8 @@ export class GameEngine {
     if (this.slowMo > 0) { this.slowMo -= dt; dt *= .3; }
     this.elapsed += dt;
     const h = this.hero;
-    for (const id of this.spellIds) h.cds[id] = Math.max(0, h.cds[id] - dt);
+    const cdRate = this.buffs.hourglass ? 2 : 1;
+    for (const id of this.spellIds) h.cds[id] = Math.max(0, h.cds[id] - dt * cdRate);
     h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt); h.slowT = Math.max(0, h.slowT - dt);
     h.mana = Math.min(h.maxMana, h.mana + h.manaRegen * dt);
     this.comboTime -= dt; if (this.comboTime <= 0) this.combo = 0;
@@ -910,7 +1049,7 @@ export class GameEngine {
     }
   }
   private updateHero(dt: number) {
-    const h = this.hero, speed = (this.heroId === 'kael' ? 255 : 270) * (this.buffs.swiftTonic ? 1.4 : 1) * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
+    const h = this.hero, speed = (this.heroId === 'kael' ? 255 : 270) * this.moveSpeed * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
     if (h.dashTime > 0) {
       h.dashTime -= dt; const ds = h.charging ? 1050 : 900; h.vx = h.dashX * ds; h.vy = h.dashY * ds;
       if (Math.random() < .9) this.afterimages.push({ x: h.x, y: h.y, life: .28, faceX: h.faceX });
@@ -964,7 +1103,7 @@ export class GameEngine {
       if (e.aggro && d < 650) threats += e.boss ? 3 : 1;
       if (e.aggro && d < 480 && this.canHurt(e)) near = true;
       if (e.boss) { this.updateBoss(e, dt, d); continue; }
-      if (!e.aggro && d < 380) { e.aggro = true; this.text(e.x, e.y - e.r - 26, '!', '#ffd35c', 22); this.play('squeak', e); }
+      if (!e.aggro && d < 380 && !this.buffs.smokeBomb) { e.aggro = true; this.text(e.x, e.y - e.r - 26, '!', '#ffd35c', 22); this.play('squeak', e); }
       if (e.aggro && (d > 820 || dist(e, { x: e.homeX, y: e.homeY }) > 950)) { e.aggro = false; e.windup = 0; e.lunge = 0; }
       if (!e.aggro) { this.wander(e, dt); continue; }
       if (e.stunT > 0) { e.stunT -= dt; if (Math.random() < dt * 12) this.emit(e.x + rand(-e.r, e.r), e.y - e.r, 1, '#8fd8ff', { speed: 40, life: .3, glow: true, size: 2 }); continue; }
@@ -1388,7 +1527,9 @@ export class GameEngine {
       if (z.owner === 'enemy') {
         if (dist(h, z) < z.r + 8) this.hurt(z.damage, z, z.level);
       } else {
-        for (const e of this.enemies) if (!e.dead && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) { this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : 160); if (z.kind === 'slam' && !e.boss) { e.stunT = 1.2; e.windup = 0; } }
+        for (const e of this.enemies) if (!e.dead && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) { this.damageEnemy(e, z.damage); this.knock(e, z, e.boss ? 10 : z.kind === 'frostbomb' ? 0 : z.kind === 'firebomb' ? 260 : 160);
+          const stun = z.kind === 'slam' ? 1.2 : z.kind === 'frostbomb' ? 3 : z.kind === 'lightning' ? .6 : 0;
+          if (stun && (!e.boss || z.kind === 'frostbomb')) { e.stunT = e.boss ? .8 : stun; e.windup = 0; e.lunge = 0; } }
         for (const p of this.pods) if (!p.dead && dist(p, z) < z.r) this.breakPod(p);
       }
       this.detonateFx(z);
@@ -1419,6 +1560,20 @@ export class GameEngine {
         this.ring(z.x, z.y, z.r * 1.1, '#fff1b8', .45);
         this.emit(z.x, z.y, 26, ['#fff1b8', '#c9b6ff', '#ffffff', '#ffd35c'], { speed: 340, life: .7, kind: 'star', glow: true, size: 5 });
         this.flash = Math.max(this.flash, .15); this.addShake(5); this.play('boom', z); break;
+      case 'firebomb':
+        this.ring(z.x, z.y, z.r * 1.15, '#ff9a4a', .5); this.ring(z.x, z.y, z.r * .6, '#fff1b8', .3);
+        this.emit(z.x, z.y, 50, ['#ffd27a', '#ff9a4a', '#ff5f3d', '#fff1b8'], { speed: 420, life: .8, kind: 'ember', glow: true, size: 6 });
+        this.emit(z.x, z.y, 14, 'rgba(70,50,45,.55)', { speed: 110, life: 1.3, kind: 'smoke', size: 22 });
+        this.flash = Math.max(this.flash, .3); this.addShake(12); this.hitStop = Math.max(this.hitStop, .05); this.play('boom', z); break;
+      case 'frostbomb':
+        this.ring(z.x, z.y, z.r * 1.1, '#bfe8ff', .6); this.ring(z.x, z.y, z.r * .5, '#ffffff', .35);
+        this.emit(z.x, z.y, 44, ['#dff6ff', '#8fd8ff', '#ffffff'], { speed: 360, life: .9, kind: 'shard', glow: true, size: 6, grav: 200 });
+        this.emit(z.x, z.y, 12, 'rgba(220,240,255,.55)', { speed: 120, life: 1.2, kind: 'smoke', size: 20 });
+        this.addShake(7); this.play('reflect', z); break;
+      case 'lightning':
+        this.ring(z.x, z.y, z.r * 1.2, '#ffe96b', .35);
+        this.emit(z.x, z.y, 18, ['#fff8c0', '#ffe96b', '#ffffff'], { speed: 300, life: .4, glow: true, size: 3 });
+        this.flash = Math.max(this.flash, .2); this.addShake(5); this.play('crit', z); break;
     }
   }
   private updateOrbs(dt: number) {
@@ -1430,13 +1585,14 @@ export class GameEngine {
       o.vx *= Math.pow(.05, dt); o.vy *= Math.pow(.05, dt);
       o.x += o.vx * dt; o.y += o.vy * dt;
       if (o.age > .3 && d < 24) {
+        if (o.kind === 'loot') { if (o.gear) this.addGear(o.gear); this.play('pickup'); swapRemove(this.orbs, i); continue; }
         if (o.kind === 'heart') { h.hp = Math.min(h.maxHp, h.hp + HP_UNIT); this.text(h.x, h.y - 48, `+${HP_UNIT}`, '#ff9aa8', 18); this.play('pickup'); }
         else if (o.kind === 'gold') { this.gainGold(o.value, h.x, h.y); this.play('orb'); }
         else { h.mana = Math.min(h.maxMana, h.mana + 7); this.play('orb'); }
         this.emit(h.x, h.y - 10, 6, o.kind === 'heart' ? '#ff9aa8' : o.kind === 'gold' ? '#ffd35c' : '#9fd8ff', { speed: 90, life: .4, glow: true, size: 3 });
         swapRemove(this.orbs, i); continue;
       }
-      if (o.age > 20) swapRemove(this.orbs, i);
+      if (o.age > 20 && o.kind !== 'loot') swapRemove(this.orbs, i);
     }
   }
   private updateParticles(dt: number) {
@@ -1506,6 +1662,15 @@ export class GameEngine {
     if (this.isTalk(q)) return npc(q.to);
     if (q.kind === 'visit') return this.world.pois.find(p => p.id === q.place) || null;
     if (q.kind === 'rescue') return this.world.objects.find(o => o.kind === 'cage' && o.questId === q.id) || null;
+    if (q.kind === 'slay') {
+      // Point at the nearest creature that counts, so a hunt never leaves the player guessing where to look.
+      let best: Enemy | null = null, bd = Infinity;
+      for (const e of this.enemies) {
+        if (e.dead || e.boss || e.summoned || e.guard || (q.enemy === 'any' ? e.region !== q.region : e.kind !== q.enemy)) continue;
+        const d = dist(this.hero, e); if (d < bd) { bd = d; best = e; }
+      }
+      return best;
+    }
     if (q.kind === 'boss') {
       const b = this.enemies.find(e => e.id === q.boss && !e.dead);
       if (b) return b;
@@ -1526,7 +1691,7 @@ export class GameEngine {
   questTarget(): Point | null { const q = this.tracked ? this.quest(this.tracked) : null; return q && !q.main ? this.targetOf(q) : null; }
   private goalOf(q: QuestDef) {
     const st = this.qs(q.id), name = (id?: string) => this.npcs.find(n => n.id === id)?.name || '', s = this.region(q.region).script;
-    if (st.status === 'available') return q.giver === 'fox' ? 'Follow Tuft' : `Talk to ${name(q.giver)}`;
+    if (st.status === 'available') return q.giver === 'fox' ? (this.hasPet ? 'Follow Tuft' : 'Follow the road') : `Talk to ${name(q.giver)}`;
     if (st.status === 'ready') return `Report to ${name(this.reportTo(q))}`;
     if (st.status === 'done') return 'Complete';
     switch (q.kind) {
@@ -1546,10 +1711,10 @@ export class GameEngine {
   }
   private rowFor(q: QuestDef): QuestRow {
     const st = this.qs(q.id), giver = this.npcs.find(n => n.id === q.giver), to = this.npcs.find(n => n.id === this.reportTo(q));
-    const detail = st.status === 'available' ? (q.giver === 'fox' ? q.summary : `${giver?.name} in ${giver?.poiName} has a request.`)
+    const detail = st.status === 'available' ? (q.giver === 'fox' ? this.personal([q.summary])[0] : `${giver?.name} in ${giver?.poiName} has a request.`)
       : st.status === 'ready' ? `Report to ${to?.name} in ${to?.poiName}.` : st.status === 'done' ? 'Complete' : q.summary;
     const counted = st.status === 'active' && q.count > 1 && (q.kind === 'collect' || q.kind === 'slay' || q.kind === 'key');
-    return { id: q.id, title: q.title, giver: giver?.name || 'Tuft', status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: this.rewardXp(q), reward: this.rewardText(q), tracked: this.tracked === q.id, chapter: this.region(q.region).chapter };
+    return { id: q.id, title: q.title, giver: giver?.name || this.guideVoice.name, status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: this.rewardXp(q), reward: this.rewardText(q), tracked: this.tracked === q.id, chapter: this.region(q.region).chapter };
   }
   private mainRow() {
     const cur = this.currentMain();
@@ -1583,12 +1748,13 @@ export class GameEngine {
     return {
       hero: this.heroId, region: this.heroRegion.id, chapter: this.chapter, hp: h.hp, maxHp: h.maxHp, mana: Math.round(h.mana), maxMana: h.maxMana, shield: h.shieldTime > 0,
       level: p.level, xp: p.xp, xpNext: xpToNext(p.level), gold: p.gold, upgrades: { ...p.upgrades },
-      spells: this.spellIds.map(id => ({ id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: SPELLS[id].cooldown ? h.cds[id] / SPELLS[id].cooldown : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost, damage: Math.round((SPELLS[id].dmg || 0) * this.power) })),
+      spells: this.spellIds.map(id => { const cd = this.cooldownOf(id); return { id, name: SPELLS[id].name, key: SPELLS[id].key, icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: cd ? Math.min(1, h.cds[id] / cd) : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost, damage: Math.round((SPELLS[id].dmg || 0) * this.sp(id)), rank: this.spellRank(id), cd }; }),
       nearName, nearAction,
       main: this.mainRow(), mainQuests: this.questRows(true), quests: this.questRows(false), defeated: this.defeated, combo: this.combo,
       items: ITEM_ORDER.map(id => ({ id, count: p.items[id] || 0 })),
       buffs: ITEM_ORDER.filter(id => this.buffs[id]).map(id => ({ id, time: this.buffs[id]!, max: ITEMS[id].duration })),
-      stats: { regen: h.manaRegen, power: this.power, speed: this.buffs.swiftTonic ? 1.4 : 1, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.power), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1), elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
+      gear: [...p.gear], equipped: { ...p.equipped }, bagSize: BAG_SIZE, quick: p.quick,
+      stats: { regen: h.manaRegen, power: this.power, speed: this.moveSpeed, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.sp(this.spellIds[0])), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1), crit: this.critChance, elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
       boss: b ? { name: this.bossName(b), title: this.bossTitle(b), hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase, level: b.level } : null,
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: this.opened.size, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };

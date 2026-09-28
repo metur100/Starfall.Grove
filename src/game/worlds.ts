@@ -310,7 +310,24 @@ const summit: RegionSpec = {
 
 const SPECS: RegionSpec[] = [meadow, woods, summit];
 let valley: WorldDefinition | null = null;
+/**
+ * "Wisps on the Wind" sends the player down the road from Warden's Lookout to Frostpine Hamlet, but the random packs
+ * rarely put wisps there. Three fixed swarms make sure the hunt can be done where the quest says.
+ */
+function addRoadWisps(world: WorldDefinition) {
+  const find = (id: string) => world.pois.find(p => p.id === id);
+  const from = find('summit:lookout'), to = find('summit:hamlet'), lv = WORLDS.summit.levels[0];
+  if (!from || !to) return;
+  const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
+  [.3, .55, .8].forEach((t, pack) => {
+    const cx = from.x + dx * t + nx * (pack % 2 ? 160 : -160), cy = from.y + dy * t + ny * (pack % 2 ? 160 : -160);
+    for (let i = 0; i < 3; i++) {
+      const a = i / 3 * Math.PI * 2 + pack;
+      world.enemies.push({ id: `summit:e-windwisp-${pack * 3 + i}`, kind: 'wisp', x: cx + Math.cos(a) * 70, y: cy + Math.sin(a) * 55, level: lv + Math.min(1, pack), region: 'summit', elite: pack === 2 && i === 0 });
+    }
+  });
+}
 /** The whole valley is generated on first use (a fraction of a second) and then cached. */
-export function getWorld(): WorldDefinition { return valley ??= buildValley(SPECS); }
+export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); } return valley; }
 /** Region metadata for menus, without generating the map. */
 export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit };

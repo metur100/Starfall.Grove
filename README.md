@@ -29,7 +29,7 @@ Creature levels rise from a land's entrance to its far side. Every creature show
 
 Each land has a **main city** (Goldenhearth, Lanternmarket, Skyhold): a fountain plaza, manors, rows of houses, market stalls, a **merchant** (potions), a **smith** (upgrades) and an **inn** (rest and resting point). Each land also has villages, a farm, camps, ruins, lakes, lairs, a grove, a shrine and its finale.
 
-Things to find: chests (potions, gold, XP), runestones with lore, wells and fountains, campfires, glow pods and caged captives.
+Things to find: chests (potions, bombs, gear, gold, XP), runestones with lore, wells and fountains, campfires, glow pods and caged captives.
 
 ## Story
 
@@ -39,7 +39,9 @@ The main story (in `story.ts`) has **10 quests in Chapter I, 15 in Chapter II an
 
 ## Levels, spells and quests
 
-There are two heroes, each with their own level, gold, bag, quests and chapter stars. Pick one on the title screen. Levels go up to 20.
+There are two heroes, each with their own level, gold, bag, quests and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands in 3D on a rune pedestal (drag to turn them) and **Enter world** starts or continues that hero's adventure. Levels go up to 20. Mira travels with Tuft the fox; Kael travels alone, and the story's nudges come from his own thoughts.
+
+The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, which is loaded only when a 3D view is first shown. Without WebGL a large portrait is shown instead.
 
 | Level | Mira, star warlock | Kael, warrior |
 | --- | --- | --- |
@@ -52,7 +54,17 @@ Mira fights from range and is fragile. Kael fights up close, has more health and
 
 Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.
 
-**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
+**Spell stars:** every ability can be upgraded five times in the spellbook (U) with gold. Each star adds 12% damage (15% for Charge); Dash gets 8% shorter cooldown per star, and the two shields last 12% longer. Star *n* needs hero level `ability level + 3 × (n − 1)`.
+
+**Equipment and loot:** eight slots: head, shoulders, back, chest, hands, waist, legs and feet. Pieces come in five rarities (common, uncommon, rare, epic, legendary) and roll armour, power, health, magic, regeneration, speed or critical chance from a budget set by item level and rarity. Creatures sometimes drop a glowing loot bag, elites and chests often do, guardians always drop an epic. Every side quest rewards a rare piece (shown in the offer), and guardian quests an epic one. Worn gear is capped at 40% armour, 25% speed and 30% critical chance in total.
+
+**Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands in 3D in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece and compare it with what you wear (a green ▲ marks upgrades). Merchants buy spare gear.
+
+**Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Sunfire Elixir and Barkskin Brew (keys 1–5), plus Fire Bomb, Frost Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Bomb (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
+
+**Android back button:** the page keeps an extra history entry, so back never leaves the game by accident. While playing it closes whatever is open, or opens the pause menu (which has **Leave game**). On the title screen it asks "Do you really want to leave the game?". Leaving closes the app through the wrapper's bridge if it offers one (`Android.exitApp`, Capacitor or Cordova); otherwise the next back press closes it.
+
+**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions and bombs and buy gear. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
 
 **Quests:** gold main quests and blue side quests (38 side quests in total). Quest kinds are collect, slay, deliver, visit, talk, relic and boss, plus **rescue**: defeat the guards around a cage, then open it to free the captive. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident.
 

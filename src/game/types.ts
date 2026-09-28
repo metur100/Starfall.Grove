@@ -4,7 +4,17 @@ export type RegionId = 'meadow' | 'woods' | 'summit';
 export type LevelId = RegionId;
 export type HeroId = 'mira' | 'kael';
 export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm';
-export type ItemId = 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin';
+export type ItemId =
+  | 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin'
+  | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
+
+// ───────────────────────────── equipment
+export type GearSlot = 'head' | 'shoulders' | 'back' | 'chest' | 'hands' | 'waist' | 'legs' | 'feet';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+/** armor, power, speed and crit are percentages; health and mana are points; regen is per second. */
+export type GearStat = 'armor' | 'power' | 'health' | 'mana' | 'regen' | 'speed' | 'crit';
+export type GearStats = Partial<Record<GearStat, number>>;
+export type GearItem = { uid: string; slot: GearSlot; rarity: Rarity; ilvl: number; name: string; stats: GearStats };
 export type UpgradeId = 'staff' | 'mantle' | 'amulet';
 
 // ───────────────────────────── world layout
@@ -95,12 +105,14 @@ export type WorldDefinition = {
 
 export type MainQuest = { keys: string[]; bosses: string[]; finales: RegionId[] };
 
-export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number };
+/** A spell's upgrade stars: `bonus` is what the stars give now, `next` what the next star adds. */
+export type SpellRank = { rank: number; max: number; bonus: string; next: string | null; cost: number; needLevel: number; canBuy: boolean };
+export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number; rank: SpellRank; cd: number };
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number; level: number };
 export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number };
 export type ItemStack = { id: ItemId; count: number };
 export type BuffState = { id: ItemId; time: number; max: number };
-export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; elapsed: number; questsDone: number; totalQuests: number };
+export type HeroStats = { regen: number; power: number; speed: number; spark: number; guard: number; crit: number; elapsed: number; questsDone: number; totalQuests: number };
 
 export type GameSnapshot = {
   hero: HeroId; region: RegionId; chapter: number; hp: number; maxHp: number; mana: number; maxMana: number; shield: boolean;
@@ -108,6 +120,8 @@ export type GameSnapshot = {
   spells: SpellState[]; nearName: string | null; nearAction: string | null;
   main: { title: string; step: string; progress: number; count: number; index: number; total: number }; mainQuests: QuestRow[]; quests: QuestRow[];
   items: ItemStack[]; buffs: BuffState[]; stats: HeroStats;
+  /** Equipment in the bag, what is worn, the bag's size and the item on the second quick button. */
+  gear: GearItem[]; equipped: Partial<Record<GearSlot, GearItem>>; bagSize: number; quick: ItemId;
   defeated: number; combo: number; boss: BossState | null;
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
 };
@@ -120,6 +134,7 @@ export type ShopKind = 'merchant' | 'smith';
 export type EngineEvent =
   | { type: 'dialogue'; speaker: string; portrait: string; lines: string[]; then?: 'complete'; offer?: QuestOffer }
   | { type: 'item'; id: ItemId; count: number }
+  | { type: 'loot'; item: GearItem }
   | { type: 'levelComplete'; region: RegionId; stats: LevelStats }
   /** `short` is the phone version: small screens get a few words instead of a sentence. */
   | { type: 'notice'; text: string; tone: NoticeTone; short?: string }
