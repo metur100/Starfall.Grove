@@ -319,6 +319,8 @@ export class GameEngine {
   private ambushes: Array<{ q: string; x: number; y: number; done: boolean }> = [];
   private choices: Record<string, 'a' | 'b'> = {};
   private abandoned = new Set<string>();
+  /** A light shown burning during a cutscene of the night it went out. */
+  cineLit: RegionId | null = null;
   private introSeen = false; private barrierNoticeT = -99; private barriers: WorldObject[] = [];
 
   constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
@@ -1228,6 +1230,10 @@ export class GameEngine {
     this.nextShot();
   }
   /** Where a shot or an effect looks: a place, a person, an object, the hero or a quest spot, moved by dx/dy. */
+  /** The land's light (Beacon, Bell, Star or Forge) nearest a point. */
+  private nearestFinale(p: Point) { let best: WorldObject | null = null, bd = Infinity; for (const o of this.world.objects) if (o.kind === 'finale') { const d = dist(o, p); if (d < bd) { bd = d; best = o; } } return best; }
+  /** A land's light as drawn: lit for real, or burning in a cutscene of the night it went out. */
+  finaleShining(region: RegionId) { return this.finaleLit(region) || this.cineLit === region; }
   private cineAt(ref: string | undefined, dx = 0, dy = 0): Point {
     const c = this.cine, base = this.cineFocus || c?.pending || this.hero;
     let p: Point = base;
@@ -1266,7 +1272,7 @@ export class GameEngine {
     const c = this.cine; if (!c) return;
     // Effects still waiting (a skip) happen at once, so nothing the story needs is lost.
     for (const t of c.timers) this.cineFx(t.fx);
-    this.cine = null;
+    this.cine = null; this.cineLit = null;
     for (let i = this.npcs.length - 1; i >= 0; i--) if (this.npcs[i].role === 'actor') this.npcs.splice(i, 1);
     for (const e of this.enemies) if (e.cineOnly && !e.dead) { e.dead = true; e.deadT = 0; this.emit(e.x, e.y, 10, ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 120, life: .6, kind: 'smoke', size: 10 }); }
     if (this.cineFocus && dist(this.cineFocus, this.hero) > 700) { this.cineFade = 1; this.camCut++; }
@@ -1333,6 +1339,25 @@ export class GameEngine {
         this.ring(p.x, p.y, 180, '#dff6ff', 1.2); this.play('discover'); break;
       case 'quake': this.addShake(18); this.emit(p.x, p.y, 24, 'rgba(150,120,90,.5)', { speed: 200, life: 1, kind: 'smoke', size: 18 }); this.play('roar'); break;
       case 'ring': this.ring(p.x, p.y, 160, acc, 1); this.emit(p.x, p.y - 30, 30, [acc, '#ffffff'], { speed: 200, life: 1, kind: 'star', glow: true, size: 5 }); this.play('key'); break;
+      // A land's light shown burning (it is still cold in the world), then put out with smoke and a burst of shadow.
+      case 'kindle': { const f0 = this.nearestFinale(p); if (f0) { this.cineLit = f0.region; this.emit(f0.x, f0.y - 90, 24, ['#ffcf6e', '#ffffff', '#ff9a3c'], { speed: 120, life: .9, kind: 'ember', glow: true, size: 4, grav: -80 }); this.play('sunfire'); } break; }
+      case 'snuff': {
+        const f0 = this.nearestFinale(p); if (!f0) break;
+        this.cineLit = null; const x = f0.x, y = f0.y - 90;
+        this.emit(x, y, 50, ['#2a2438', '#3a3048', '#1a1030', 'rgba(90,80,110,.8)'], { speed: 90, life: 2.6, kind: 'smoke', size: 26, grav: -70, drag: .8 });
+        this.emit(x, y, 26, ['#ffcf6e', '#ff9a3c'], { speed: 260, life: .6, kind: 'ember', glow: true, size: 3, grav: 200 });
+        this.emit(x, y + 40, 40, ['#1a1030', '#3a2a6a', '#6a4bd6'], { speed: 280, life: 1.4, kind: 'smoke', size: 20, drag: 1.6 });
+        this.ring(x, y + 60, 300, '#6a4bd6', 1.2); this.addShake(8); this.play('voidShot'); this.play('roar'); break;
+      }
+      case 'feathers': for (let i = 0; i < (f.n || 22); i++) this.emit(p.x + rand(-160, 160), p.y - rand(80, 220), 1, pick(['#141018', '#2a2438', '#3a3048']), { speed: 30, life: rand(2.2, 3.4), kind: 'leaf', size: rand(7, 11), grav: 26, drag: .9 }); this.play('flap'); break;
+      case 'letters': for (let i = 0; i < (f.n || 14); i++) this.emit(p.x + rand(-40, 40), p.y - rand(10, 60), 1, pick(['#f4ecd8', '#ffffff', '#e8dcc0']), { speed: rand(120, 260), angle: rand(-.9, .3), spread: .2, life: rand(1.6, 2.6), kind: 'leaf', size: rand(8, 12), grav: 20, drag: .7 }); this.play('page'); break;
+      case 'frost':
+        this.ring(p.x, p.y, 320, '#bfe8ff', 1.4); this.ring(p.x, p.y, 160, '#ffffff', .9);
+        this.emit(p.x, p.y, 60, ['#dff6ff', '#9fd8ff', '#ffffff'], { speed: 300, life: 1.6, kind: 'shard', size: 5, drag: 2 });
+        this.emit(p.x, p.y - 30, 40, ['#ffffff', '#bfe8ff'], { speed: 90, life: 2.4, kind: 'star', glow: true, size: 3, grav: 30 }); this.play('reflect'); break;
+      case 'howl': this.ring(p.x, p.y - 20, 260, 'rgba(223,246,255,.8)', 1.6); this.ring(p.x, p.y - 20, 420, 'rgba(223,246,255,.4)', 2.2); this.emit(p.x, p.y - 40, 16, ['#ffffff', '#dff6ff'], { speed: 60, life: 2, kind: 'star', glow: true, size: 3, grav: -30 }); this.play('howl'); break;
+      case 'lantern': this.meteors.push({ x0: p.x, y0: p.y, x1: p.x + (f.to?.dx ?? 900), y1: p.y + (f.to?.dy ?? -300), t: 0, dur: 3.6, dark: false }); this.play('orb'); break;
+      case 'embers': this.emit(p.x, p.y, f.n || 50, ['#ffcf6e', '#ff9a3c', '#ff6b3c'], { speed: 90, life: 2.2, kind: 'ember', glow: true, size: 3, grav: -90, spread: 3.14 }); this.play('sunfire'); break;
     }
   }
   /** Meteors and cutscene fires. */
@@ -1428,7 +1453,10 @@ export class GameEngine {
   }
   private spawnThief(q: QuestDef) {
     if (this.thiefOf(q.id) || !q.who) return;
-    const p = this.poi(q.place) || this.hero, s = { x: p.x + 60, y: p.y + 40 }; this.collide(s, 20);
+    const p = this.poi(q.place) || this.hero, s = { x: p.x + 60, y: p.y + 40 };
+    // Never in the water: a place such as a lake gets its thief on the nearest dry ground around it.
+    for (let i = 0, r = 0; i < 40 && inPond(this.world.ponds, s.x, s.y, 40); i++) { r += 60; const a = i * 2.4; s.x = p.x + Math.cos(a) * r; s.y = p.y + Math.sin(a) * r * .7; }
+    this.collide(s, 20);
     const n = this.tempNpc(`${q.id}:thief`, q.who.name, q.who.portrait, q.who.look, s.x, s.y, 'thief');
     n.quest = q.id; n.tireT = 4; n.restT = 0; n.ang = 0; this.npcs.push(n);
   }

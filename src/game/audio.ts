@@ -3,7 +3,7 @@
 export type Sfx =
   | 'spark' | 'sunfire' | 'boom' | 'leaf' | 'shield' | 'reflect' | 'starfall' | 'dash' | 'hit' | 'crit' | 'kill' | 'pickup' | 'key'
   | 'orb' | 'hurt' | 'roar' | 'learn' | 'pod' | 'bossDie' | 'victory' | 'slam' | 'talk' | 'nope' | 'levelUp' | 'chest' | 'quest'
-  | 'questDone' | 'discover' | 'drink' | 'rest' | 'page' | 'flap' | 'splash' | 'squeak' | 'thornShot' | 'voidShot' | 'ui' | 'chop' | 'hammer';
+  | 'questDone' | 'discover' | 'drink' | 'rest' | 'page' | 'flap' | 'splash' | 'squeak' | 'thornShot' | 'voidShot' | 'ui' | 'chop' | 'hammer' | 'howl';
 export type Ground = 'grass' | 'path' | 'stone' | 'snow';
 type Settings = { master: number; music: number; sfx: number; muted: boolean };
 
@@ -154,6 +154,8 @@ const SOUNDS: Record<Sfx, Recipe> = {
   key: { vol: .7, rev: .6, play: o => { [523, 659, 784, 1047, 1319].forEach((f, i) => bell(o, f, 1.3, .12, i * .08)); noise(o, 1, { vol: .12, freq: 6000, type: 'highpass', attack: .4 }); } },
   orb: { vol: .35, rev: .3, play: o => bell(o, r(1500, 2000), .3, .12) },
   hurt: { vol: .75, rev: .15, play: o => { tone(o, 140, .2, { to: 55, vol: .6 }); noise(o, .18, { vol: .5, freq: 1400, to: 300, color: 'brown' }); voice(o, 330, 210, .22, [800, 1250], .22, .01); } },
+  // A wolf's howl: a rising call that holds, wavers and falls away, with a second wolf answering.
+  howl: { vol: .6, rev: .8, play: o => { tone(o, 380, .7, { type: 'triangle', to: 560, vol: .45, attack: .2 }); tone(o, 560, 1.6, { type: 'triangle', to: 330, vol: .45, delay: .68, vibrato: 14 }); tone(o, 470, .6, { type: 'sine', to: 640, vol: .18, delay: .5, attack: .2 }); tone(o, 640, 1.3, { type: 'sine', to: 400, vol: .18, delay: 1.08, vibrato: 18 }); noise(o, 2, { vol: .05, freq: 1400, type: 'bandpass', q: 3, attack: .4 }); } },
   roar: { vol: .9, rev: .5, play: o => { voice(o, 95, 60, 1.3, [420, 900], .5, 0); voice(o, 140, 80, 1.1, [600, 1400], .25, .05); noise(o, 1.2, { vol: .4, freq: 500, to: 180, color: 'brown', attack: .15 }); tone(o, 48, 1.2, { vol: .5, attack: .2 }); } },
   learn: { vol: .7, rev: .7, play: o => { [392, 523, 659, 784, 1047, 1319].forEach((f, i) => bell(o, f, 1.6, .1, i * .09)); noise(o, 1.4, { vol: .15, freq: 7000, type: 'highpass', attack: .5 }); } },
   pod: { vol: .6, rev: .25, play: o => { noise(o, .12, { vol: .5, freq: 1600, to: 500, q: 2, type: 'bandpass' }); tone(o, 520, .18, { type: 'triangle', to: 240, vol: .15 }); for (let i = 0; i < 6; i++) bell(o, r(2000, 3200), .25, .04, r(.02, .15)); } },

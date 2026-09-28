@@ -1116,3 +1116,6 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .dz-pick select:focus-visible { outline: 2px solid var(--main-q); outline-offset: 1px; }
 .q-actions .btn.danger { background: rgba(200, 50, 50, .32); border: 1px solid #ff7a6e; color: #fff; }
 .q-actions .btn.danger:hover { background: rgba(220, 60, 60, .5); }
+/* On a landscape screen the film fills it edge to edge; the crop comes mostly off the top, so the captions near the
+   bottom of each shot stay in view. Upright, the whole frame is shown. */
+@media (orientation: landscape) { .film video { object-fit: cover; object-position: 50% 72%; } }

@@ -974,14 +974,16 @@ export class Renderer {
     this.lights.push({ x, y: y - 30, r: 220, color: c, a: power });
   }
   private drawFinale(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
-    const t = this.time, x = o.x, y = o.y, lit = e.finaleLit(o.region), acc = regionOf(e.world, o.x).palette.accent, id = o.region;
+    const t = this.time, x = o.x, y = o.y, lit = e.finaleShining(o.region), acc = regionOf(e.world, o.x).palette.accent, id = o.region;
     shadow(ctx, x + 6, y + 30, 50, 14, .3);
     if (id === 'meadow') {
       const g = ctx.createLinearGradient(x - 26, 0, x + 26, 0); g.addColorStop(0, '#6f6450'); g.addColorStop(1, '#8b7f63');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 26, y + 30); ctx.lineTo(x - 18, y - 70); ctx.lineTo(x + 18, y - 70); ctx.lineTo(x + 26, y + 30); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(x - 24 + i, y + 10 - i * 18); ctx.lineTo(x + 24 - i, y + 10 - i * 18); ctx.stroke(); }
       ctx.fillStyle = '#5a5140'; ctx.fillRect(x - 26, y - 82, 52, 14);
-      this.drawFlame(ctx, x, y - 84, lit ? 1.6 : .35, lit ? '#ffcf6e' : '#a0785a');
+      // Dark, the Beacon is dead: cold ash in the bowl and a thin curl of smoke, no flame.
+      if (lit) this.drawFlame(ctx, x, y - 84, 1.6, '#ffcf6e');
+      else { ctx.fillStyle = '#3a3440'; ctx.beginPath(); ctx.ellipse(x, y - 84, 20, 5, 0, 0, TAU); ctx.fill(); if (Math.random() < .12) this.pushAmbient({ x: x + rand(-8, 8), y: y - 88, vx: rand(-8, 8), vy: rand(-34, -20), life: 2.4, max: 2.4, size: 5, rot: 0, vr: 0, kind: 'mote', color: 'rgba(110,100,130,.5)', phase: 0 }); }
     } else if (id === 'woods') {
       ctx.strokeStyle = '#553f2d'; ctx.lineWidth = 12; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(x - 34, y + 28); ctx.quadraticCurveTo(x - 40, y - 80, x, y - 86); ctx.quadraticCurveTo(x + 40, y - 80, x + 34, y + 28); ctx.stroke();
@@ -1012,7 +1014,7 @@ export class Renderer {
       if (!lit) { ctx.strokeStyle = 'rgba(201,182,255,.5)'; ctx.lineWidth = 1.5; star(ctx, x, sy, 18, 5, .45, t * .5); ctx.stroke(); }
     }
     glow(ctx, x, y - 70, lit ? 220 : 60, acc, lit ? .9 : .4 + Math.sin(t * 2) * .1);
-    this.lights.push({ x, y: y - 60, r: lit ? 520 : 160, color: acc, a: 1 });
+    if (lit) this.lights.push({ x, y: y - 60, r: 520, color: acc, a: 1 }); else this.lights.push({ x, y: y - 60, r: 90, color: '#6a4bd6', a: .35 });
   }
   // ───────────────────────────── quest places
   /** Something to build: a staked-out plot with a ghostly plan and a growing pile of materials, then the finished thing. */

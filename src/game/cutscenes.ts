@@ -6,7 +6,8 @@ import type { HeroId, NpcLook } from './types';
 // such as '$ward') moved by dx/dy, shows a caption, runs effects and brings people on stage. `cut` fades to black and
 // jumps instead of panning. Without `at` the camera stays where it is. A title shot shows big words instead of a caption.
 // A hero's own version of a cutscene is stored as '<id>@<hero>'.
-export type CineFxKind = 'starfall' | 'shadow' | 'gloom' | 'wolves' | 'imps' | 'wisps' | 'fire' | 'douse' | 'collapse' | 'light' | 'smoke' | 'build' | 'shatter' | 'wither' | 'memory' | 'quake' | 'ring';
+export type CineFxKind = 'starfall' | 'shadow' | 'gloom' | 'wolves' | 'imps' | 'wisps' | 'fire' | 'douse' | 'collapse' | 'light' | 'smoke' | 'build' | 'shatter' | 'wither' | 'memory' | 'quake' | 'ring'
+  | 'kindle' | 'snuff' | 'feathers' | 'letters' | 'frost' | 'howl' | 'lantern' | 'embers';
 export type CineFx = { kind: CineFxKind; at?: string; dx?: number; dy?: number; n?: number; delay?: number; t?: number; to?: { dx: number; dy: number } };
 export type CineActor = { id: string; name?: string; look?: Partial<NpcLook>; dx?: number; dy?: number; walk?: { dx: number; dy: number }; face?: 1 | -1; beast?: boolean; spirit?: boolean };
 /** `night` (0…1) darkens the world from this shot on, for scenes that happen after dark. */
@@ -24,6 +25,11 @@ export const LOOKS = {
   nessa: look({ robe: '#6f8fb8', hat: 'scarf', hatColor: '#dff6ff', hair: '#e8e2d0', small: true }),
   magpie: look({ robe: '#2e2a36', hat: 'hood', hatColor: '#1e1a26', hair: '#2e2420' }),
   riven: look({ robe: '#3a3048', hat: 'hood', hatColor: '#2a2438', hair: '#1a1a24' }),
+  littleRiven: look({ robe: '#3a3048', hat: 'hood', hatColor: '#2a2438', hair: '#1a1a24', small: true }),
+  youngAldric: look({ robe: '#3f5a8a', hat: 'helm', hatColor: '#b8bcc6', hair: '#6b3f2a' }),
+  youngTobb: look({ robe: '#3f5a8a', hat: 'helm', hatColor: '#9aa0aa', hair: '#a0785a' }),
+  brin: look({ robe: '#3f5a8a', hat: 'helm', hatColor: '#b8bcc6', hair: '#b8743c' }),
+  bram: look({ robe: '#a0785a', hat: 'straw', hatColor: '#d9b45a', beard: true }),
 };
 const title = (t: string, sub: string, dur = 3.4): Shot => ({ title: t, sub, dur });
 
@@ -31,23 +37,44 @@ const title = (t: string, sub: string, dur = 3.4): Shot => ({ title: t, sub, dur
 const opening: Shot[] = [
   { at: 'meadow:sunpetal', cut: true, night: .72, text: 'Sunpetal Valley, on the night everything changed.', dur: 3.4 },
   { at: 'meadow:sunpetal', dx: 300, dy: -220, text: 'A light tore across the sky: a star, falling east toward the Summit.', fx: [{ kind: 'starfall', dx: 1500, dy: -260, delay: .3 }], dur: 4.2 },
-  { at: 'meadow:rise', cut: true, dy: -70, text: 'On the Beacon Rise, the old flame shuddered… and went out.', fx: [{ kind: 'shadow', dy: -80, delay: .7 }], dur: 4.2 },
+  { at: 'meadow:rise', cut: true, dy: -70, text: 'On the Beacon Rise, the old flame shuddered… and went out.', fx: [{ kind: 'kindle', dy: -80 }, { kind: 'snuff', dy: -80, delay: 1.1 }, { kind: 'shadow', dy: -80, delay: 1.3 }], dur: 4.6 },
   { at: 'meadow:sunpetal', dx: -420, dy: 300, cut: true, text: 'And out of the tall grass, the gloom came creeping.', fx: [{ kind: 'gloom', n: 5, delay: .4 }], dur: 4 },
 ];
 
-/** After a hero's intro film: a short look at the valley as it is now, then the hero where they woke. */
-const arrival = (text: string, name: string, sub: string): Shot[] => [
-  { at: 'meadow:rise', cut: true, dy: -70, night: .6, text: 'The Beacon Rise. Last night its light went out, and the dark came up out of the stones.', fx: [{ kind: 'shadow', dy: -80, delay: .5 }], dur: 4 },
-  { at: 'meadow:sunpetal', dx: -420, dy: 300, cut: true, text: 'Now gloomlings creep through the tall grass, closer every dusk.', fx: [{ kind: 'gloom', n: 5, delay: .3 }], dur: 3.8 },
-  { at: 'hero', cut: true, night: 0, text, dur: 4.2 },
-  title(name, sub)];
-
 export const CINES: Record<string, Shot[]> = {
-  'arrive@mira': arrival('Morning at the Bridgekeeper’s Rest. Orrin’s lantern is gone, and Tuft is pointing east.', 'Mira', 'The Apprentice'),
-  'arrive@kael': arrival('Morning at Millbrook Farm. Kael wakes in the hay, with Aldric’s last words still ringing.', 'Kael', 'The Oathsworn'),
-  'arrive@lyra': arrival('Morning on the shore of Mirror Lake, where Nessa’s road ran. The reeds are white with Lyra’s frost.', 'Lyra', 'Winter’s Daughter'),
-  'arrive@riven': arrival('Morning in Goldenhearth. Riven walks away from the Hushed for good, and into the crowd.', 'Riven', 'The Foundling'),
-  'arrive@wren': arrival('Morning at the Old Stone Garden. The pack’s tracks run west, and Fenn won’t leave Wren’s side.', 'Wren', 'The Pack'),
+  // ─────────────── after each hero's intro film: that hero's own night in the valley, the Beacon going dark, and where they wake
+  'arrive@mira': [
+    { at: 'meadow:rest', cut: true, night: .7, text: 'The Bridgekeeper’s Rest, the night the star fell. Mira slept by the fire. Master Orrin did not.', actors: [{ id: 'orrin', name: 'Master Orrin', look: LOOKS.orrin, dx: -30, dy: 50, walk: { dx: 640, dy: 180 } }], fx: [{ kind: 'lantern', dx: -30, dy: 20, to: { dx: 900, dy: 260 }, delay: 1.2 }], dur: 4.8 },
+    { at: 'meadow:rise', cut: true, dy: -80, text: 'Far away on the Beacon Rise, the old flame was still burning…', fx: [{ kind: 'kindle', dy: -80 }], dur: 3.2 },
+    { text: '…until a star tore across the sky, and the Beacon went dark.', fx: [{ kind: 'starfall', dy: -80 }, { kind: 'snuff', dy: -80, delay: 1.3 }, { kind: 'shadow', dy: -60, delay: 1.5 }], dur: 4.4 },
+    { at: 'hero', cut: true, night: 0, text: 'By morning Orrin was gone. Tuft sat by the door with his nose pointed east.', dur: 4.2 },
+    title('Mira', 'The Apprentice')],
+  'arrive@kael': [
+    { at: 'meadow:rise', cut: true, dy: -60, night: .7, text: 'The Beacon Rise. Kael and Ser Aldric kept the night watch beside the flame.', fx: [{ kind: 'kindle', dy: -20 }], actors: [{ id: 'aldric', name: 'Ser Aldric', look: LOOKS.aldric, dx: -80, dy: 110 }, { id: 'kael', name: 'Kael', look: LOOKS.kael, dx: 40, dy: 130, face: -1 }], dur: 4.4 },
+    { text: 'At midnight the flame choked and died, and the shadow came up out of the stones.', fx: [{ kind: 'snuff', dy: -20, delay: .4 }, { kind: 'shadow', dx: -80, dy: 60, delay: .9 }, { kind: 'quake', delay: 1 }], dur: 4.2 },
+    { speaker: 'Ser Aldric', portrait: '🛡️', text: '“Run, lad! Warn the valley! Hold the line where I can’t!”', dur: 3.8 },
+    { at: 'meadow:millbrook', cut: true, night: .35, text: 'Kael ran through the dark until his legs gave out, into the hay at Millbrook Farm.', fx: [{ kind: 'gloom', n: 3, dx: 420, dy: 200 }], dur: 4.2 },
+    { at: 'hero', night: 0, text: 'At dawn Farmer Bram found him there, still in his armour, still holding his sword.', dur: 4 },
+    title('Kael', 'The Oathsworn')],
+  'arrive@lyra': [
+    { at: 'meadow:mirror', dx: 200, dy: -560, cut: true, night: .7, text: 'The lake road, the night the star fell. Nessa ran the late post along the shore.', actors: [{ id: 'nessa', name: 'Nessa', look: LOOKS.nessa, dx: -300, dy: 30, walk: { dx: 560, dy: 30 } }], dur: 4.4 },
+    { at: 'meadow:rise', cut: true, dy: -80, text: 'Across the valley the Beacon flickered…', fx: [{ kind: 'kindle', dy: -80 }, { kind: 'snuff', dy: -80, delay: 1.4 }], dur: 3.8 },
+    { at: 'meadow:mirror', dx: 200, dy: -560, cut: true, text: '…and went dark. The gloom rose out of the reeds, and Nessa’s letters flew away on the wind.', fx: [{ kind: 'gloom', n: 3, dx: -80 }, { kind: 'letters', dx: 260, delay: .6 }, { kind: 'wisps', n: 2, dx: 360, delay: 1.2 }], dur: 4.8 },
+    { at: 'hero', cut: true, night: 0, text: 'At dawn Lyra came down to the shore. Wherever she walked, the reeds turned white.', fx: [{ kind: 'frost', delay: .5 }], dur: 4.4 },
+    title('Lyra', 'Winter’s Daughter')],
+  'arrive@riven': [
+    { at: 'meadow:city', cut: true, dy: -60, night: .7, text: 'Goldenhearth, above the tannery. The Hushed counted their pay: a pouch of black feathers.', actors: [{ id: 'magpie', name: 'Magpie', look: LOOKS.magpie, dx: -40, dy: 40 }, { id: 'riven', name: 'Riven', look: LOOKS.riven, dx: 44, dy: 40, face: -1 }], fx: [{ kind: 'feathers', dy: 20, delay: .8 }], dur: 4.8 },
+    { speaker: 'Magpie', portrait: '🐦‍⬛', text: '“One last job, Riven. The Beacon’s sun-crystals. Then you can vanish, like you always wanted.”', dur: 4.2 },
+    { at: 'meadow:rise', cut: true, dy: -80, text: 'At midnight, from the rooftops, Riven watched the Beacon die.', fx: [{ kind: 'kindle', dy: -80 }, { kind: 'snuff', dy: -80, delay: 1.2 }, { kind: 'shadow', dy: -60, delay: 1.4 }], dur: 4.4 },
+    { text: 'What poured out of it was the same shadow Riven was born with.', fx: [{ kind: 'feathers', dy: -60 }], dur: 3.6 },
+    { at: 'hero', cut: true, night: 0, text: 'Riven left the feathers on the table and walked out into the morning crowd.', dur: 4 },
+    title('Riven', 'The Foundling')],
+  'arrive@wren': [
+    { at: 'meadow:camp', cut: true, night: .7, text: 'The Hunter’s Camp. Wren’s wolves lifted their heads and howled at the falling star.', actors: [{ id: 'fenn', beast: true, dx: 40, dy: 70, face: -1 }], fx: [{ kind: 'starfall', dy: -200 }, { kind: 'howl', dx: 160, delay: .8 }], dur: 4.6 },
+    { at: 'meadow:rise', cut: true, dy: -80, text: 'On the Rise the Beacon went dark, and the shadow answered the howl.', fx: [{ kind: 'kindle', dy: -80 }, { kind: 'snuff', dy: -80, delay: 1 }, { kind: 'shadow', dy: -60, delay: 1.2 }], dur: 4.2 },
+    { at: 'meadow:stones', cut: true, text: 'One by one the pack’s eyes went black, and they ran with the shadow over the Old Stone Garden.', fx: [{ kind: 'wolves', n: 4, dx: 200 }, { kind: 'howl', dx: 300, delay: 1.5 }], dur: 4.6 },
+    { at: 'hero', cut: true, night: 0, text: 'Only Fenn stayed. At dawn Wren found their tracks among the stones.', dur: 4 },
+    title('Wren', 'The Pack')],
   // ─────────────── intros, one per hero
   'intro@mira': [...opening,
     { at: 'meadow:rest', cut: true, text: 'At the Bridgekeeper’s Rest, Master Orrin took up his lantern and walked out into the dark.', actors: [{ id: 'orrin', name: 'Master Orrin', look: LOOKS.orrin, dx: -40, dy: 50, walk: { dx: 560, dy: 170 } }], dur: 5 },
@@ -168,6 +195,51 @@ export const CINES: Record<string, Shot[]> = {
     { at: 'ember:green', text: 'Under the last green tree lies a great white wolf, and the shadow is gone from her fur.', actors: [{ id: 'moonfang', beast: true, spirit: true, dx: 50, dy: 40, face: -1 }], fx: [{ kind: 'memory' }], dur: 4.8 },
     { text: 'Moonfang lifts her head. Fenn creeps close, and she licks his ear once, the way she did when he was a pup.', dur: 4.8 },
     { text: 'Then she stands and walks into the green, and the leaves close behind her like a door.', fx: [{ kind: 'memory', dx: 50 }], dur: 4.4 }],
+  // ─────────────── more of the heroes’ own stories
+  'orrin-lanterns': [
+    { at: 'meadow:sunpetal', night: .55, text: '(The third lantern flares, and for a moment the lane remembers another night.)', fx: [{ kind: 'memory' }], dur: 3.6 },
+    { dx: 120, text: 'Master Orrin, lantern held high, hurrying east past the well…', actors: [{ id: 'morrin', name: 'Master Orrin', look: LOOKS.orrin, dx: -120, dy: 40, walk: { dx: 520, dy: -60 } }], fx: [{ kind: 'lantern', dx: -120, dy: 20, to: { dx: 900, dy: -400 }, delay: .4 }], dur: 4.8 },
+    { speaker: 'Master Orrin', portrait: '🧙‍♂️', text: '“Stay at the Rest, Mira. And if I am not back by morning… follow the lights.”', dur: 4.4 },
+    { at: 'hero', night: 0, text: 'He left the lanterns burning for her. He knew she wouldn’t stay.', dur: 3.8 }],
+  'mira-shrine': [
+    { at: '$ward', dy: -40, night: .5, text: 'Wisps pour out of the dark woods toward the Moss Shrine, where Orrin’s voice still sleeps in the stones.', fx: [{ kind: 'wisps', n: 4, dx: 360, dy: 100 }], dur: 4.2 },
+    { speaker: 'Tuft', portrait: '🦊', text: '(Tuft plants his paws on the shrine step and growls. Nobody touches Orrin’s runes.)', dur: 3.8 }],
+  'barricade-kael': [
+    { at: '$site', dy: -30, text: 'The last stake goes in. Millbrook has a wall again, and a Warden built it.', fx: [{ kind: 'build' }], dur: 3.8 },
+    { at: '$site', dx: 360, dy: -100, night: .45, text: 'That night the gloomlings came to the fence… sniffed at it… and turned back.', fx: [{ kind: 'gloom', n: 3 }], dur: 4.2 },
+    { at: '$site', night: 0, speaker: 'Farmer Bram', portrait: '👨‍🌾', text: '“Your Warden would be proud of you, lad. I know I am.”', actors: [{ id: 'cbram', name: 'Farmer Bram', look: LOOKS.bram, dx: -60, dy: 40 }], dur: 3.8 }],
+  'wardens-oath': [
+    { at: 'npc:meadow:brannoc', text: 'Warden Brin kneels before Captain Brannoc and lays down her broken spear.', actors: [{ id: 'cbrin', name: 'Warden Brin', look: LOOKS.brin, dx: -60, dy: 30 }], dur: 4 },
+    { speaker: 'Warden Brin', portrait: '🛡️', text: '“Two Wardens left in the whole valley, then. You and me, squire. We’ll have to be enough.”', dur: 4.4 },
+    { at: 'meadow:rise', cut: true, dy: -80, night: .5, text: 'Far off on its hill, the cold Beacon waits for anyone brave enough to climb the Rise.', fx: [{ kind: 'ring', dy: -80 }], dur: 4 },
+    { at: 'hero', cut: true, night: 0, text: 'Kael tightens the straps on Aldric’s shield.', dur: 3 }],
+  'warden-lore': [
+    { at: 'npc:woods:thessaly', night: .35, text: '(Old Tobb sits down by the fire and, for the first time in years, tells the story.)', fx: [{ kind: 'memory' }], dur: 3.6 },
+    { text: 'Forty winters ago, two squires held the Silver Pass alone for a whole night: Tobb, and a boy called Aldric.', actors: [{ id: 'yald', name: 'Young Aldric', look: LOOKS.youngAldric, dx: -60, dy: 30, face: 1 }, { id: 'ytobb', name: 'Young Tobb', look: LOOKS.youngTobb, dx: 60, dy: 30, face: -1 }], fx: [{ kind: 'embers', dy: 40, delay: .5 }], dur: 5 },
+    { speaker: 'Old Tobb', portrait: '🧓', text: '“He never once stepped back. Not for wolves, not for winter. You fight like him, you know. Like a wall.”', dur: 4.6 },
+    { at: 'hero', night: 0, text: 'Hold the line where I cannot. Aldric learned it on that pass.', dur: 3.6 }],
+  'nessa-echo': [
+    { at: 'meadow:mirror', dx: 200, dy: -560, night: .6, text: '(The frost runes ring like bells. Frost races across the water, and the lake remembers.)', fx: [{ kind: 'frost' }, { kind: 'memory', delay: .6 }], dur: 4 },
+    { text: 'Nessa, the night the star fell, running along this very shore.', actors: [{ id: 'enessa', name: 'Nessa', look: LOOKS.nessa, dx: -300, dy: 30, walk: { dx: 560, dy: 40 } }], fx: [{ kind: 'letters', dx: 100, delay: 1.6 }], dur: 4.8 },
+    { text: 'Behind her, pale shapes came drifting out of the reeds.', fx: [{ kind: 'wisps', n: 3, dx: -260 }], dur: 3.8 },
+    { at: 'hero', night: 0, speaker: 'Lyra', portrait: '❄️', text: '“Frost wraiths. They come down from the Summit. Hold on, Nessa. I’m coming.”', dur: 4 }],
+  'rider-flees': [
+    { at: '$thief', text: 'The pale rider shrieks, and a gust of snow tears it free of your grip.', fx: [{ kind: 'frost' }], dur: 3.6 },
+    { dy: -200, text: 'It streaks away north over the treetops, toward the white peaks of the Summit.', fx: [{ kind: 'lantern', to: { dx: 1400, dy: -1400 } }, { kind: 'wisps', n: 2, delay: .8 }], dur: 4 },
+    { at: 'hero', speaker: 'Lyra', portrait: '❄️', text: '“North. They took her north. Then so do I.”', dur: 3.4 }],
+  'feather-trail': [
+    { at: 'meadow:willow', night: .5, text: 'The last feather lies on the Willowmere jetty. Someone stood here, that night, and waited.', fx: [{ kind: 'feathers' }], dur: 4 },
+    { text: 'A girl in a black cloak, with a shadow that moved when she didn’t.', actors: [{ id: 'esable2', name: '???', look: LOOKS.sable, dx: 120, dy: -20, walk: { dx: 320, dy: -200 } }], fx: [{ kind: 'feathers', dx: 120, delay: 1 }, { kind: 'shadow', dx: 440, dy: -220, delay: 3.4 }], dur: 5 },
+    { at: 'hero', night: 0, speaker: 'Riven', portrait: '🗡️', text: '“I know that walk. I learned it from her.”', dur: 3.8 }],
+  'foundling-memory': [
+    { at: 'npc:woods:juna', text: '(Tib clutches Riven’s sleeve. Riven remembers another frightened child.)', fx: [{ kind: 'memory' }], dur: 3.6 },
+    { night: .4, text: 'The foundling house, years ago. Two children who could make the candles flicker without touching them.', actors: [{ id: 'lsable', name: 'Little Sable', look: LOOKS.littleSable, dx: -50, dy: 30 }, { id: 'lriven', name: 'Little Riven', look: LOOKS.littleRiven, dx: 40, dy: 30, face: -1 }], fx: [{ kind: 'feathers', delay: 1.5 }], dur: 5 },
+    { speaker: 'Little Sable', portrait: '👧', text: '“If they ever send you away, I’ll find you. Promise.”', dur: 4 },
+    { at: 'hero', night: 0, text: 'She kept that promise, in her way. So will Riven.', dur: 3.8 }],
+  'pack-attack': [
+    { at: '$ward', dy: -40, night: .55, text: 'Dusk at the Hunter’s Camp. Out in the dark, a howl Wren knows by heart.', fx: [{ kind: 'howl', dx: 420, dy: -120 }], dur: 4 },
+    { at: '$ward', dx: 420, dy: -120, text: 'Her own pack, eyes burning black, circling the camp.', fx: [{ kind: 'wolves', n: 4 }], dur: 4 },
+    { at: '$ward', speaker: 'Hunter Garrick', portrait: '🏹', text: '“Hold the camp, girl. Drive them off. They were ours once. Maybe they will be again.”', dur: 4.2 }],
 };
 
 /** A hero's own version of a cutscene wins over the shared one. */
