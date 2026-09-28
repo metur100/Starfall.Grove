@@ -127,6 +127,7 @@ const SLOT_PATHS: Record<GearSlot, string> = {
   waist: 'M3 15 H 37 V 25 H 3 Z M15 12 H 25 V 28 H 15 Z',
   legs: 'M10 5 H 30 L 31 18 L 28 36 H 22 L 20 18 L 18 36 H 12 L 9 18 Z',
   feet: 'M11 4 H 22 V 22 L 33 26 C 36 27 37 30 36 34 H 9 C 8 30 9 26 10 22 Z',
+  weapon: 'M30 3 H 37 V 10 L 18 29 L 21 32 L 18 35 L 15 32 L 9 38 C 8 39 6 39 5 38 L 2 35 C 1 34 1 32 2 31 L 8 25 L 5 22 L 8 19 L 11 22 Z',
 };
 /** An equipment slot's silhouette, tinted with the item's rarity (or dim when the slot is empty). */
 export function GearIcon({ slot, item, size = 34 }: { slot: GearSlot; item?: GearItem | null; size?: number }) {

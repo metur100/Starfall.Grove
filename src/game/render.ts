@@ -1,5 +1,6 @@
 import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap } from './engine';
 import { MOUNTS } from './mounts';
+import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
 import { REGION_W, fbm } from './worldgen';
@@ -204,6 +205,8 @@ export class Renderer {
     if (e.hasPet) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
     for (const p of e.pets) if (inView(p.x, p.y)) draws.push({ y: p.y + 14, run: () => this.drawPet(ctx, p, e) });
     draws.push({ y: hero.y + 22, run: () => this.drawHeroScaled(ctx, e) });
+    // A cosmetic trail sparkles behind a walking hero.
+    const trail = e.trail; if (trail && Math.hypot(hero.vx, hero.vy) > 40 && Math.random() < dt * 26) { const T = TRAILS[trail]; e.emit(hero.x - hero.faceX * 10 + rand(-8, 8), hero.y + 12 + rand(-6, 6), 1, T.colors, trail === 'clovers' ? { speed: 20, life: .9, kind: 'leaf', size: 5, grav: -10 } : { speed: 25, life: .8, kind: 'star', glow: true, size: trail === 'sparks' ? 3.5 : 3, grav: -30 }); }
     draws.sort((a, b) => a.y - b.y);
     for (const d of draws) d.run();
 
@@ -825,10 +828,54 @@ export class Renderer {
       ctx.strokeStyle = alpha(acc, g); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 8, y - 26); ctx.lineTo(x - 2, y - 18); ctx.lineTo(x - 8, y - 10); ctx.moveTo(x + 4, y - 28); ctx.lineTo(x + 4, y - 4); ctx.moveTo(x - 8, y + 0); ctx.lineTo(x + 8, y + 0); ctx.stroke();
       glow(ctx, x, y - 16, 34, acc, .35 * g); this.lights.push({ x, y: y - 16, r: 90, color: acc, a: .6 * g });
-    } else if (o.kind === 'shrine') this.drawShrine(ctx, o, e);
+    } else if (o.kind === 'crack') this.drawCrack(ctx, o, e);
+    else if (o.kind === 'waterfall') this.drawWaterfall(ctx, o, e);
+    else if (o.kind === 'shrine') this.drawShrine(ctx, o, e);
     else if (o.kind === 'finale') this.drawFinale(ctx, o, e);
     else if (o.kind === 'cage') this.drawCage(ctx, o, e);
     const near = this.near; if (near?.kind === 'object' && near.o === o) this.label(ctx, x, y + 44, o.name, acc);
+  }
+  /** A cracked stone wall with faint light in its cracks; once a bomb breaks it, a heap of rubble. */
+  private drawCrack(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const reg = regionOf(e.world, o.x), rock = reg.palette.rock, x = o.x, y = o.y, t = this.time;
+    if (e.secretFound(o.id)) {
+      shadow(ctx, x, y + 6, 58, 12, .22);
+      for (let i = 0; i < 9; i++) { const a = i * 2.3 + o.x * .01, rx = x + Math.cos(a) * (18 + i * 5), ry = y + 2 + Math.sin(a) * 8; ellipse(ctx, rx, ry, 9 - i * .4, 6 - i * .3, i % 2 ? shade(rock, -.2) : rock, a); }
+      return;
+    }
+    shadow(ctx, x, y + 8, 64, 12, .3);
+    ctx.fillStyle = shade(rock, -.12); ctx.beginPath(); ctx.moveTo(x - 62, y + 8); ctx.lineTo(x - 58, y - 52); ctx.lineTo(x - 30, y - 70); ctx.lineTo(x + 8, y - 64); ctx.lineTo(x + 40, y - 74); ctx.lineTo(x + 60, y - 50); ctx.lineTo(x + 64, y + 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.moveTo(x - 56, y + 4); ctx.lineTo(x - 52, y - 48); ctx.lineTo(x - 28, y - 62); ctx.lineTo(x + 6, y - 56); ctx.lineTo(x + 38, y - 66); ctx.lineTo(x + 54, y - 46); ctx.lineTo(x + 58, y + 4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1.5; for (const yy of [-40, -20]) { ctx.beginPath(); ctx.moveTo(x - 50, y + yy); ctx.lineTo(x + 54, y + yy + 3); ctx.stroke(); }
+    // The cracks, glowing faintly: something is behind.
+    const g = .45 + Math.sin(t * 2.4 + x) * .25;
+    ctx.strokeStyle = `rgba(20,14,10,.8)`; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x - 6, y - 58); ctx.lineTo(x + 2, y - 40); ctx.lineTo(x - 8, y - 26); ctx.lineTo(x + 6, y - 10); ctx.lineTo(x - 2, y + 2); ctx.moveTo(x + 2, y - 40); ctx.lineTo(x + 22, y - 34); ctx.moveTo(x - 8, y - 26); ctx.lineTo(x - 28, y - 20); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,236,170,${g})`; ctx.lineWidth = 1; ctx.stroke();
+    glow(ctx, x, y - 30, 36, '#ffe9a8', g * .35);
+    if (Math.random() < .03) this.pushAmbient({ x: x + rand(-20, 20), y: y - rand(10, 50), vx: rand(-6, 6), vy: rand(-20, -8), life: .9, max: .9, size: 1.6, rot: 0, vr: 0, kind: 'mote', color: '#fff1b8', phase: 0 });
+  }
+  /** A waterfall (a lava fall in the Ember Wastes) pouring off a rock face into the lake; once explored, the cave behind shows. */
+  private drawWaterfall(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const reg = regionOf(e.world, o.x), lava = reg.ground === 'ash', x = o.x, y = o.y, t = this.time, found = e.secretFound(o.id);
+    const rock = reg.palette.rock, wc = lava ? ['#ff9a3d', '#ffd27a', '#ff5f3d'] : ['#9fd8ff', '#e6f7ff', '#6fb8e8'];
+    // Rock face.
+    ctx.fillStyle = shade(rock, -.25); ctx.beginPath(); ctx.moveTo(x - 90, y + 20); ctx.lineTo(x - 84, y - 150); ctx.quadraticCurveTo(x, y - 190, x + 84, y - 150); ctx.lineTo(x + 90, y + 20); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.moveTo(x - 80, y + 10); ctx.lineTo(x - 74, y - 140); ctx.quadraticCurveTo(x, y - 176, x + 74, y - 140); ctx.lineTo(x + 80, y + 10); ctx.closePath(); ctx.fill();
+    // The cave mouth, dark behind the falling sheet.
+    ctx.fillStyle = found ? 'rgba(10,8,14,.95)' : 'rgba(10,8,14,.45)'; ctx.beginPath(); ctx.moveTo(x - 30, y + 10); ctx.lineTo(x - 30, y - 60); ctx.quadraticCurveTo(x, y - 96, x + 30, y - 60); ctx.lineTo(x + 30, y + 10); ctx.closePath(); ctx.fill();
+    // Falling sheet, with bright streaks running down.
+    const top = y - 150, gw = 46, part = found ? 1 : 0;
+    const sheet = (x0: number, x1: number) => { const gr = ctx.createLinearGradient(0, top, 0, y + 20); gr.addColorStop(0, alpha(wc[0], .85)); gr.addColorStop(1, alpha(wc[2], .6)); ctx.fillStyle = gr; ctx.fillRect(x0, top, x1 - x0, y + 20 - top); };
+    if (part) { sheet(x - gw, x - 22); sheet(x + 22, x + gw); } else sheet(x - gw, x + gw);
+    ctx.save(); ctx.beginPath(); ctx.rect(x - gw, top, gw * 2, y + 20 - top); ctx.clip();
+    for (let i = 0; i < 9; i++) { const sx = x - gw + 6 + i * 10.5; if (part && Math.abs(sx - x) < 22) continue; const off = ((t * (lava ? 90 : 220) + i * 37) % 80); ctx.fillStyle = alpha(wc[1], .7); for (let k = -1; k < 3; k++) ctx.fillRect(sx, top + off + k * 80, 2, 34); }
+    ctx.restore();
+    // Foam or spatter where it lands, and drifting mist.
+    for (let i = 0; i < 6; i++) { const a = t * 3 + i; ellipse(ctx, x - gw + i * 18 + Math.sin(a) * 3, y + 22 + Math.sin(a * 1.3) * 2, 12, 5, alpha(wc[1], .6)); }
+    if (Math.random() < .25) this.pushAmbient({ x: x + rand(-50, 50), y: y + 18, vx: rand(-10, 10), vy: rand(-26, -8), life: 1.2, max: 1.2, size: lava ? 2 : 3, rot: 0, vr: 0, kind: 'mote', color: lava ? '#ffb347' : '#e6f7ff', phase: 0 });
+    glow(ctx, x, y - 60, 90, wc[0], lava ? .35 : .18);
+    this.lights.push({ x, y: y - 50, r: lava ? 260 : 150, color: wc[0], a: lava ? .9 : .5 });
   }
   private label(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, acc: string) {
     // Phones keep the view clear: the prompt already says what can be done, and dialogue shows who is talking.
@@ -1183,6 +1230,19 @@ export class Renderer {
     if (key !== this.lookCache.key) this.lookCache = { key, look: lookOf(eq) };
     return this.lookCache.look;
   }
+  /** The weapon's material by land tier (wood and iron → root and bronze → starsilver and crystal → obsidian), and its
+   *  gem or edge in the rarity dye. Without a weapon worn, the hero's own starting weapon is drawn. */
+  private wpn(L: Look, woodDefault: string, metalDefault: string, gemDefault: string) {
+    const w = L.weapon;
+    if (!w) return { tier: -1, wood: woodDefault, metal: metalDefault, gem: gemDefault, glow: false };
+    return { tier: w.tier, wood: ['#7a5a3f', '#5f7a3a', '#d0d8e8', '#2e2630'][w.tier], metal: ['#c8ccd6', '#d8a860', '#cdefff', '#4a3434'][w.tier], gem: w.color, glow: w.glow };
+  }
+  /** Ornaments on a staff head that grow with the tier: leaves, a crescent, then a crown of flame. */
+  private staffCrown(ctx: CanvasRenderingContext2D, y: number, tier: number, gem: string) {
+    if (tier === 1) { ellipse(ctx, -5, y + 5, 5, 2.4, '#6fae4a', -.6); ellipse(ctx, 5, y + 5, 5, 2.4, '#6fae4a', .6); }
+    if (tier === 2) { ctx.strokeStyle = '#e8f0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, y, 9, Math.PI * .15, Math.PI * .85, true); ctx.stroke(); }
+    if (tier === 3) { ctx.fillStyle = gem; for (const a of [-.7, 0, .7]) { ctx.beginPath(); ctx.moveTo(Math.sin(a) * 6 - 2, y - 2); ctx.lineTo(Math.sin(a) * 11, y - 12 - Math.sin(this.time * 9 + a) * 2); ctx.lineTo(Math.sin(a) * 6 + 2, y - 2); ctx.fill(); } }
+  }
   /** Epic and legendary pieces shimmer where they are worn. */
   private gearGlow(ctx: CanvasRenderingContext2D, L: Look, spots: Partial<Record<keyof Look, [number, number]>>) {
     for (const [slot, [x, y]] of Object.entries(spots) as Array<[keyof Look, [number, number]]>) { const l = L[slot]; if (l?.glow) glow(ctx, x, y, 16 + Math.sin(this.time * 4 + x) * 3, l.color, .45); }
@@ -1247,10 +1307,11 @@ export class Renderer {
     ctx.beginPath(); ctx.moveTo(-11, -26); ctx.quadraticCurveTo(-4, -46, -14 + tip, -54); ctx.quadraticCurveTo(4, -44, 11, -26); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#f2c46a'; ctx.fillRect(-11, -30, 22, 3.5);
     ctx.fillStyle = '#fff1b8'; star(ctx, -14 + tip, -54, 4, 4, .4, t * 2); ctx.fill();
-    const raise = h.castTime > 0 ? h.castTime / .3 : 0, sa = -.35 - raise * .7;
+    const raise = h.castTime > 0 ? h.castTime / .3 : 0, sa = -.35 - raise * .7, W = this.wpn(L, '#7a5a3f', '', '#ffe38a');
     ctx.save(); ctx.translate(12, 2); ctx.rotate(sa);
-    ctx.strokeStyle = '#7a5a3f'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26); ctx.stroke();
-    circle(ctx, 0, -30, 5 + raise * 2, '#fff1b8'); glow(ctx, 0, -30, 18 + raise * 26, '#ffe38a', .9);
+    ctx.strokeStyle = W.wood; ctx.lineWidth = 3 + Math.max(0, W.tier) * .4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26 - Math.max(0, W.tier) * 2); ctx.stroke();
+    this.staffCrown(ctx, -30, W.tier, W.gem);
+    circle(ctx, 0, -30, 5 + raise * 2, W.tier < 0 ? '#fff1b8' : '#ffffff'); glow(ctx, 0, -30, 18 + raise * 26 + (W.glow ? 10 : 0), W.gem, .9);
     ctx.restore();
     circle(ctx, 11, 0, 4, L.hands?.color ?? '#f0c8a2');
     ctx.restore();
@@ -1316,10 +1377,13 @@ export class Renderer {
     // sword arm: resting, or swinging through a Slash
     const swing = h.castTime > 0 ? 1 - h.castTime / .26 : 0, ang = storm ? t * 22 : h.castTime > 0 ? -2.1 + swing * 2.9 : -.5;
     ctx.save(); ctx.translate(12, 0); ctx.rotate(ang);
-    rect(ctx, -2, -4, 4, 10, '#6a4a30'); rect(ctx, -7, -6, 14, 3, '#c9a44c');
-    ctx.fillStyle = '#e6ecf5'; ctx.beginPath(); ctx.moveTo(-3, -6); ctx.lineTo(-2.5, -38); ctx.lineTo(0, -44); ctx.lineTo(2.5, -38); ctx.lineTo(3, -6); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(-1, -38, 1.5, 30);
-    if (h.castTime > 0 || storm) glow(ctx, 0, -30, 26, '#ffd0a0', .7);
+    const W = this.wpn(L, '', '#e6ecf5', '#c9a44c'), bl = 38 + Math.max(0, W.tier) * 4, bw = W.tier === 1 ? 4 : 3;
+    rect(ctx, -2, -4, 4, 10, '#6a4a30'); rect(ctx, -7 - Math.max(0, W.tier), -6, 14 + Math.max(0, W.tier) * 2, 3, W.gem);
+    ctx.fillStyle = W.metal; ctx.beginPath(); ctx.moveTo(-3, -6); ctx.lineTo(-bw, -bl * .6); ctx.lineTo(-2.5, -bl); ctx.lineTo(0, -bl - 6); ctx.lineTo(2.5, -bl); ctx.lineTo(bw, -bl * .6); ctx.lineTo(3, -6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = W.tier === 3 ? W.gem : 'rgba(255,255,255,.7)'; ctx.fillRect(-1, -bl, 1.5, bl - 8);
+    if (W.tier >= 0) circle(ctx, 0, -4.5, 2, W.gem);
+    if (W.glow || W.tier === 3) glow(ctx, 0, -bl * .6, 20, W.gem, .55);
+    if (h.castTime > 0 || storm) glow(ctx, 0, -30, 26, W.tier < 0 ? '#ffd0a0' : W.gem, .7);
     ctx.restore();
     circle(ctx, 12, 0, 4, L.hands?.color ?? '#f0c8a2');
     ctx.restore();
@@ -1371,10 +1435,12 @@ export class Renderer {
     // Staff with a floating ice shard.
     const raise = h.castTime > 0 ? h.castTime / .3 : 0, sa = -.3 - raise * .7;
     ctx.save(); ctx.translate(12, 2); ctx.rotate(sa);
-    ctx.strokeStyle = '#c8d8e8'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26); ctx.stroke();
+    const W = this.wpn(L, '#c8d8e8', '', '#9fe4ff'), sz = 1 + Math.max(0, W.tier) * .12;
+    ctx.strokeStyle = W.wood; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -26); ctx.stroke();
     const fy = -34 + Math.sin(t * 3) * 2;
-    glow(ctx, 0, fy, 18 + raise * 24, '#9fe4ff', .9);
-    ctx.fillStyle = '#eaf8ff'; ctx.beginPath(); ctx.moveTo(0, fy - 9); ctx.lineTo(5, fy); ctx.lineTo(0, fy + 7); ctx.lineTo(-5, fy); ctx.closePath(); ctx.fill();
+    this.staffCrown(ctx, fy + 6, W.tier, W.gem);
+    glow(ctx, 0, fy, 18 + raise * 24 + (W.glow ? 10 : 0), W.gem, .9);
+    ctx.fillStyle = W.tier < 0 ? '#eaf8ff' : '#ffffff'; ctx.beginPath(); ctx.moveTo(0, fy - 9 * sz); ctx.lineTo(5 * sz, fy); ctx.lineTo(0, fy + 7 * sz); ctx.lineTo(-5 * sz, fy); ctx.closePath(); ctx.fill();
     ctx.restore();
     circle(ctx, 11, 0, 4, L.hands?.color ?? '#f6dcc8');
     ctx.restore();
@@ -1412,12 +1478,14 @@ export class Renderer {
     ctx.beginPath(); ctx.moveTo(-12, -12); ctx.quadraticCurveTo(-14, -30, -4, -34); ctx.quadraticCurveTo(-10, -26 + wave * .2, -18, -30); ctx.quadraticCurveTo(-8, -38, 4, -32); ctx.quadraticCurveTo(13, -28, 12, -14); ctx.quadraticCurveTo(9, -24, 1, -25); ctx.quadraticCurveTo(-8, -24, -12, -12); ctx.closePath(); ctx.fill();
     this.gearGlow(ctx, L, { head: [0, -28] });
     // Daggers: the front one thrusts forward with each stab.
-    const thrust = h.castTime > 0 ? Math.sin((1 - h.castTime / .2) * Math.PI) : 0;
+    const thrust = h.castTime > 0 ? Math.sin((1 - h.castTime / .2) * Math.PI) : 0, W = this.wpn(L, '', '#eef0f8', '#e0c8ff'), dl = Math.max(0, W.tier) * 2;
     const dagger = (x: number, y: number, a: number, len: number) => {
+      len += dl;
       ctx.save(); ctx.translate(x, y); ctx.rotate(a);
-      rect(ctx, -1.5, -2, 3, 6, '#3a2a26'); rect(ctx, -4, -3, 8, 2, '#d8dce8');
-      ctx.fillStyle = '#eef0f8'; ctx.beginPath(); ctx.moveTo(-2, -3); ctx.lineTo(0, -3 - len); ctx.lineTo(2, -3); ctx.closePath(); ctx.fill();
-      if (thrust > .2) glow(ctx, 0, -len, 12, '#e0c8ff', thrust * .8);
+      rect(ctx, -1.5, -2, 3, 6, '#3a2a26'); rect(ctx, -4, -3, 8, 2, W.tier < 0 ? '#d8dce8' : W.gem);
+      ctx.fillStyle = W.metal; ctx.beginPath(); ctx.moveTo(-2 - (W.tier === 1 ? 1 : 0), -3); if (W.tier >= 2) ctx.lineTo(-2.6, -3 - len * .5); ctx.lineTo(0, -3 - len); if (W.tier >= 2) ctx.lineTo(2.6, -3 - len * .5); ctx.lineTo(2 + (W.tier === 1 ? 1 : 0), -3); ctx.closePath(); ctx.fill();
+      if (W.tier === 3) { ctx.strokeStyle = W.gem; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, -2 - len); ctx.stroke(); }
+      if (thrust > .2 || W.glow) glow(ctx, 0, -len, 12, W.gem, Math.max(thrust * .8, W.glow ? .4 : 0));
       ctx.restore();
     };
     dagger(-9, 2, -2.4, 13);
@@ -1464,10 +1532,13 @@ export class Renderer {
     ctx.beginPath(); ctx.moveTo(-12, -12); ctx.quadraticCurveTo(-14, -31, 0, -33); ctx.quadraticCurveTo(12, -32, 13, -20); ctx.quadraticCurveTo(9, -27, 1, -27); ctx.quadraticCurveTo(-8, -26, -9, -12); ctx.closePath(); ctx.fill();
     this.gearGlow(ctx, L, { head: [0, -28] });
     // Longbow in the front hand; it is drawn back while shooting.
-    const draw = h.castTime > 0 ? Math.sin((1 - h.castTime / .3) * Math.PI) : 0;
+    const draw = h.castTime > 0 ? Math.sin((1 - h.castTime / .3) * Math.PI) : 0, W = this.wpn(L, '#7a5230', '', '#e8e0c8');
     ctx.save(); ctx.translate(13, -2);
-    ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -24); ctx.quadraticCurveTo(10 + draw * 2, 0, 0, 24); ctx.stroke();
-    ctx.strokeStyle = '#e8e0c8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -24); ctx.lineTo(-draw * 9, 0); ctx.lineTo(0, 24); ctx.stroke();
+    ctx.strokeStyle = W.wood; ctx.lineWidth = 3 + (W.tier >= 2 ? .6 : 0); ctx.beginPath(); ctx.moveTo(0, -24); ctx.quadraticCurveTo(10 + draw * 2, 0, 0, 24); ctx.stroke();
+    if (W.tier >= 2) { ctx.beginPath(); ctx.moveTo(0, -24); ctx.quadraticCurveTo(-4, -27, -3, -31); ctx.moveTo(0, 24); ctx.quadraticCurveTo(-4, 27, -3, 31); ctx.stroke(); }
+    if (W.tier >= 0) circle(ctx, 7 + draw, 0, 2.4, W.gem);
+    if (W.glow || W.tier === 3) glow(ctx, 6, 0, 22, W.gem, .5);
+    ctx.strokeStyle = W.tier === 3 ? W.gem : '#e8e0c8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -24); ctx.lineTo(-draw * 9, 0); ctx.lineTo(0, 24); ctx.stroke();
     if (draw > .15) { rect(ctx, -draw * 9, -.7, 20 + draw * 8, 1.4, '#e8e0c8'); ctx.fillStyle = '#c8c8d0'; ctx.beginPath(); ctx.moveTo(12 + draw * 2, -3); ctx.lineTo(17 + draw * 2, 0); ctx.lineTo(12 + draw * 2, 3); ctx.fill(); }
     ctx.restore();
     circle(ctx, 13, 0, 3.8, L.hands?.color ?? '#6a4a30');

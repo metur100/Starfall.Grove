@@ -2,7 +2,8 @@ import { ITEM_ORDER } from './items';
 import { SLOT_ORDER, sumGear, validGear } from './gear';
 import { HEROES, MAX_STARS } from './spells';
 import { MOUNT_ORDER } from './mounts';
-import type { GearItem, GearSlot, HeroId, ItemId, MountId, SpellId, UpgradeId } from './types';
+import { TRAIL_ORDER } from './trails';
+import type { GearItem, GearSlot, HeroId, ItemId, MountId, SpellId, TrailId, UpgradeId } from './types';
 
 // Hero progression that carries across the whole valley: level, experience, gold, permanent rewards, upgrades and the bag.
 // Every hero has a profile of their own.
@@ -21,6 +22,8 @@ export type Profile = {
   ach: { got: Record<string, number>; n: Record<string, number> };
   /** The mount chosen in the stable; null rides the best one earned. */
   mount: MountId | null;
+  /** The cosmetic trail chosen in the stable (null: none). */
+  trail: TrailId | null;
 };
 /** Bag slots: every kind of consumable held takes one, every piece of equipment takes one. */
 export const BAG_SIZE = 36;
@@ -31,7 +34,7 @@ export const MAX_LEVEL = 25;
 export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
-const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mount: null });
+const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mount: null, trail: null });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
 export type UpgradeInfo = { name: string; icon: string; description: string; per: string };
@@ -84,6 +87,7 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     const num = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, Number(v)]));
     p.ach = { got: num(raw.ach?.got), n: num(raw.ach?.n) };
     p.mount = MOUNT_ORDER.includes(raw.mount as MountId) ? raw.mount as MountId : null;
+    p.trail = TRAIL_ORDER.includes(raw.trail as TrailId) ? raw.trail as TrailId : null;
     p.quick = ITEM_ORDER.includes(raw.quick as ItemId) && raw.quick !== 'healthPotion' ? raw.quick as ItemId : 'manaPotion';
     return p;
   } catch { return blank(hero); }

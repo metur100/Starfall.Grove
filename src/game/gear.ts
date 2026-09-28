@@ -1,13 +1,15 @@
-import type { GearItem, GearSlot, GearStat, GearStats, Rarity } from './types';
+import type { GearItem, GearSlot, GearStat, GearStats, HeroId, Rarity } from './types';
 
-// Equipment: eight slots, five rarities. Pieces are rolled from a stat budget that grows with item level (the level of the
+// Equipment: eight armour slots and a weapon, five rarities. Pieces are rolled from a stat budget that grows with item level (the level of the
 // creature or land it came from) and rarity. Every piece carries its final numbers, so saves never change under the player.
 
-export const SLOT_ORDER: GearSlot[] = ['head', 'shoulders', 'back', 'chest', 'hands', 'waist', 'legs', 'feet'];
+export const SLOT_ORDER: GearSlot[] = ['head', 'shoulders', 'back', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon'];
 /** WoW-style paper doll: armour pieces down the left side, the rest down the right. */
 export const SLOT_LEFT: GearSlot[] = ['head', 'shoulders', 'back', 'chest'];
-export const SLOT_RIGHT: GearSlot[] = ['hands', 'waist', 'legs', 'feet'];
-export const SLOT_NAMES: Record<GearSlot, string> = { head: 'Head', shoulders: 'Shoulders', back: 'Back', chest: 'Chest', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet' };
+export const SLOT_RIGHT: GearSlot[] = ['hands', 'waist', 'legs', 'feet', 'weapon'];
+export const SLOT_NAMES: Record<GearSlot, string> = { head: 'Head', shoulders: 'Shoulders', back: 'Back', chest: 'Chest', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet', weapon: 'Weapon' };
+/** What each hero's weapon is called in the slot. */
+export const WEAPON_KIND: Record<HeroId, string> = { mira: 'Staff', kael: 'Sword', lyra: 'Frost staff', riven: 'Daggers', wren: 'Bow' };
 
 export const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 export const RARITY: Record<Rarity, { name: string; color: string; mul: number; stats: number }> = {
@@ -37,6 +39,7 @@ const SLOT_STATS: Record<GearSlot, { main: GearStat[]; extra: GearStat[] }> = {
   waist: { main: ['health', 'mana'], extra: ['armor', 'regen', 'power'] },
   legs: { main: ['armor', 'health'], extra: ['power', 'speed', 'regen'] },
   feet: { main: ['speed', 'armor'], extra: ['health', 'regen'] },
+  weapon: { main: ['power', 'crit'], extra: ['mana', 'regen', 'speed'] },
 };
 /** How much of a stat one budget point buys. */
 const PER_POINT: Record<GearStat, number> = { armor: .1, power: .12, health: 1.3, mana: .8, regen: .03, speed: .09, crit: .09 };
@@ -51,10 +54,21 @@ const BASES: Record<GearSlot, [string[], string[], string[], string[]]> = {
   waist: [['Rope Belt', 'Buckled Girdle'], ['Vine Sash', 'Lantern Belt'], ['Meteor Girdle', 'Moonstone Sash'], ['Lavalink Girdle', 'Smoke-silk Sash']],
   legs: [['Wool Trousers', 'Hide Leggings'], ['Rootwalker Greaves', 'Moss Leggings'], ['Starwoven Leggings', 'Avalanche Greaves'], ['Basalt Greaves', 'Emberstride Leggings']],
   feet: [['Worn Boots', 'Soft Shoes'], ['Mossy Treads', 'Shadow Striders'], ['Skywalker Boots', 'Comet Sabatons'], ['Firewalker Boots', 'Obsidian Sabatons']],
+  weapon: [['Oak Cudgel', 'Iron Blade'], ['Rootwood Arm', 'Bronze Edge'], ['Starsilver Arm', 'Crystal Edge'], ['Obsidian Arm', 'Cinder Edge']],
 };
+/** Weapons by hero and land: the name, and in the game the look, follow the tier (wood and iron → root and bronze →
+ *  starsilver and crystal → obsidian and ember). */
+const WEAPONS: Record<HeroId, [string[], string[], string[], string[]]> = {
+  mira: [['Oak Staff', 'Apprentice’s Wand'], ['Rootwood Staff', 'Mossheart Wand'], ['Starsilver Staff', 'Crescent Rod'], ['Obsidian Staff', 'Sunflare Rod']],
+  kael: [['Iron Sword', 'Militia Blade'], ['Bronze Leafblade', 'Warden’s Sword'], ['Crystal Longsword', 'Skyhold Blade'], ['Obsidian Greatsword', 'Cinderedge']],
+  lyra: [['Birch Staff', 'Rime Wand'], ['Frostroot Staff', 'Icicle Wand'], ['Glacier Staff', 'Aurora Rod'], ['Blackice Staff', 'Frostfire Rod']],
+  riven: [['Iron Daggers', 'Cutpurse Knives'], ['Bronze Fangs', 'Thornbite Daggers'], ['Crystal Shivs', 'Moonfang Daggers'], ['Obsidian Fangs', 'Emberkiss Daggers']],
+  wren: [['Hunting Bow', 'Ashwood Bow'], ['Rootwood Longbow', 'Mossstring Bow'], ['Starsilver Bow', 'Windsong Longbow'], ['Obsidian Warbow', 'Cinderstring Bow']],
+};
+const LEGEND_WEAPONS: Record<HeroId, string> = { mira: 'Orrin’s Starstaff', kael: 'Dawnbreaker', lyra: 'Heart of Winter', riven: 'Eclipse Fangs', wren: 'Moonhowl, Bow of the Pack' };
 const SUFFIX: Record<GearStat, string> = { armor: 'of Warding', power: 'of Fury', health: 'of Vigor', mana: 'of Starlight', regen: 'of the Tide', speed: 'of the Wind', crit: 'of Precision' };
 const EPIC_PREFIX = ['Sunforged', 'Moonlit', 'Eclipse-touched', 'Wardens’', 'Starborn', 'Everbloom'];
-const LEGEND_NAMES: Record<GearSlot, string> = { head: 'Crown of the Fallen Star', shoulders: 'Mantle of the Beacon', back: 'Cloak of the Last Light', chest: 'Heart of the Valley', hands: 'Orrin’s Lost Gloves', waist: 'Girdle of Three Lights', legs: 'Greaves of the Long Road', feet: 'Boots of Endless Dawn' };
+const LEGEND_NAMES: Record<Exclude<GearSlot, 'weapon'>, string> = { head: 'Crown of the Fallen Star', shoulders: 'Mantle of the Beacon', back: 'Cloak of the Last Light', chest: 'Heart of the Valley', hands: 'Orrin’s Lost Gloves', waist: 'Girdle of Three Lights', legs: 'Greaves of the Long Road', feet: 'Boots of Endless Dawn' };
 
 /** A tiny seeded random generator, so a quest's reward can be shown before it is earned. */
 export function seeded(seed: string) {
@@ -69,11 +83,13 @@ export function rollRarity(r: () => number, luck = 0): Rarity {
   return x < .01 ? 'legendary' : x < .06 ? 'epic' : x < .22 ? 'rare' : x < .52 ? 'uncommon' : 'common';
 }
 
-export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; rand?: () => number; uid?: string }): GearItem {
+export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; rand?: () => number; uid?: string; hero?: HeroId }): GearItem {
   const r = opts.rand || Math.random, ilvl = Math.max(1, Math.min(26, Math.round(opts.ilvl))), rarity = opts.rarity;
-  const slot = opts.slot || pickOf(r, SLOT_ORDER), spec = SLOT_STATS[slot], info = RARITY[rarity];
+  // A weapon needs to know whose it is; without a hero, an armour piece is rolled instead.
+  const slots = opts.hero ? SLOT_ORDER : SLOT_ORDER.filter(s => s !== 'weapon');
+  const slot = opts.slot === 'weapon' && !opts.hero ? 'hands' : opts.slot || pickOf(r, slots), spec = SLOT_STATS[slot], info = RARITY[rarity];
   const tier = gearTier(ilvl);
-  const budget = (4 + ilvl * 1.6) * info.mul;
+  const budget = (4 + ilvl * 1.6) * info.mul * (slot === 'weapon' ? 1.3 : 1);
   // The first main stat takes most of the budget; the rest is shared between the others.
   const picks: GearStat[] = [spec.main[0]];
   if (info.stats >= 2) picks.push(r() < .6 ? spec.main[1] : pickOf(r, spec.extra));
@@ -84,11 +100,12 @@ export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; 
     const raw = budget * shares[i] * PER_POINT[s] * (.9 + r() * .2);
     stats[s] = s === 'regen' ? Math.max(.1, Math.round(raw * 10) / 10) : Math.max(1, Math.round(raw));
   });
-  const base = pickOf(r, BASES[slot][tier]);
-  const name = rarity === 'legendary' ? LEGEND_NAMES[slot]
+  const weapon = slot === 'weapon' && opts.hero ? opts.hero : null;
+  const base = pickOf(r, weapon ? WEAPONS[weapon][tier] : BASES[slot][tier]);
+  const name = rarity === 'legendary' ? (weapon ? LEGEND_WEAPONS[weapon] : LEGEND_NAMES[slot as Exclude<GearSlot, 'weapon'>])
     : rarity === 'epic' ? `${pickOf(r, EPIC_PREFIX)} ${base}`
       : rarity === 'common' ? base : `${base} ${SUFFIX[picks[picks.length > 1 ? 1 : 0]]}`;
-  return { uid: opts.uid || `g${Date.now().toString(36)}${Math.floor(r() * 1e9).toString(36)}`, slot, rarity, ilvl, name, stats };
+  return { uid: opts.uid || `g${Date.now().toString(36)}${Math.floor(r() * 1e9).toString(36)}`, slot, rarity, ilvl, name, stats, ...(weapon ? { hero: weapon } : {}) };
 }
 
 export const gearTier = (ilvl: number) => ilvl <= 6 ? 0 : ilvl <= 12 ? 1 : ilvl <= 18 ? 2 : 3;
@@ -141,7 +158,7 @@ export function validGear(g: unknown): g is GearItem {
 export function buyPrice(g: GearItem) { return Math.round(sellPrice(g) * (g.rarity === 'legendary' ? 12 : g.rarity === 'epic' ? 10 : 8) / 5) * 5; }
 /** An armourer's shelf: six pieces rolled for this hero, land and level, so the stock only changes when the hero levels up.
  *  The best pieces are above the hero's level and stay locked until they catch up. */
-export function armouryStock(hero: string, region: string, level: number, levels: [number, number]) {
+export function armouryStock(hero: HeroId, region: string, level: number, levels: [number, number]) {
   const r = seeded(`armoury:${hero}:${region}:${level}`);
   const tiers: Rarity[] = ['uncommon', 'rare', 'rare', 'rare', 'epic', r() < .2 ? 'legendary' : 'epic'];
   const base = Math.max(levels[0], Math.min(level, levels[1] + 2));
@@ -149,7 +166,7 @@ export function armouryStock(hero: string, region: string, level: number, levels
   const slots = [...SLOT_ORDER].map(s => [r(), s] as const).sort((x, y) => x[0] - y[0]).map(x => x[1]);
   return tiers.map((rarity, i) => {
     const ilvl = Math.min(26, base + (i >= 4 ? 2 : r() < .35 ? 1 : 0));
-    const item = makeGear({ ilvl, rarity, slot: slots[i], rand: r, uid: `shop-${hero}-${region}-${level}-${i}` });
+    const item = makeGear({ ilvl, rarity, slot: slots[i], rand: r, uid: `shop-${hero}-${region}-${level}-${i}`, hero });
     return { item, price: buyPrice(item), needLevel: ilvl };
   });
 }

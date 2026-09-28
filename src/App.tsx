@@ -21,6 +21,8 @@ import type { EngineEvent, GameSnapshot, HeroId, ItemId, LevelStats, NoticeTone,
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
 import { GearIcon, HeroFace, ItemIcon } from './ui/icons';
+import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
+import { TRAILS, TRAIL_ORDER } from './game/trails';
 
 type Mode = 'title' | 'select' | 'play' | 'ending';
 type Save = { version: 2; done: Record<RegionId, boolean>; stars: Record<RegionId, number>; bestTime: Record<RegionId, number> };
@@ -121,6 +123,8 @@ function App() {
   const [bossBanner, setBossBanner] = useState<{ name: string; title: string } | null>(null);
   const [chapterDone, setChapterDone] = useState<ChapterDone | null>(null);
   const [achQueue, setAchQueue] = useState<AchPop[]>([]);
+  /** A mini-game a villager offered and the player accepted. */
+  const [miniGame, setMiniGame] = useState<NonNullable<QuestOffer['game']> | null>(null);
   const touch = useTouch();
   const touchRef = useRef(touch); touchRef.current = touch;
   const engineRef = useRef<GameEngine | null>(null);
@@ -216,7 +220,7 @@ function App() {
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
   const changeGraphics = (patch: Partial<GraphicsSettings>) => { const g = { ...graphics, ...patch }; setGraphics(g); saveGraphics(g); sfx.play('ui'); };
   const showSpell = spellQueue.length && !dialogue ? spellQueue[0] : null;
-  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel;
+  const blocked = paused || !!dialogue || !!showSpell || mapOpen || !!panel || !!miniGame;
   const cast = (id: SpellId) => { if (!blocked) engineRef.current?.cast(id); };
   const drink = (id: ItemId) => { if (!paused && !dialogue && !mapOpen) engineRef.current?.useItem(id); };
   /** Opens the quest log on a tab, or closes it if that tab is already showing. */
@@ -259,8 +263,19 @@ function App() {
   const answerOffer = (accept: boolean) => {
     const offer = dialogue?.offer; if (!offer || !offerArmed) return;
     setDialogue(null);
+    if (offer.game) {
+      if (!accept) { sfx.play('page'); notify(`Another time, then. ${dialogue.speaker} will be around.`, 'info', 'Not now'); return; }
+      const e = engineRef.current; if (!e) return;
+      if (offer.game.kind === 'dice' && !e.gameStart('dice')) { notify(`You need ${offer.game.stake} gold to play.`, 'warn', 'Not enough gold'); return; }
+      e.setMovement(0, 0); resetStick(); setMiniGame(offer.game); sfx.play('page'); return;
+    }
     if (accept) engineRef.current?.acceptQuest(offer.id);
     else { sfx.play('page'); notify(`Maybe later. ${dialogue.speaker} will still be here.`, 'info', 'Maybe later'); }
+  };
+  const endGame = (r: GameResult) => {
+    const g = miniGame; setMiniGame(null); if (!g) return;
+    engineRef.current?.gameEnd(g.kind, r);
+    if (r.gold > 0) notify(`${g.kind === 'dice' ? 'Starfall Dice' : 'Archery'}: +${r.gold} gold`, 'good', `+${r.gold} gold`);
   };
 
   const keys = useRef(new Set<string>());
@@ -274,6 +289,7 @@ function App() {
     if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     const k = e.key.toLowerCase(), act = actionOf(k);
     if (showSpell && (k === 'enter' || k === ' ' || k === 'escape')) { dismissSpell(); e.preventDefault(); return; }
+    if (miniGame) return;
     if (dialogue) {
       if (offerOpen) { if (k === 'enter' || k === ' ' || k === 'y') answerOffer(true); else if (k === 'escape' || k === 'n') answerOffer(false); e.preventDefault(); return; }
       if (k === 'enter' || k === ' ' || act === 'interact') { advanceDialogue(); e.preventDefault(); }
@@ -323,6 +339,7 @@ function App() {
     if (mode === 'title') { if (settingsOpen) setSettingsOpen(false); else setExitAsk(a => a ? null : 'ask'); return; }
     if (mode === 'select' || mode === 'ending') { setMode('title'); return; }
     if (showSpell) { dismissSpell(); return; }
+    if (miniGame) { endGame({ won: false, gold: 0 }); return; }
     if (dialogue) { if (dialogue.then !== 'complete') setDialogue(null); return; }
     if (mapOpen) { setMapOpen(false); return; }
     if (panel) { setPanel(null); return; }
@@ -352,7 +369,7 @@ function App() {
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || mode !== 'play';
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
@@ -457,10 +474,10 @@ function App() {
             <strong>{dialogue.speaker}</strong>
             <p>{line.slice(0, typed)}<span className="caret" /></p>
             {offerOpen && dialogue.offer && <div className="offer" onClick={e => e.stopPropagation()}>
-              <div className={`offer-info ${dialogue.offer.main ? 'main' : ''}`}><small>{dialogue.offer.main ? 'Main quest' : 'Side quest'}</small><b>{dialogue.offer.title}</b><em>{dialogue.offer.summary}</em><span>Reward: {dialogue.offer.reward}</span></div>
+              <div className={`offer-info ${dialogue.offer.main ? 'main' : ''}`}><small>{dialogue.offer.game ? 'Mini-game' : dialogue.offer.main ? 'Main quest' : 'Side quest'}</small><b>{dialogue.offer.title}</b><em>{dialogue.offer.summary}</em><span>Reward: {dialogue.offer.reward}</span></div>
               <div className={`offer-actions ${offerArmed ? 'armed' : ''}`}>
-                <button className="btn ghost" disabled={!offerArmed} onClick={() => answerOffer(false)}>Decline</button>
-                <button className="btn primary" disabled={!offerArmed} onClick={() => answerOffer(true)}>Accept</button>
+                <button className="btn ghost" disabled={!offerArmed} onClick={() => answerOffer(false)}>{dialogue.offer.game ? 'Not now' : 'Decline'}</button>
+                <button className="btn primary" disabled={!offerArmed} onClick={() => answerOffer(true)}>{dialogue.offer.game ? 'Play' : 'Accept'}</button>
               </div>
             </div>}
             {!offerOpen && <div className="dialogue-foot"><span>{dialogue.index + 1} / {dialogue.lines.length}</span><em>{typed < line.length ? (touch ? 'Tap to skip' : 'Click to skip') : dialogue.index < dialogue.lines.length - 1 ? 'Continue ▸' : 'Close ▸'}</em></div>}
@@ -470,6 +487,7 @@ function App() {
         {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} engine={engineRef.current} achievements={engineRef.current?.achievementRows() ?? []} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
         {panel === 'sheet' && snapshot && engineRef.current && <CharacterScreen snapshot={snapshot} engine={engineRef.current} initial={sheetTab} touch={touch} onUse={id => engineRef.current?.useItem(id)} onClose={() => setPanel(null)} />}
         {panel === 'shop' && shop && snapshot && engineRef.current && <ShopPanel shop={shop} snapshot={snapshot} engine={engineRef.current} onClose={() => setPanel(null)} />}
+        {miniGame && snapshot && <MiniGameOverlay kind={miniGame.kind} opponent={miniGame.opponent} portrait={miniGame.portrait} stake={miniGame.stake} level={snapshot.level} onEnd={endGame} />}
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
         {chapterDone && <ChapterBanner done={chapterDone} hero={hero} />}
@@ -843,6 +861,12 @@ function Stable({ engine, current }: { engine: GameEngine; current: string | nul
   return <section className="stable"><small>Mounts · {got} of {MOUNT_ORDER.length} · ride with {keyLabel(getKeys().ride)} or the saddle button</small>
     <div className="stable-grid">{MOUNT_ORDER.map(id => { const m = MOUNTS[id], ok = engine.mountUnlocked(id); return <button key={id} className={`stable-card ${ok ? '' : 'locked'} ${current === id ? 'on' : ''}`} disabled={!ok} onClick={() => { engine.setMount(id); set(n => n + 1); }} title={ok ? `Ride the ${m.name}` : m.how}>
       <b>{ok ? m.icon : '🔒'}</b><span><strong>{m.name}</strong><em>{ok ? `+${Math.round((m.speed - 1) * 100)}% speed${current === id ? ' · riding this one' : ''}` : m.how}</em></span></button>; })}</div>
+    <small className="stable-sub">Trails · a sparkle that follows you</small>
+    <div className="stable-grid">
+      <button className={`stable-card ${!engine.trail ? 'on' : ''}`} onClick={() => { engine.setTrail(null); set(n => n + 1); }}><b>∅</b><span><strong>No trail</strong><em>Just your footsteps</em></span></button>
+      {TRAIL_ORDER.map(id => { const tr = TRAILS[id], ok = engine.trailUnlocked(id); return <button key={id} className={`stable-card ${ok ? '' : 'locked'} ${engine.trail === id ? 'on' : ''}`} disabled={!ok} onClick={() => { engine.setTrail(id); set(n => n + 1); }} title={ok ? tr.name : tr.how}>
+        <b>{ok ? tr.icon : '🔒'}</b><span><strong>{tr.name}</strong><em>{ok ? (engine.trail === id ? 'Following you' : 'Tap to wear') : tr.how}</em></span></button>; })}
+    </div>
   </section>;
 }
 

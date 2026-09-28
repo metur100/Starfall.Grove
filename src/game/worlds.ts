@@ -1,4 +1,4 @@
-import { buildValley, type RegionSpec } from './worldgen';
+import { buildValley, inPond, type RegionSpec } from './worldgen';
 import { STORY, type StoryQuest } from './story';
 import type { Captive, NpcLook, Region, RegionId, WorldDefinition } from './types';
 
@@ -50,7 +50,7 @@ const meadow: RegionSpec = {
     { id: 'pip', name: 'Pip the Courier', portrait: '🐿️', at: 'rest', dx: 170, dy: 40, activity: 'wander', look: look('#c16d59', 'ears', { hatColor: '#a0522d', small: true }), lines: ['Letters, parcels, gossip — Pip delivers!'], barks: ['Where did I put it…', 'Busy courier coming through!'] },
     { id: 'rowan', name: 'Elder Rowan', portrait: '🧙🏼', at: 'sunpetal', dx: -60, dy: 90, activity: 'idle', look: look('#818ca8', 'wizard', { hatColor: '#5b5480', beard: true, hair: '#e8e2d0' }), lines: ['The valley has seen darker days. Not many.'], barks: ['Hmm, the stars are restless.'] },
     { id: 'maren', name: 'Healer Maren', portrait: '👩‍⚕️', at: 'sunpetal', dx: 150, dy: -40, activity: 'sweep', look: look('#7a9a5a', 'bonnet', { hatColor: '#e8e2d0' }), lines: ['Herbs, bandages, kind words. That’s the whole trade.'], barks: ['Stay healthy, dear!'] },
-    { id: 'wren', name: 'Postmistress Wren', portrait: '📮', at: 'sunpetal', dx: 60, dy: 190, activity: 'idle', look: look('#6f8fb8', 'cap', { hatColor: '#3f5a8a' }), lines: ['Mail goes out at dawn. Well — it used to.'], barks: ['Letters for everyone!'] },
+    { id: 'wren', name: 'Postmistress Wynne', portrait: '📮', at: 'sunpetal', dx: 60, dy: 190, activity: 'idle', look: look('#6f8fb8', 'cap', { hatColor: '#3f5a8a' }), lines: ['Mail goes out at dawn. Well — it used to.'], barks: ['Letters for everyone!'] },
     { id: 'hale', name: 'Woodcutter Hale', portrait: '🪓', at: 'sunpetal', dx: -330, dy: -260, activity: 'chop', look: look('#8a5a3a', 'cap', { hatColor: '#6b3f2a', beard: true }), lines: ['Only fallen and old trees. The forest gives, I take a little.'], barks: ['Timber!', 'One more log…'] },
     { id: 'bram', name: 'Farmer Bram', portrait: '👨‍🌾', at: 'millbrook', dx: 60, dy: 60, activity: 'farm', look: look('#a0785a', 'straw', { hatColor: '#d9b45a', beard: true }), lines: ['Turnips don’t grow themselves. Well, mine don’t.'], barks: ['Good soil this year.', 'Shoo, gloomlings!'] },
     { id: 'lou', name: 'Fisher Lou', portrait: '🎣', at: 'mirror', dx: -60, activity: 'fish', look: look('#5a8a8a', 'cap', { hatColor: '#3a5a5a', beard: true }), lines: ['Shh. The big one is listening.'], barks: ['Nibble…', 'Quiet, please!'] },
@@ -78,8 +78,8 @@ const meadow: RegionSpec = {
       text: { offer: ['Gloomlings trample my fields every night!', 'Chase off eight of them and I’ll owe you a turnip pie.'], progress: ['Still counting gloomlings? Keep at it!'], complete: ['The fields are quiet. Here — the pie, and a bit of farm magic.'], after: ['My turnips salute you.'] } }),
     q({ id: 'herbs', title: 'Sunpetal Remedy', giver: 'maren', kind: 'collect', count: 6, near: 'stones', item: 'Sunpetal herb', icon: 'herb', summary: 'Gather sunpetal herbs around the Old Stone Garden.', reward: { xp: 120 },
       text: { offer: ['Half the village has the sniffles.', 'Sunpetal herbs grow around the Old Stone Garden, to the east. Bring me six?'], progress: ['Six herbs, dear. They glow a little in the sun.'], complete: ['Wonderful! I’ll brew the remedy at once.'], after: ['Achoo! …That was the last sneeze, I promise.'] } }),
-    q({ id: 'letter', title: 'A Letter to Willowmere', giver: 'wren', kind: 'deliver', count: 1, to: 'ottilie', item: 'Sealed letter', summary: 'Bring Wren’s letter to Mayor Ottilie in Willowmere.', reward: { xp: 100 },
-      text: { offer: ['The couriers are too scared to travel since the gloom came.', 'Would you carry this letter to Mayor Ottilie in Willowmere, east of the city?'], progress: ['Willowmere is east of Goldenhearth.'], complete: [], after: ['Letters are moving again.'], deliver: ['A letter from Wren? Finally!', 'Tell her Willowmere still stands. And thank you, Mira.'] } }),
+    q({ id: 'letter', title: 'A Letter to Willowmere', giver: 'wren', kind: 'deliver', count: 1, to: 'ottilie', item: 'Sealed letter', summary: 'Bring Wynne’s letter to Mayor Ottilie in Willowmere.', reward: { xp: 100 },
+      text: { offer: ['The couriers are too scared to travel since the gloom came.', 'Would you carry this letter to Mayor Ottilie in Willowmere, east of the city?'], progress: ['Willowmere is east of Goldenhearth.'], complete: [], after: ['Letters are moving again.'], deliver: ['A letter from Wynne? Finally!', 'Tell her Willowmere still stands. And thank you, Mira.'] } }),
     q({ id: 'toy', title: 'Tilly’s Wooden Fox', giver: 'tilly', kind: 'collect', count: 1, near: 'camp', item: 'Wooden fox', icon: 'toy', summary: 'Find Tilly’s toy near the Hunter’s Camp.', reward: { xp: 80 },
       text: { offer: ['I lost my wooden fox! A big gloomling took it!', 'It ran toward the Hunter’s Camp. South!'], progress: ['My fox has a red painted tail!'], complete: ['FOXY! You found him!', 'You can be the fox in our next game.'], after: ['Foxy says hi to your fox!'] } }),
     q({ id: 'finn', title: 'Tilly’s Brother', giver: 'tilly', kind: 'rescue', count: 1, place: 'faerie', guards: 4, summary: 'Free Finn from the gloomlings at the Faerie Ring.', captive: person('Finn', '👦', { robe: '#6f8fb8', small: true, hair: '#b8743c' }), reward: { xp: 150, hearts: 1 },
@@ -142,7 +142,7 @@ const woods: RegionSpec = {
   trees: [['tree', 7], ['mushroom', 2], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 6], ['fern', 5], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
   enemyKinds: [['shadewolf', 4], ['webspinner', 3], ['gloomling', 3], ['thornling', 3], ['sporecap', 2], ['wisp', 1]], boss: 'brambleWarden', bossLevel: 13,
   critters: [['deer', 4], ['rabbit', 3], ['bird', 3], ['frog', 4], ['squirrel', 4], ['duck', 1]],
-  villagerNames: ['Moss', 'Tansy', 'Fennick', 'Briar', 'Hazel', 'Oakley', 'Sorrel', 'Wick', 'Ivy', 'Thistle', 'Burr', 'Nettle', 'Rowe', 'Linden', 'Alder', 'Sedge', 'Fern', 'Aspen', 'Bracken', 'Holly', 'Yarrow', 'Wren', 'Clove', 'Mallow'],
+  villagerNames: ['Moss', 'Tansy', 'Fennick', 'Briar', 'Hazel', 'Oakley', 'Sorrel', 'Wick', 'Ivy', 'Thistle', 'Burr', 'Nettle', 'Rowe', 'Linden', 'Alder', 'Sedge', 'Fern', 'Aspen', 'Bracken', 'Holly', 'Yarrow', 'Robin', 'Clove', 'Mallow'],
   chatter: ['The trees whisper at night. Mostly complaints about the damp.', 'Lanternmarket never sleeps — the lanterns keep it awake.', 'Don’t follow the blue lights into the dark. Trust me.', 'The Old Bell used to ring every dawn. The birds miss it.', 'Glowcaps taste like starlight and socks.', 'The owls at the watchtower see everything. Terrible gossips.', 'Shadewolves never hunt alone. If you see one, there are three.', 'A girl in black walked past my door last night. The lantern went out.', 'Webspinner silk is lovely for scarves. Getting it is less lovely.'],
   barks: ['Mind the roots.', 'Evening… or is it morning?', 'Lantern oil, anyone?', 'Hush, the trees listen.', 'Mossy day, isn’t it?'],
   npcs: [
@@ -339,7 +339,7 @@ const ember: RegionSpec = {
   trees: [['deadtree', 5], ['rock', 4], ['crystal', 1]], decorKinds: [['pebble', 5], ['grass', 3], ['shard', 2], ['flower', 1]], decorColors: ['#ff9a3d', '#ffd27a', '#ff5f3d', '#c9a26e'],
   enemyKinds: [['emberImp', 4], ['ashScorpion', 4], ['magmaHulk', 2], ['shadewolf', 1], ['wisp', 1]], boss: 'cinderTyrant', bossLevel: 25,
   critters: [['bird', 4], ['rabbit', 3], ['goat', 2], ['frog', 1]],
-  villagerNames: ['Ash', 'Brenna', 'Cinder', 'Dax', 'Emberly', 'Faro', 'Garnet', 'Hale', 'Ione', 'Jasper', 'Kilna', 'Loam', 'Marl', 'Nell', 'Onyx', 'Pyra', 'Quill', 'Rust', 'Sienna', 'Tinder', 'Umber', 'Vesta', 'Wren'],
+  villagerNames: ['Ash', 'Brenna', 'Cinder', 'Dax', 'Emberly', 'Faro', 'Garnet', 'Hale', 'Ione', 'Jasper', 'Kilna', 'Loam', 'Marl', 'Nell', 'Onyx', 'Pyra', 'Quill', 'Rust', 'Sienna', 'Tinder', 'Umber', 'Vesta', 'Linnet'],
   chatter: ['The wind here tastes of salt and smoke.', 'Brasshaven’s bells are made from melted-down swords. Peace, they say, sounds better.', 'When the sand bulges, run. That’s all anyone needs to know about scorpions.', 'The Dawn Forge lit the sunrise for a thousand years. Now the mornings come up grey.', 'Glass from Kilnhollow sells for gold in every city of the valley.', 'I once saw a phoenix drink from the spring. Or a very orange chicken.', 'Magma hulks are just rocks that got too hot to be calm.', 'The Tyrant used to be the Forge’s keeper. Then he fell in love with the fire.'],
   barks: ['Hot one today.', 'Mind the lava.', 'Water, anyone?', 'Salt for sale!', 'The dawn is late again…'],
   npcs: [
@@ -434,6 +434,40 @@ function addHeroics(world: WorldDefinition) {
     if (leader) { leader.heroic = name; leader.elite = true; leader.level += 1; }
   }
 }
-export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); } return valley; }
+/** The words on each land's hidden runestone. */
+const SECRET_LORE: Record<RegionId, string[]> = {
+  meadow: ['Scratched into the stone behind the wall, in a child’s hand: “Orrin was here. The Beacon is too tall to climb.”', 'Below it, neater and newer: “It is not. I climbed it. — S.”', 'Someone has drawn a little star next to both names.'],
+  woods: ['Carved deep into the heartwood: “The Bell was cast from a fallen star’s shell, long before this one fell.”', '“When it rings, the roots remember light. When it is silent, they remember only hunger.”'],
+  summit: ['Frost-etched letters: “Three lights to seal the dark: a beacon for the eyes, a bell for the ears, a star for the heart.”', '“But the dark is patient, and the fourth light — the forge — was never finished.”'],
+  ember: ['Soot-black runes, still warm: “We built the Dawn Forge to make a new sun. We made a door instead.”', '“If Umbra ever wakes, light the Forge from the inside. It is the only way it cannot follow.”'],
+};
+/**
+ * Secrets in every land: three cracked walls near old places (one hides a runestone, two a treasure cache) that only a
+ * bomb can break, and a cave behind a waterfall (a lava fall in the Ember Wastes) at the land's biggest lake.
+ */
+function addSecrets(world: WorldDefinition) {
+  const clear = (x: number, y: number, r: number) => { world.obstacles = world.obstacles.filter(o => Math.hypot(o.x - x, o.y - y) > r + (o.w ? Math.max(o.w, o.h || 0) : o.r)); };
+  for (const reg of world.regions) {
+    const places = world.pois.filter(p => p.region === reg.id && ['ruins', 'lookout', 'grove', 'shrine', 'lair', 'farm'].includes(p.kind)).sort((a, b) => a.x - b.x);
+    const picks = places.length <= 3 ? places : [places[0], places[Math.floor(places.length / 2)], places[places.length - 1]];
+    picks.forEach((p, i) => {
+      let x = Math.max(reg.x0 + 260, Math.min(reg.x1 - 260, p.x + p.r * .6)), y = Math.max(260, Math.min(world.height - 260, p.y - p.r * .4));
+      for (let k = 0; k < 8 && inPond(world.ponds, x, y); k++) { x -= 90; y += 60; }
+      clear(x, y - 30, 110);
+      const crack = { id: `${reg.id}:crack-${i}`, kind: 'crack' as const, x, y, name: 'Cracked wall', region: reg.id };
+      world.objects.push(crack, i === 0
+        ? { id: `${reg.id}:secret-lore`, kind: 'lore', x, y: y - 58, name: 'Hidden runestone', region: reg.id, text: SECRET_LORE[reg.id], hiddenBy: crack.id }
+        : { id: `${reg.id}:secret-cache-${i}`, kind: 'chest', x, y: y - 58, name: 'Hidden cache', region: reg.id, rich: true, hiddenBy: crack.id });
+    });
+    const pond = world.ponds.filter(p => p.x > reg.x0 + 300 && p.x < reg.x1 - 300 && p.y - p.r > 400).sort((a, b) => b.r - a.r)[0];
+    if (pond) {
+      const x = pond.x, y = pond.y - pond.r * .58 - 36, lava = reg.ground === 'ash';
+      clear(x, y - 40, 150);
+      const fall = { id: `${reg.id}:waterfall`, kind: 'waterfall' as const, x, y, name: lava ? 'Lavafall' : 'Waterfall', region: reg.id };
+      world.objects.push(fall, { id: `${reg.id}:secret-falls`, kind: 'chest', x: x + 84, y: y + 2, name: 'Cave hoard', region: reg.id, rich: true, hiddenBy: fall.id });
+    }
+  }
+}
+export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); addSecrets(valley); } return valley; }
 /** Region metadata for menus, without generating the map. */
 export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit, ember };

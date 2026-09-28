@@ -13,12 +13,13 @@ export type ItemId =
   | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
 
 // ───────────────────────────── equipment
-export type GearSlot = 'head' | 'shoulders' | 'back' | 'chest' | 'hands' | 'waist' | 'legs' | 'feet';
+export type GearSlot = 'head' | 'shoulders' | 'back' | 'chest' | 'hands' | 'waist' | 'legs' | 'feet' | 'weapon';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 /** armor, power, speed and crit are percentages; health and mana are points; regen is per second. */
 export type GearStat = 'armor' | 'power' | 'health' | 'mana' | 'regen' | 'speed' | 'crit';
 export type GearStats = Partial<Record<GearStat, number>>;
-export type GearItem = { uid: string; slot: GearSlot; rarity: Rarity; ilvl: number; name: string; stats: GearStats };
+/** `hero` is set on weapons: each hero has their own kind (staff, sword, bow, daggers). */
+export type GearItem = { uid: string; slot: GearSlot; rarity: Rarity; ilvl: number; name: string; stats: GearStats; hero?: HeroId };
 export type UpgradeId = 'staff' | 'mantle' | 'amulet';
 
 // ───────────────────────────── world layout
@@ -59,10 +60,12 @@ export type NpcDef = {
   after?: string;
 };
 
-export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | 'sign' | 'lore' | 'well' | 'fountain' | 'campfire' | 'cage';
+export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | 'sign' | 'lore' | 'well' | 'fountain' | 'campfire' | 'cage' | 'crack' | 'waterfall';
 export type ItemIcon = 'herb' | 'flower' | 'bottle' | 'bundle' | 'gem' | 'letter' | 'mushroom' | 'feather' | 'toy' | 'bug';
 export type Captive = { name: string; portrait: string; look: NpcLook };
-export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; name: string; region: RegionId; text?: string[]; questId?: string; icon?: ItemIcon; captive?: Captive };
+/** Secrets: a `crack` (a cracked wall, broken with a bomb) or a `waterfall` (a cave behind it) hides the object whose
+ *  `hiddenBy` names it. `rich` chests hold better loot. */
+export type WorldObject = { id: string; kind: ObjectKind; x: number; y: number; name: string; region: RegionId; text?: string[]; questId?: string; icon?: ItemIcon; captive?: Captive; hiddenBy?: string; rich?: boolean };
 
 // ───────────────────────────── quests
 /** talk: speak with `to` · key: find the relic `keys` · boss: defeat `boss` (and restore the finale if `finale`) · rescue: free the captive at `place`. */
@@ -139,7 +142,12 @@ export type GameSnapshot = {
 export type LevelStats = { stars: number; time: number; defeated: number; quests: number; totalQuests: number; level: number };
 export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
 /** A quest being offered: the dialogue ends with Accept / Decline instead of closing. */
-export type QuestOffer = { id: string; title: string; summary: string; reward: string; main: boolean };
+export type QuestOffer = { id: string; title: string; summary: string; reward: string; main: boolean;
+  /** Set when a villager offers a mini-game instead of a quest: Play opens it. */
+  game?: { kind: MiniGame; stake: number; opponent: string; portrait: string } };
+export type MiniGame = 'dice' | 'archery';
+/** Cosmetic trails that follow the hero, earned by achievements. */
+export type TrailId = 'sparks' | 'clovers' | 'stardust';
 export type ShopKind = 'merchant' | 'smith' | 'armorer';
 /** A piece on an armourer's shelf. `sold` pieces stay on the shelf, marked, until the stock changes. */
 export type ShopGear = { item: GearItem; price: number; needLevel: number; sold: boolean };

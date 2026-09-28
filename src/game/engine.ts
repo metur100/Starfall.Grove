@@ -5,12 +5,13 @@ import { RARITY, SLOT_ORDER, armouryStock, makeGear, rollRarity, seeded, sellPri
 import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
 import { HEROES, MAX_STARS, SPELLS, SPELL_UPGRADES, starCost, starLevel, upgradeText } from './spells';
 import { MOUNTS, MOUNT_ORDER, mountFor } from './mounts';
+import { TRAILS, trailFor } from './trails';
 import { keyLabel, keyOf, spellKey } from './keys';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
 import type {
-  CritterKind, EngineEvent, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MountId, NoticeTone, NpcDef, Obstacle, Point, Poi,
+  CritterKind, EngineEvent, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MiniGame, MountId, NoticeTone, TrailId, NpcDef, Obstacle, Point, Poi,
   QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
@@ -67,6 +68,8 @@ export type EngineSave = {
   version: 4; hero: { x: number; y: number; hp: number; mana: number }; main: MainQuest; quests: Record<string, QuestState>; got: string[];
   opened: string[]; read: string[]; discovered: string[]; explored: string; brokenPods: number[]; checkpoint: Point; elapsed: number; defeated: number;
   blessed: string[]; tracked: string | null; chapterStart: { elapsed: number; defeated: number }; awaiting: boolean; foxQueue: string[];
+  /** Cracked walls broken and waterfall caves found. */
+  secrets?: string[];
   /** Columns of the explore grid when saved: the valley grew a fourth land, so older fog maps are re-laid row by row. */
   exploreCols?: number;
 };
@@ -169,8 +172,8 @@ export class GameEngine {
   private petFocus: Enemy | null = null;
   /** True while riding; `mountFx` fades the mount in (0 → 1). */
   riding = false; mountFx = 0;
-  /** A newly earned mount is announced once the achievement pop-up has gone. */
-  private mountNews: { id: MountId; t: number } | null = null;
+  /** Newly earned mounts and trails are announced once the achievement pop-up has gone. */
+  private news: Array<{ text: string; short: string; t: number }> = [];
   readonly heroId: HeroId;
   /** This hero's abilities, in button order. */
   readonly spellIds: SpellId[];
@@ -181,6 +184,7 @@ export class GameEngine {
   readonly opened = new Set<string>();
   readonly read = new Set<string>();
   readonly discovered = new Set<string>();
+  readonly secrets = new Set<string>();
   readonly explored: Uint8Array;
   readonly exploreCols: number;
   exploredVersion = 0;
@@ -247,7 +251,7 @@ export class GameEngine {
     this.campfires = this.world.objects.filter(o => o.kind === 'campfire');
     this.exploreCols = Math.ceil(this.world.width / EXPLORE_CELL);
     this.explored = new Uint8Array(this.exploreCols * Math.ceil(this.world.height / EXPLORE_CELL));
-    this.totals = { places: this.world.pois.length, chests: this.world.objects.filter(o => o.kind === 'chest').length, lore: this.world.objects.filter(o => o.kind === 'lore').length, sideQuests: this.world.quests.filter(q => !q.main).length };
+    this.totals = { places: this.world.pois.length, chests: this.world.objects.filter(o => o.kind === 'chest').length, lore: this.world.objects.filter(o => o.kind === 'lore').length, sideQuests: this.world.quests.filter(q => !q.main).length, secrets: this.world.objects.filter(o => o.kind === 'crack' || o.kind === 'waterfall').length };
     if (saved?.version === 4) this.restore(saved);
     this.regionId = this.regionAt(this.hero.x).id;
     if (heroId === 'wren') this.pets.push(this.makePet(false));
@@ -272,7 +276,7 @@ export class GameEngine {
     this.checkpoint = ok(s.checkpoint) ? { ...s.checkpoint } : { ...this.world.spawn };
     if (s.main) { this.main.keys = [...(s.main.keys || [])]; this.main.bosses = [...(s.main.bosses || [])]; this.main.finales = [...(s.main.finales || [])]; }
     for (const [id, st] of Object.entries(s.quests || {})) if (this.quests.has(id) && st?.status) this.quests.set(id, { status: st.status, progress: Number(st.progress) || 0 });
-    for (const [set, list] of [[this.got, s.got], [this.opened, s.opened], [this.read, s.read], [this.discovered, s.discovered], [this.blessed, s.blessed]] as Array<[Set<string>, string[]]>) if (Array.isArray(list)) for (const v of list) set.add(v);
+    for (const [set, list] of [[this.got, s.got], [this.opened, s.opened], [this.read, s.read], [this.discovered, s.discovered], [this.blessed, s.blessed], [this.secrets, s.secrets]] as Array<[Set<string>, string[] | undefined]>) if (Array.isArray(list)) for (const v of list) set.add(v);
     if (typeof s.explored === 'string') {
       // Saves from before the Ember Wastes were laid out 92 cells wide; copy them row by row into today's wider grid.
       const cols = Number(s.exploreCols) || 92, rows = this.explored.length / this.exploreCols;
@@ -301,7 +305,7 @@ export class GameEngine {
     return {
       version: 4, hero: { x: h.x, y: h.y, hp: h.hp, mana: h.mana }, main: { keys: [...this.main.keys], bosses: [...this.main.bosses], finales: [...this.main.finales] }, quests: Object.fromEntries(this.quests),
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
-      brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], tracked: this.tracked,
+      brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], secrets: [...this.secrets], tracked: this.tracked,
       chapterStart: { ...this.chapterStart }, awaiting: false, foxQueue: [...this.foxQueue], exploreCols: this.exploreCols,
     };
   }
@@ -371,7 +375,9 @@ export class GameEngine {
       if (!silent) {
         this.eventHandler({ type: 'achievement', id: d.id, name: d.name, description: d.description, icon: d.icon, points: d.points }); this.play('learn');
         const m = mountFor(d.id);
-        if (m) this.mountNews = { id: m, t: 4.5 };
+        if (m) this.news.push({ text: `New mount: ${MOUNTS[m].name}! Press ${keyLabel(keyOf('ride'))} (or the saddle button) to ride.`, short: `New mount: ${MOUNTS[m].name}`, t: 4.5 });
+        const tr = trailFor(d.id);
+        if (tr) this.news.push({ text: `New trail: ${TRAILS[tr].name}! Choose it in the stable (Achievements tab).`, short: `New trail: ${TRAILS[tr].name}`, t: 5 });
       }
     }
   }
@@ -384,7 +390,7 @@ export class GameEngine {
     s('stars', Math.max(0, ...this.spellIds.map(id => starsOf(p, id)))); s('smith', Math.max(0, ...Object.values(p.upgrades).map(Number)));
     for (const id of this.main.bosses) { const e = this.enemies.find(x => x.id === id) || (id.endsWith(':final') ? { kind: 'eclipse' } : null); if (e) s(`boss:${e.kind}`, 1); }
     for (const r of this.main.finales) s(`chapter:${r}`, 1);
-    s('lands', this.landsSeen()); s('explore', this.exploredPercent());
+    s('lands', this.landsSeen()); s('explore', this.exploredPercent()); s('secrets', this.secrets.size);
     for (const d of ACHIEVEMENTS) this.checkAch(d.stat, true);
   }
   private landsSeen() { const set = new Set<RegionId>([this.regionAt(this.hero.x).id]); for (const id of this.discovered) { const p = this.world.pois.find(z => z.id === id); if (p) set.add(p.region); } return set.size; }
@@ -757,6 +763,36 @@ export class GameEngine {
     }
   }
 
+  // ───────────────────────────── mini-games and trails
+  /** Some villagers like a game: dice, or a shooting match for hunters and guards. Innkeepers always have dice. */
+  gameOf(n: Npc): MiniGame | null {
+    if (n.role === 'inn') return 'dice';
+    if (n.role && n.role !== 'villager') return null;
+    if (/hunter|archer|ranger|scout|captain|guard/i.test(n.name)) return 'archery';
+    let h = 7; for (const c of n.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return h % 7 === 0 ? 'dice' : h % 11 === 3 ? 'archery' : null;
+  }
+  /** The dice stake grows with the hero's level; archery is free and pays by score. */
+  gameStake(kind: MiniGame) { return kind === 'dice' ? Math.round((5 + this.profile.level * 2.5) / 5) * 5 : 0; }
+  private offerGame(n: Npc, kind: MiniGame, before: string[] = []) {
+    const stake = this.gameStake(kind), dice = kind === 'dice';
+    const lines = [...before, ...(dice ? [pick(['Fancy a game of Starfall Dice? Three dice each, best of three rounds.', 'Care to roll some bones? Loser pays the winner.', 'Dice, friend? I feel lucky tonight.'])] : [pick(['Think you can shoot? The range out back needs a real archer.', 'Eight arrows, moving targets. Beat my score and I’ll pay you well.', 'A shooting match! The far targets count double.'])])];
+    const offer: QuestOffer = { id: `game:${kind}`, title: dice ? 'Starfall Dice' : 'Archery match', summary: dice ? 'Roll three dice, keep what you like and reroll the rest once. Pairs and triples score extra. Best of three rounds.' : 'Tap or click to loose eight arrows at moving targets. Bullseyes and far targets score the most.', reward: dice ? `Stake ${stake} gold · win ${stake * 2}` : 'Gold by score · a medal at 40, 70 and 100 points', main: false, game: { kind, stake, opponent: n.name, portrait: n.portrait } };
+    sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: this.personal(lines), offer });
+  }
+  /** Takes the dice stake; false when the hero can't pay it. */
+  gameStart(kind: MiniGame) { const s = this.gameStake(kind); if (this.profile.gold < s) { this.play('nope'); return false; } this.profile.gold -= s; this.profileDirty = true; return true; }
+  /** Pays out a finished game and counts it for the achievements. */
+  gameEnd(kind: MiniGame, r: { won: boolean; gold: number; score?: number }) {
+    if (r.gold > 0) { this.profile.gold += r.gold; this.statMax('gold', this.profile.gold); }
+    if (kind === 'dice' && r.won) this.bump('diceWins');
+    if (kind === 'archery' && r.score !== undefined) this.statMax('archeryBest', r.score);
+    this.profileDirty = true; saveProfile(this.profile); this.play(r.won ? 'questDone' : 'page');
+  }
+  trailUnlocked(id: TrailId) { return !!this.profile.ach.got[TRAILS[id].ach]; }
+  setTrail(id: TrailId | null) { if (id && !this.trailUnlocked(id)) return; this.profile.trail = id; saveProfile(this.profile); this.play('ui'); }
+  get trail(): TrailId | null { const t = this.profile.trail; return t && this.trailUnlocked(t) ? t : null; }
+
   // ───────────────────────────── mounts
   mountUnlocked(id: MountId) { return !!this.profile.ach.got[MOUNTS[id].ach]; }
   /** The mount the hero rides: the one chosen in the stable, or the fastest one earned. */
@@ -886,7 +922,7 @@ export class GameEngine {
     const rarity: Rarity | null = !q.main ? 'rare' : q.kind === 'boss' ? 'epic' : q.kind === 'rescue' ? 'rare' : null;
     if (!rarity) return null;
     const lv = this.region(q.region).levels, r = seeded(`${q.id}:${this.heroId}`);
-    return makeGear({ ilvl: q.kind === 'boss' ? lv[1] + 1 : Math.round(lv[0] + (lv[1] - lv[0]) * .6), rarity, rand: r, uid: `q-${q.id}` });
+    return makeGear({ ilvl: q.kind === 'boss' ? lv[1] + 1 : Math.round(lv[0] + (lv[1] - lv[0]) * .6), rarity, rand: r, uid: `q-${q.id}`, hero: this.heroId });
   }
   private rewardXp(q: QuestDef) { return Math.round(q.reward.xp * this.region(q.region).xpScale); }
   private rewardGold(q: QuestDef) { return q.reward.gold ?? Math.round(q.reward.xp * this.region(q.region).xpScale * .3 / 5) * 5; }
@@ -1028,7 +1064,10 @@ export class GameEngine {
   }
   /** Bombs are lobbed at the nearest creature (or straight ahead) and burst when they land. */
   private throwBomb(id: 'fireBomb' | 'frostBomb') {
-    const h = this.hero, t = this.nearestTarget(560, true), fire = id === 'fireBomb';
+    const h = this.hero, fire = id === 'fireBomb';
+    // A cracked wall close by is the obvious target, unless a creature is closer still.
+    let t: Point | null = this.nearestTarget(560, true), best = 340;
+    for (const o of this.world.objects) if (o.kind === 'crack' && !this.secrets.has(o.id) && Math.abs(o.x - h.x) < best && Math.abs(o.y - h.y) < best) { const d = dist(o, h); if (d < best && (!t || d < dist(t, h))) { best = d; t = { x: o.x, y: o.y - 20 }; } }
     const to = t ? { x: t.x, y: t.y } : { x: h.x + h.faceX * 240, y: h.y + h.faceY * 240 };
     this.hazards.push({ x: to.x, y: to.y, r: fire ? 150 : 210, delay: .6, maxDelay: .6, damage: (fire ? 70 : 16) * this.power, level: 0, owner: 'hero', kind: fire ? 'firebomb' : 'frostbomb', fromX: h.x, fromY: h.y - 24 });
     h.castTime = .3; this.play('dash');
@@ -1096,7 +1135,7 @@ export class GameEngine {
     return true;
   }
   private dropGear(x: number, y: number, ilvl: number, rarity: Rarity) {
-    const g = makeGear({ ilvl, rarity }), a = rand(0, 6.28), v = rand(140, 260);
+    const g = makeGear({ ilvl, rarity, hero: this.heroId }), a = rand(0, 6.28), v = rand(140, 260);
     this.orbs.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, kind: 'loot', age: 0, value: 0, gear: g });
     if (rarity === 'epic' || rarity === 'legendary') this.ring(x, y, 90, RARITY[rarity].color, .8);
   }
@@ -1154,13 +1193,30 @@ export class GameEngine {
   // ───────────────────────────── world interaction
   isVisible(o: WorldObject) { return this.visibleObject(o); }
   private visibleObject(o: WorldObject) {
+    if (o.hiddenBy && !this.secrets.has(o.hiddenBy)) return false;
     // Key items appear once the main quest that asks for them is accepted.
     if (o.kind === 'key') return !this.main.keys.includes(o.id) && this.world.quests.some(q => q.kind === 'key' && this.qs(q.id).status === 'active' && q.keys!.some(i => this.keyId(q, i) === o.id));
     if (o.kind === 'questItem') return !this.got.has(o.id) && this.qs(o.questId!)?.status === 'active';
     if (o.kind === 'cage') return !this.got.has(o.id) && this.qs(o.questId!)?.status === 'active';
     return true;
   }
-  private interactable(o: WorldObject) { return this.visibleObject(o) && !(o.kind === 'chest' && this.opened.has(o.id)); }
+  private interactable(o: WorldObject) { return this.visibleObject(o) && !(o.kind === 'chest' && this.opened.has(o.id)) && !((o.kind === 'crack' || o.kind === 'waterfall') && this.secrets.has(o.id)); }
+  secretFound(id: string) { return this.secrets.has(id); }
+  /** A cracked wall bursts, or the water parts: whatever was hidden behind appears. */
+  private revealSecret(o: WorldObject) {
+    if (this.secrets.has(o.id)) return;
+    this.secrets.add(o.id); this.bump('secrets'); this.touchQuests();
+    const reg = this.region(o.region), acc = reg.palette.accent;
+    if (o.kind === 'crack') {
+      this.emit(o.x, o.y - 30, 40, [reg.palette.rock, '#8a7a68', '#b0a490'], { speed: 380, life: .9, kind: 'shard', size: 7, grav: 520 });
+      this.emit(o.x, o.y - 30, 16, 'rgba(160,150,130,.5)', { speed: 140, life: 1.3, kind: 'smoke', size: 24 });
+      this.addShake(10); this.play('slam', o);
+    } else { this.emit(o.x, o.y - 60, 30, reg.ground === 'ash' ? ['#ffb347', '#ff6b3d'] : ['#dff6ff', '#9fd8ff', '#ffffff'], { speed: 200, life: .9, glow: true, size: 4 }); this.play('splash', o); }
+    this.emit(o.x, o.y - 50, 36, [acc, '#ffffff', '#fff1b8'], { speed: 240, life: 1.1, kind: 'star', glow: true, size: 5 });
+    this.ring(o.x, o.y - 40, 120, acc, .7); this.flash = Math.max(this.flash, .25); this.play('discover');
+    this.gainXp(80 * reg.xpScale, o.x, o.y);
+    this.notice(o.kind === 'crack' ? 'The wall crumbles — you found a secret!' : `Behind the ${o.name.toLowerCase()}: a hidden cave!`, 'epic', 'Secret found!');
+  }
   nearest(maxRange = 105): Near | null {
     let best: Near | null = null, bd = maxRange;
     const h = this.hero;
@@ -1211,7 +1267,9 @@ export class GameEngine {
         for (let i = 0; i < 4; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(6 + reg.levels[0] * 2.5));
         this.notice(`You opened the ${o.name.toLowerCase()}!`, 'good'); this.gainXp(35 * reg.xpScale, o.x, o.y); this.bump('chests');
         this.addItem(rollItem()); if (Math.random() < .35) this.addItem(rollItem());
-        if (Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
+        // A hidden cache always holds a rare or better piece and a pile of extra gold.
+        if (o.rich) { for (let i = 0; i < 5; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(10 + reg.levels[1] * 3)); this.addItem(rollItem()); this.dropGear(o.x, o.y - 8, reg.levels[1] + 1, Math.random() < .1 ? 'legendary' : Math.random() < .45 ? 'epic' : 'rare'); }
+        else if (Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
         return;
       }
       case 'lore': {
@@ -1221,6 +1279,8 @@ export class GameEngine {
         return;
       }
       case 'sign': this.play('page'); this.say(o.name, '🪧', o.text || []); return;
+      case 'crack': this.play('page'); this.say(o.name, '🪨', ['Cold air seeps through the cracks in this old wall. Something is hidden behind it.', `A bomb could break it open. (Throw one close by${this.profile.items.fireBomb || this.profile.items.frostBomb || this.profile.items.thunderJar ? ' — you have some in your bag' : ' — merchants sell fire bombs'}.)`]); return;
+      case 'waterfall': this.revealSecret(o); this.say(o.name, reg.ground === 'ash' ? '🔥' : '💧', reg.ground === 'ash' ? ['You edge along the rock behind the falling lava. The heat is fierce…', '…but there is a cave back here, and something glints inside!'] : ['You slip behind the falling water, soaked to the bone…', '…and find a hidden cave with something glinting inside!']); return;
       case 'well': case 'fountain': {
         const t = this.wellT.get(o.id) || -999;
         if (this.elapsed - t > 45 && (h.hp < h.maxHp || h.mana < h.maxMana)) { this.wellT.set(o.id, this.elapsed); h.hp = h.maxHp; h.mana = h.maxMana; this.play('drink'); this.emit(h.x, h.y, 20, ['#9fd8ff', '#ffffff'], { speed: 120, glow: true }); this.notice('You drink the cool water. Fully restored!', 'good', 'Restored'); }
@@ -1270,12 +1330,14 @@ export class GameEngine {
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
-      return this.say(n.name, n.portrait, ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Fully restored — you will return here if you fall.)']);
+      return this.offerGame(n, 'dice', ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Fully restored — you will return here if you fall.)']);
     }
     const mine = this.questsFor(n.id);
     const active = mine.find(q => q.main && this.qs(q.id).status === 'active') || mine.find(q => this.qs(q.id).status === 'active');
     if (active) { const st = this.qs(active.id), counted = active.count > 1 && (active.kind === 'collect' || active.kind === 'slay' || active.kind === 'key'); return this.say(n.name, n.portrait, [...active.text.progress, counted ? `(${st.progress}/${active.count})` : ''].filter(Boolean)); }
     if (n.role === 'guide') { const cur = this.currentMain(), reg = this.region(n.region); return this.say(n.name, n.portrait, m.finales.includes(n.region) || !cur ? reg.script.guide.done : [`${cur.title}: ${cur.summary}`, `Follow the gold markers, ${HEROES[this.heroId].name}. The valley is counting on you.`]); }
+    const game = this.gameOf(n);
+    if (game) return this.offerGame(n, game, [pick(n.lines.length ? n.lines : ['Hello there!'])]);
     const done = mine.find(q => this.qs(q.id).status === 'done');
     this.say(n.name, n.portrait, done && Math.random() < .5 ? done.text.after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
   }
@@ -1473,7 +1535,7 @@ export class GameEngine {
     }
     if (this.completeTimer > 0) this.updateCelebration(dt);
     if (this.foxDelay > 0) this.foxDelay -= dt;
-    if (this.mountNews && (this.mountNews.t -= dt) <= 0) { const m = MOUNTS[this.mountNews.id]; this.mountNews = null; this.notice(`New mount: ${m.name}! Press ${keyLabel(keyOf('ride'))} (or the saddle button) to ride.`, 'epic', `New mount: ${m.name}`); this.play('quest'); }
+    if (this.news.length && (this.news[0].t -= dt) <= 0) { const n = this.news.shift()!; this.notice(n.text, 'epic', n.short); this.play('quest'); if (this.news.length) this.news[0].t = Math.max(this.news[0].t, 3.5); }
     if (this.clearThreats) {
       // Deferred so no update loop sees its array change underneath it.
       this.clearThreats = false;
@@ -1755,7 +1817,7 @@ export class GameEngine {
       if (dh > ACTIVE_RANGE * 1.4 && n.activity !== 'travel') continue;
       if (!this.npcVisible(n)) continue;
       const close = dh < 150;
-      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { n.bark = this.npcMarker(n)?.mark === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
+      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { const game = this.gameOf(n); n.bark = this.npcMarker(n)?.mark === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : game && Math.random() < .5 ? pick(game === 'dice' ? ['Anyone for dice?', 'Roll the bones with me!', 'I feel lucky today!'] : ['Who can outshoot me?', 'A shooting match, anyone?', 'Bullseye! Beat that!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
       n.workT += dt; n.waitT -= dt;
       if (close) { n.moving = false; n.faceX = h.x > n.x ? 1 : -1; continue; }
       let speed = 0;
@@ -2058,6 +2120,8 @@ export class GameEngine {
           if (frost || z.kind === 'blizzard') e.chillT = Math.max(e.chillT, frost ? 4 : 2.2);
         }
         for (const p of this.pods) if (!p.dead && dist(p, z) < z.r) this.breakPod(p);
+        // Bombs and thunder break cracked walls.
+        if (z.kind === 'firebomb' || z.kind === 'frostbomb' || z.kind === 'lightning') for (const o of this.world.objects) if (o.kind === 'crack' && !this.secrets.has(o.id) && Math.abs(o.x - z.x) < z.r + 90 && dist(o, z) < z.r + 70) this.revealSecret(o);
       }
       this.detonateFx(z);
     }
@@ -2287,7 +2351,7 @@ export class GameEngine {
     if (near?.kind === 'npc') { nearName = near.n.name; nearAction = this.nearAction(near.n); }
     else if (near) {
       const o = near.o; nearName = o.name;
-      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free' } as const)[o.kind];
+      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore' } as const)[o.kind];
     }
     const chests = this.world.objects.filter(o => o.kind === 'chest'), lore = this.world.objects.filter(o => o.kind === 'lore');
     const sides = this.sideQuests();

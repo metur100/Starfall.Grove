@@ -23,11 +23,22 @@ const ACCENT: Record<HeroId, { rim: number; rune: number; mote: number }> = {
 
 /** What one gear slot changes on a model: materials that take the piece's colour, and meshes shown only while worn. */
 type Dye = { mats: THREE.MeshStandardMaterial[]; base: THREE.Color[]; show: THREE.Object3D[] };
+/** The weapon: its shaft or blade takes the land's material, its gem the rarity dye; ornaments appear on higher tiers. */
+type WeaponParts = { kind: 'wood' | 'metal'; shaft: THREE.MeshStandardMaterial[]; gem: THREE.MeshStandardMaterial[]; t2: THREE.Object3D[]; t3: THREE.Object3D[]; base?: { shaft: THREE.Color[]; gem: Array<[THREE.Color, THREE.Color, number]> } };
 type Model = {
   group: THREE.Group; cape: THREE.Mesh; capeBase: Float32Array; glow?: THREE.Mesh; light?: THREE.PointLight;
   arm?: THREE.Object3D; head: THREE.Object3D; body: THREE.Object3D; gems: Partial<Record<GearSlot, THREE.Mesh>>;
-  dyes: Partial<Record<GearSlot, Dye>>;
+  dyes: Partial<Record<GearSlot, Dye>>; weapon?: WeaponParts;
 };
+const TIER_WOOD = ['#7a5a3f', '#5f7a3a', '#d0d8e8', '#2e2630'], TIER_METAL = ['#c8ccd6', '#d8a860', '#cdefff', '#4a3434'];
+const hide = <T extends THREE.Object3D>(o: T) => { o.visible = false; return o; };
+/** A crescent (tier 2) and a crown of flame (tier 3) for a staff head at height y. */
+function staffOrnaments(parent: THREE.Object3D, y: number, flameM: THREE.Material) {
+  const cres = hide(mesh(new THREE.TorusGeometry(.13, .016, 8, 24, Math.PI * 1.2), mat('#e8f0ff', { metalness: .7, roughness: .25 }), 0, y, 0, parent)); cres.rotation.z = -Math.PI * .1;
+  const flames = new THREE.Group(); flames.position.y = y + .06; parent.add(flames); flames.visible = false;
+  for (const a of [0, 2.1, 4.2]) { const f = mesh(new THREE.ConeGeometry(.03, .16, 8), flameM, Math.cos(a) * .06, .06, Math.sin(a) * .06, flames); f.rotation.set(Math.sin(a) * .4, 0, -Math.cos(a) * .4); }
+  return { t2: [cres], t3: [flames] };
+}
 
 const mat = (color: number | string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color, roughness: .75, metalness: 0, ...o });
 const steelMat = (color: number | string) => mat(color, { roughness: .32, metalness: .75 });
@@ -82,10 +93,13 @@ function buildMira(): Model {
   mesh(new THREE.SphereGeometry(.07, 12, 10), handM, .17, -.4, .22, arm);
   // Staff with a glowing star orb.
   const staff = new THREE.Group(); staff.position.set(.17, -.4, .22); arm.add(staff);
-  mesh(new THREE.CylinderGeometry(.025, .03, 1.55, 10), mat('#7a5a3f'), 0, .3, 0, staff);
+  const shaftM = mat('#7a5a3f');
+  mesh(new THREE.CylinderGeometry(.025, .03, 1.55, 10), shaftM, 0, .3, 0, staff);
   mesh(new THREE.TorusGeometry(.09, .018, 8, 20), gold, 0, 1.1, 0, staff);
-  const glow = mesh(new THREE.SphereGeometry(.085, 20, 16), mat('#fff1b8', { emissive: 0xffe38a, emissiveIntensity: 2.4 }), 0, 1.12, 0, staff);
+  const glowM = mat('#fff1b8', { emissive: 0xffe38a, emissiveIntensity: 2.4 });
+  const glow = mesh(new THREE.SphereGeometry(.085, 20, 16), glowM, 0, 1.12, 0, staff);
   const light = new THREE.PointLight(0xffd98a, 2.2, 3.5, 1.6); light.position.set(0, 1.12, 0); staff.add(light);
+  const orn = staffOrnaments(staff, 1.12, glowM);
   // Head, hair and face.
   const head = new THREE.Group(); head.position.set(0, 1.36, 0); body.add(head);
   mesh(new THREE.SphereGeometry(.25, 28, 22), skin, 0, 0, 0, head);
@@ -104,7 +118,7 @@ function buildMira(): Model {
   const shoulders = mantle(body, .25, 1.07, .13, mantleM);
   const gems = { head: gem(hat, 0, .06, .24), chest: gem(body, 0, .8, .3, .04) };
   group.scale.setScalar(1.12);
-  return { group, cape, capeBase: base, glow, light, arm, head, body, gems, dyes: {
+  return { group, cape, capeBase: base, glow, light, arm, head, body, gems, weapon: { kind: 'wood', shaft: [shaftM], gem: [glowM], ...orn }, dyes: {
     head: dye([hatM]), chest: dye([robe]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM], [legs]), feet: dye([bootM]),
   } };
 }
@@ -155,10 +169,17 @@ function buildKael(): Model {
   mesh(new THREE.SphereGeometry(.075, 12, 10), handM, .08, -.44, .14, arm);
   const sword = new THREE.Group(); sword.position.set(.08, -.44, .14); sword.rotation.set(.35, 0, -.15); arm.add(sword);
   mesh(new THREE.CylinderGeometry(.028, .028, .2, 10), leather, 0, 0, 0, sword);
-  mesh(new THREE.SphereGeometry(.045, 12, 10), gold, 0, -.12, 0, sword);
+  const pommelM = mat('#e8c46a', { metalness: .8, roughness: .3, emissive: 0x000000 });
+  mesh(new THREE.SphereGeometry(.045, 12, 10), pommelM, 0, -.12, 0, sword);
   mesh(new THREE.BoxGeometry(.3, .04, .06), gold, 0, .11, 0, sword);
+  const guardGem = mesh(new THREE.OctahedronGeometry(.035), pommelM, 0, .11, .04, sword);
+  const bladeM = steelMat('#eef3fa');
+  const edge = hide(mesh(new THREE.BoxGeometry(.012, .78, .03), mat('#ffffff', { emissive: 0xffffff, emissiveIntensity: 1 }), 0, .52, 0, sword));
+  const wings = hide(new THREE.Group()); sword.add(wings);
+  for (const s of [-1, 1]) { const w = mesh(new THREE.ConeGeometry(.03, .14, 6), gold, s * .19, .1, 0, wings); w.rotation.z = s * -1.8; }
   const blade = new THREE.Shape(); blade.moveTo(-.045, 0); blade.lineTo(.045, 0); blade.lineTo(.035, .82); blade.lineTo(0, .92); blade.lineTo(-.035, .82); blade.closePath();
-  mesh(new THREE.ExtrudeGeometry(blade, { depth: .015, bevelEnabled: true, bevelSize: .008, bevelThickness: .008, bevelSegments: 1 }), steelMat('#eef3fa'), 0, .12, -.008, sword);
+  mesh(new THREE.ExtrudeGeometry(blade, { depth: .015, bevelEnabled: true, bevelSize: .008, bevelThickness: .008, bevelSegments: 1 }), bladeM, 0, .12, -.008, sword);
+  void guardGem;
   // Head, helm with a red plume.
   const head = new THREE.Group(); head.position.set(0, 1.46, 0); body.add(head);
   mesh(new THREE.SphereGeometry(.22, 24, 20), skin, 0, 0, 0, head);
@@ -171,7 +192,7 @@ function buildKael(): Model {
   mesh(new THREE.TubeGeometry(curve, 24, .06, 10), mat('#c0392b', { roughness: .9 }), 0, 0, 0, head);
   const { cape, base, m } = makeCape('#8a2a2a', .72, 1.1, 1.22, -.26); body.add(cape);
   const gems = { head: gem(head, 0, .18, .2), chest: gem(body, 0, 1.2, .27, .05) };
-  return { group, cape, capeBase: base, arm, head, body, gems, dyes: {
+  return { group, cape, capeBase: base, arm, head, body, gems, weapon: { kind: 'metal', shaft: [bladeM], gem: [pommelM, edge.material as THREE.MeshStandardMaterial], t2: [wings], t3: [edge] }, dyes: {
     head: dye([helmM]), chest: dye([chestM]), back: dye([m]), shoulders: dye([pauldronM]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM]), feet: dye([bootM]),
   } };
 }
@@ -200,9 +221,11 @@ function buildLyra(): Model {
   const right = mesh(armGeo, robe, .08, -.2, .05, arm); right.rotation.z = .35; right.rotation.x = -.5;
   mesh(new THREE.SphereGeometry(.065, 12, 10), handM, .17, -.4, .22, arm);
   const staff = new THREE.Group(); staff.position.set(.17, -.4, .22); arm.add(staff);
-  mesh(new THREE.CylinderGeometry(.022, .028, 1.5, 10), mat('#c8d8e8', { metalness: .4, roughness: .35 }), 0, .3, 0, staff);
+  const lshaftM = mat('#c8d8e8', { metalness: .4, roughness: .35 }), shardM = ice.clone();
+  mesh(new THREE.CylinderGeometry(.022, .028, 1.5, 10), lshaftM, 0, .3, 0, staff);
+  const lorn = staffOrnaments(staff, 1.2, shardM);
   for (const a of [0, 2.1, 4.2]) { const p = mesh(new THREE.ConeGeometry(.03, .16, 8), circletM, Math.cos(a) * .07, 1.04, Math.sin(a) * .07, staff); p.rotation.set(Math.sin(a) * .5, 0, -Math.cos(a) * .5); }
-  const glow = mesh(new THREE.OctahedronGeometry(.11), ice, 0, 1.2, 0, staff); glow.scale.set(.7, 1.3, .7);
+  const glow = mesh(new THREE.OctahedronGeometry(.11), shardM, 0, 1.2, 0, staff); glow.scale.set(.7, 1.3, .7);
   const light = new THREE.PointLight(0x9fe4ff, 2.4, 3.5, 1.6); light.position.set(0, 1.2, 0); staff.add(light);
   // Head with long pale hair and a crystal circlet.
   const head = new THREE.Group(); head.position.set(0, 1.36, 0); body.add(head);
@@ -217,7 +240,7 @@ function buildLyra(): Model {
   const shoulders = mantle(body, .24, 1.07, .12, mantleM);
   const gems = { chest: gem(body, 0, .95, .26, .04) };
   group.scale.setScalar(1.12);
-  return { group, cape, capeBase: base, glow, light, arm, head, body, gems, dyes: {
+  return { group, cape, capeBase: base, glow, light, arm, head, body, gems, weapon: { kind: 'wood', shaft: [lshaftM], gem: [shardM], ...lorn }, dyes: {
     head: dye([circletM]), chest: dye([robe]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM], [legs]), feet: dye([bootM]),
   } };
 }
@@ -238,10 +261,14 @@ function buildRiven(): Model {
   mesh(new THREE.BoxGeometry(.05, .5, .03), mat('#6a4a8a'), .06, 1.0, .17, body).rotation.z = .55;
   // Arms, each with a dagger held point-down.
   const armGeo = new THREE.CapsuleGeometry(.065, .38, 6, 12);
+  const dgemM = mat('#e0c8ff', { roughness: .2 }), dt2: THREE.Object3D[] = [], dt3: THREE.Object3D[] = [];
   const dagger = (parent: THREE.Object3D) => {
     const d = new THREE.Group(); parent.add(d);
     mesh(new THREE.CylinderGeometry(.02, .02, .12, 8), mat('#3a2a26'), 0, 0, 0, d);
     mesh(new THREE.BoxGeometry(.14, .025, .04), steel, 0, -.07, 0, d);
+    mesh(new THREE.OctahedronGeometry(.022), dgemM, 0, .07, 0, d);
+    dt2.push(hide(mesh(new THREE.TorusGeometry(.04, .008, 6, 16), steel, 0, -.07, 0, d)));
+    dt3.push(hide(mesh(new THREE.BoxGeometry(.006, .3, .02), dgemM, 0, -.25, 0, d)));
     const b = new THREE.Shape(); b.moveTo(-.03, 0); b.lineTo(.03, 0); b.lineTo(0, -.34); b.closePath();
     mesh(new THREE.ExtrudeGeometry(b, { depth: .012, bevelEnabled: false }), steel, 0, -.08, -.006, d);
     return d;
@@ -264,7 +291,7 @@ function buildRiven(): Model {
   const shoulders = mantle(body, .24, 1.2, .11, mantleM);
   const gems = { head: gem(head, 0, .2, .2), chest: gem(body, 0, 1.08, .22, .04) };
   group.scale.setScalar(1.06);
-  return { group, cape, capeBase: base, arm, head, body, gems, dyes: {
+  return { group, cape, capeBase: base, arm, head, body, gems, weapon: { kind: 'metal', shaft: [steel], gem: [dgemM], t2: dt2, t3: dt3 }, dyes: {
     head: dye([hoodM]), chest: dye([chestM]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM]), feet: dye([bootM]),
   } };
 }
@@ -291,6 +318,11 @@ function buildWren(): Model {
   const bow = new THREE.Group(); bow.position.set(-.34, .86, .32); body.add(bow);
   const bc = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, -.6, 0), new THREE.Vector3(0, 0, .22), new THREE.Vector3(0, .6, 0));
   mesh(new THREE.TubeGeometry(bc, 24, .02, 8), wood, 0, 0, 0, bow);
+  const bgemM = mat('#e8e0c8', { roughness: .3 });
+  mesh(new THREE.SphereGeometry(.03, 10, 8), bgemM, 0, 0, .11, bow);
+  const tips = hide(new THREE.Group()); bow.add(tips);
+  for (const s of [-1, 1]) { const tp = mesh(new THREE.ConeGeometry(.02, .12, 6), wood, 0, s * .64, -.03, tips); tp.rotation.x = s * -.8; }
+  const bglow = hide(mesh(new THREE.TorusGeometry(.05, .01, 6, 16), bgemM, 0, 0, .11, bow));
   const string = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -.6, 0), new THREE.Vector3(0, .6, 0)]); bow.add(new THREE.Line(string, new THREE.LineBasicMaterial({ color: 0xe8e0c8 })));
   const arm = new THREE.Group(); arm.position.set(.3, 1.12, .04); body.add(arm);
   const right = mesh(armGeo, chestM, .06, -.2, .05, arm); right.rotation.z = .3; right.rotation.x = -.3;
@@ -320,7 +352,7 @@ function buildWren(): Model {
   mesh(new THREE.TubeGeometry(tail, 12, .05, 8), fur, 0, 0, 0, wolf);
   const gems = { head: gem(head, 0, .2, .2), chest: gem(body, 0, 1.08, .22, .04) };
   group.scale.setScalar(1.06);
-  return { group, cape, capeBase: base, arm, head, body, gems, dyes: {
+  return { group, cape, capeBase: base, arm, head, body, gems, weapon: { kind: 'wood', shaft: [wood], gem: [bgemM], t2: [tips], t3: [bglow] }, dyes: {
     head: dye([hoodM]), chest: dye([chestM]), back: dye([m]), shoulders: dye([mantleM], [shoulders]), hands: dye([handM]), waist: dye([beltM]), legs: dye([legM]), feet: dye([bootM]),
   } };
 }
@@ -383,6 +415,15 @@ export function createStage(canvas: HTMLCanvasElement, first: HeroId, mode: Stag
         else { m.color.copy(d.base[i]); m.emissive.set(0x000000); m.emissiveIntensity = 0; }
       });
       for (const o of d.show) o.visible = !!l;
+    }
+    const wp = model.weapon, wl = look.weapon;
+    if (wp) {
+      wp.base ??= { shaft: wp.shaft.map(m => m.color.clone()), gem: wp.gem.map(m => [m.color.clone(), m.emissive.clone(), m.emissiveIntensity] as [THREE.Color, THREE.Color, number]) };
+      const b = wp.base, tier = wl ? wl.tier : -1;
+      wp.shaft.forEach((m, i) => m.color.set(wl ? (wp.kind === 'wood' ? TIER_WOOD : TIER_METAL)[tier] : b.shaft[i]));
+      wp.gem.forEach((m, i) => { if (wl) { m.color.set(wl.color); m.emissive.set(wl.color); m.emissiveIntensity = wl.glow ? 1.8 : .7; } else { m.color.copy(b.gem[i][0]); m.emissive.copy(b.gem[i][1]); m.emissiveIntensity = b.gem[i][2]; } });
+      for (const o of wp.t2) o.visible = tier >= 2; for (const o of wp.t3) o.visible = tier >= 3;
+      if (model.light) model.light.color.set(wl ? wl.color : hero === 'lyra' ? 0x9fe4ff : 0xffd98a);
     }
     for (const [slot, g] of Object.entries(model.gems) as Array<[GearSlot, THREE.Mesh]>) {
       const item = worn[slot]; g.visible = !!item;
