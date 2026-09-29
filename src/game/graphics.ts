@@ -3,7 +3,7 @@ export type Quality = 'auto' | 'high' | 'balanced' | 'low' | 'lowest';
 export type DecorLevel = 'auto' | 'full' | 'less' | 'off';
 export type GraphicsSettings = {
   quality: Quality;
-  /** Grass and flowers that sway. "auto" follows the quality level. */
+  /** Grass and flowers (swaying on High quality, still below it). "auto" follows the quality level. */
   decor: DecorLevel;
   /** Falling petals, leaves and snow, fireflies, light rays, cloud shadows. */
   weather: boolean;
@@ -35,7 +35,18 @@ export function loadGraphics(): GraphicsSettings {
 }
 export function saveGraphics(v: GraphicsSettings) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignore */ } }
 
-/** Tier "auto" starts on. Tablets and low-core devices start lower. */
+const AUTO_KEY = 'starfall-grove-auto-tier';
+/** The tier "auto" settled on last time on this device, and the highest it found the device can hold. */
+export function loadAutoTier(): { tier: number; ceiling: number } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(AUTO_KEY) || 'null') as { tier?: unknown; ceiling?: unknown } | null;
+    const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < TIER_NAMES.length;
+    return v && ok(v.tier) && ok(v.ceiling) ? { tier: Math.min(v.tier, v.ceiling), ceiling: v.ceiling } : null;
+  } catch { return null; }
+}
+export function saveAutoTier(tier: number, ceiling: number) { try { localStorage.setItem(AUTO_KEY, JSON.stringify({ tier, ceiling })); } catch { /* ignore */ } }
+
+/** Tier "auto" starts on the first time. Tablets and low-core devices start lower. */
 export function startTier() {
   const nav = navigator as Navigator & { deviceMemory?: number };
   const cores = nav.hardwareConcurrency || 4, memory = nav.deviceMemory ?? 8;

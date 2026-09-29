@@ -591,6 +591,15 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .setting-row .seg { flex-wrap: wrap; }
 .settings-panel .volume-grid { margin-top: 14px; }
 .fps-meter { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 9; padding: 2px 8px; border-radius: 8px; background: rgba(0, 0, 0, .55); font: 800 11px var(--ui); color: #b9f29d; pointer-events: none; }
+/* Entering the world: a paper card over the night sky (like the boot screen) while the first view is prepared. Above
+   the HUD and panels, below cutscenes and the intro film. */
+.world-veil { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 35%, #2a2560 0%, #141a44 45%, #080b1e 100%); transition: opacity .45s ease, visibility .45s; }
+.world-veil.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+.veil-card { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; text-align: center; }
+.veil-title { font: 700 clamp(20px, 3.4vw, 28px)/1 var(--display); letter-spacing: .08em; color: #fff4de; -webkit-text-stroke: 1px #2f2330; paint-order: stroke fill; text-shadow: 0 3px 0 rgba(18, 10, 20, .7), 0 0 18px rgba(245, 210, 122, .3); }
+.veil-bar { width: min(220px, 56vw); height: 10px; border-radius: 6px; background: #2a2030; border: 1.5px solid #fff1d6; box-shadow: 0 0 0 1.5px #2f2330, 2px 3px 0 rgba(18, 10, 20, .5); overflow: hidden; }
+.veil-bar i { display: block; width: 0; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #e8a14a, #f5d27a); transition: width .15s linear; }
+@media (prefers-reduced-motion: reduce) { .world-veil, .veil-bar i { transition: none; } }
 @media (max-height: 520px) and (orientation: landscape) { .setting-row { padding: 5px 0; } }
 .btn.danger { border-color: rgba(255, 120, 110, .45); color: #ffd4cc; }
 .btn.danger.armed { background: rgba(220, 60, 60, .35); border-color: #ff7a6e; color: #fff; }

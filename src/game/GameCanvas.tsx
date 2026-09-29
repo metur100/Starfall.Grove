@@ -3,7 +3,7 @@ import { GameEngine } from './engine';
 import { music } from './music';
 import { Renderer } from './render';
 import { loadSession, saveSession } from './storage';
-import { TIER_NAMES, TIER_OF, startTier, type GraphicsSettings } from './graphics';
+import { TIER_NAMES, TIER_OF, loadAutoTier, saveAutoTier, startTier, type GraphicsSettings } from './graphics';
 import type { EngineEvent, GameSnapshot, HeroId } from './types';
 
 // Each tier caps the canvas resolution by a pixel budget and sets how much effect detail is drawn.
@@ -31,10 +31,18 @@ function share<T>(prev: T, next: T): T {
   return (same ? prev : out) as T;
 }
 
+/** The mean of the fastest nine tenths of `a` (sorted in place). */
+function trimmed(a: number[]) {
+  a.sort((x, y) => x - y);
+  const n = Math.max(1, Math.ceil(a.length * .9)); let sum = 0;
+  for (let i = 0; i < n; i++) sum += a[i];
+  return sum / n;
+}
+
 type Props = { hero: HeroId; runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; practice?: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
 export default function GameCanvas({ hero, runKey, paused, graphics, touch, practice = false, onReady, onSnapshot, onEvent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fpsRef = useRef<HTMLDivElement>(null);
+  const fpsRef = useRef<HTMLDivElement>(null), veilRef = useRef<HTMLDivElement>(null), barRef = useRef<HTMLElement>(null);
   const pausedRef = useRef(paused); pausedRef.current = paused;
   const settings = useRef({ graphics, touch }); settings.current = { graphics, touch };
   const callbacks = useRef({ onSnapshot, onEvent, onReady }); callbacks.current = { onSnapshot, onEvent, onReady };
@@ -46,9 +54,19 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     callbacks.current.onReady(engine);
     if (import.meta.env.DEV) Object.assign(window, { __engine: engine, __renderer: renderer, __ctx: ctx });
     let raf = 0, last = 0, lastUi = 0, lastSave = 0, lastMusic = 0, viewW = 1, viewH = 1, dpr = 1;
-    // Auto quality starts from a guess about the device and then follows the measured frame time.
+    // Auto quality starts where it settled last time on this device (or from a guess about it), then follows the
+    // measured frame time.
     let quality: GraphicsSettings['quality'] | null = null, tier = 0, ceiling = TIERS.length - 1;
-    let frameSum = 0, busySum = 0, frames = 0, calmUntil = 0, lastUp = -1e9, fpsFrames = 0, fpsSince = 0;
+    let frameSum = 0, calmUntil = 0, lastUp = -1e9, tierSince = 0, saved = '', fpsFrames = 0, fpsSince = 0;
+    const gaps: number[] = [], works: number[] = [];
+    // Entering the world, a loading card stays up while the first frames are drawn (but not played) and the renderer
+    // bakes the ground, houses and trees around the start: nothing new has to be made during the first steps.
+    let warming = true, warmFrom = 0, warmFrames = 0;
+    // After an automatic change of level the ground and pieces are remade at the new one: frames aren't judged until
+    // that is done (and a moment after), and it takes two slow seconds in a row to step down again.
+    let settling = false, slowRuns = 0;
+    const changeTier = (to: number, now: number) => { tier = to; applyTier(); renderer.rewarm(); settling = true; slowRuns = 0; calmUntil = now + 4000; tierSince = now; frameSum = 0; gaps.length = works.length = 0; };
+    veilRef.current?.classList.remove('gone'); if (barRef.current) barRef.current.style.width = '0%';
     let lastSnap: GameSnapshot | null = null, nearX = '', nearY = '';
     const applyTier = () => {
       const t = TIERS[tier];
@@ -66,12 +84,15 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.05, raw); last = now;
       renderer.touch = settings.current.touch;
       renderer.shake = g.shake; renderer.weather = g.weather;
-      renderer.decor = g.decor !== 'auto' ? g.decor : renderer.quality >= .75 ? 'full' : 'less';
+      // Still grass is pasted onto the ground and costs nothing a frame, so only the lowest level thins it out.
+      renderer.decor = g.decor !== 'auto' ? g.decor : renderer.quality >= .5 ? 'full' : 'less';
       if (quality !== g.quality) {
-        quality = g.quality; tier = quality === 'auto' ? startTier() : TIER_OF[quality]; ceiling = TIERS.length - 1;
-        frameSum = busySum = frames = 0; calmUntil = now + 4000; applyTier();
+        quality = g.quality;
+        const kept = quality === 'auto' ? loadAutoTier() : null;
+        tier = quality === 'auto' ? kept?.tier ?? startTier() : TIER_OF[quality]; ceiling = kept?.ceiling ?? TIERS.length - 1;
+        frameSum = 0; gaps.length = works.length = 0; calmUntil = now + 4000; tierSince = now; applyTier();
       }
-      if (!pausedRef.current) engine.update(dt); else engine.settleFx(dt);
+      if (!pausedRef.current && !warming) engine.update(dt); else engine.settleFx(dt);
       renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
       // The touch prompt follows the person in reach. Its position is written straight onto the prompt, and only when it
       // moves: set on the stage it would restyle the whole HUD every frame.
@@ -81,20 +102,39 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
         if (prompt && (x !== nearX || y !== nearY || prompt.style.getPropertyValue('--near-x') !== x)) { prompt.style.setProperty('--near-x', x); prompt.style.setProperty('--near-y', y); nearX = x; nearY = y; }
       }
       const busy = (performance.now() - now) / 1000;
-      if (quality === 'auto' && raw > 0 && raw < .25 && !pausedRef.current && now > calmUntil) {
-        frameSum += raw; busySum += busy; frames++;
-        // Judge about a second of play at a time: step down quickly, step up only after a long calm spell.
+      if (warming) {
+        if (!warmFrom) warmFrom = now;
+        const done = renderer.warmup(engine, 10); warmFrames++;
+        if (barRef.current) barRef.current.style.width = `${Math.round(done * 100)}%`;
+        // A quick device is through in a blink and the card just fades; a slow one waits a few seconds at most.
+        if ((done >= 1 && warmFrames >= 6 && now - warmFrom > 250) || now - warmFrom > 4000) {
+          // Whatever the card had no time for is finished while playing, before frames are judged.
+          warming = false; settling = done < 1; veilRef.current?.classList.add('gone');
+          frameSum = 0; gaps.length = works.length = 0; calmUntil = Math.max(calmUntil, now + 2500);
+        }
+      }
+      if (settling && renderer.warmup(engine, 4) >= 1) { settling = false; calmUntil = Math.max(calmUntil, now + 2500); }
+      if (quality === 'auto' && raw > 0 && raw < .25 && !pausedRef.current && !warming && !settling && now > calmUntil) {
+        frameSum += raw; gaps.push(raw); works.push(busy);
+        // Judge about a second of play at a time: step down quickly, step up after a calm spell.
         // With the 30 fps cap the frame interval is fixed, so the time spent drawing is what counts.
-        if (frames >= 60 || frameSum > 1) {
-          const avg = frameSum / frames, work = busySum / frames; frameSum = busySum = frames = 0;
+        if (gaps.length >= 60 || frameSum > 1) {
+          // The slowest tenth of the frames are left out, so a moment of baking new ground can't cost a quality level.
+          const avg = trimmed(gaps), work = trimmed(works); frameSum = 0; gaps.length = works.length = 0;
           // Uncapped, falling under ~50 fps steps down; keeping up with the screen with most of each frame to spare
           // (even at a steady 60 Hz, where the interval alone can't show spare time) is room to step up.
-          const slow = capped ? avg > .045 || work > .024 : avg > .0205, smooth = capped ? work < .008 : avg < .0185 && work < .0065;
-          if (slow && tier > 0) {
-            // Dropping right after a step up means that tier is too much for this device: stay below it.
+          // Stepping up needs frames that use under a third of their time: the next level costs about twice as much.
+          const slow = capped ? avg > .045 || work > .024 : avg > .0205, smooth = capped ? work < .008 : avg < .0185 && work < .0055;
+          const awful = capped ? avg > .06 : avg > .034;
+          slowRuns = slow ? slowRuns + 1 : 0;
+          if ((slowRuns >= 2 || awful) && tier > 0) {
+            // Dropping right after a step up means that level is too much for this device: stay below it (and remember).
             if (now - lastUp < 30000) ceiling = tier - 1;
-            tier--; applyTier(); calmUntil = now + 4000;
-          } else if (smooth && tier < ceiling && now - lastUp > 30000) { tier++; lastUp = now; applyTier(); calmUntil = now + 4000; }
+            changeTier(tier - 1, now);
+          } else if (smooth && tier < ceiling && now - lastUp > 8000) { lastUp = now; changeTier(tier + 1, now); }
+          // A level held for twenty seconds of play is where the next visit starts.
+          const key = `${tier}|${ceiling}`;
+          if (now - tierSince > 20000 && key !== saved) { saveAutoTier(tier, ceiling); saved = key; }
         }
       }
       fpsFrames++;
@@ -113,6 +153,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
   }, [hero, runKey, practice]);
   return <>
     <canvas ref={canvasRef} className="world-canvas" aria-label="Starfall Grove game world" />
+    <div ref={veilRef} className="world-veil" role="status" aria-label="Preparing the valley"><div className="veil-card"><span className="veil-title">Unfolding the valley</span><span className="veil-bar"><i ref={barRef} /></span></div></div>
     <div ref={fpsRef} className="fps-meter" hidden />
   </>;
 }

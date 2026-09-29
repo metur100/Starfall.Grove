@@ -29,10 +29,8 @@ const DISPLAY = 'Cinzel, Georgia, serif';
 const UI = 'Nunito, "Trebuchet MS", sans-serif';
 const BUBBLE_FONT = `800 13px ${UI}`;
 const CHUNK = 512;
-/** Grass tiles: the ground each covers (big tiles mean fewer canvases to hand to the GPU), and how far its tufts (with
- *  their lean and shadow) reach past its edges. */
-const DECOR_TILE = 512, DECOR_MX = 40, DECOR_MT = 50, DECOR_MB = 16;
-type DecorTile = { items: Decor[]; glows: Decor[]; live: Decor[]; c: HTMLCanvasElement | null; beat: number; res: number; keep: number; phase: number; kept: (keep: number) => number };
+/** How far a tuft's piece (with its lean and shadow) reaches from its root: sideways, up and down. */
+const TUFT_X = 40, TUFT_UP = 50, TUFT_DOWN = 16;
 const BAKED_DECOR = new Set(['pebble', 'clover', 'crop']);
 const TALL = new Set(['tree', 'pine', 'house', 'manor', 'windmill', 'tower', 'deadtree', 'mushroom', 'crystal', 'cliff']);
 /** Buildings and cliffs don't sway in the wind. */
@@ -106,6 +104,8 @@ const fontsReady = () => {
 };
 /** How brightly a glowing mushroom or shard shines at time `t` (each pulses on its own). */
 const shroomGlow = (d: Decor, t: number) => .55 + Math.sin(t * 2 + d.seed * 9) * .2;
+/** The lean a still tuft is pasted with: the wind's lean frozen at one moment, so each tuft differs a little. */
+const stillLean = (d: Decor) => -Math.sin(Math.sin(d.x * .013 + d.y * .007) * .2 + Math.sin(d.seed * 30) * .04) * .9;
 function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, points = 4, inner = .38, rot = 0) {
   ctx.beginPath();
   for (let i = 0; i < points * 2; i++) { const a = rot + (i / (points * 2)) * TAU - Math.PI / 2, rr = i % 2 ? r * inner : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
@@ -265,7 +265,8 @@ export class Renderer {
   private setup(world: WorldDefinition) {
     if (this.worldRef === world) return;
     this.worldRef = world; this.chunks.clear(); this.sprites.clear(); this.prefetched = null; this.decorSprites.clear(); this.ambient = [];
-    this.obstacleMemo = new WeakMap(); this.decorMemo = new WeakMap(); this.decorTiles.clear(); this.frames.clear(); this.ring = null; this.ahead = null;
+    this.obstacleMemo = new WeakMap(); this.decorMemo = new WeakMap(); this.frames.clear(); this.ring = null;
+    this.glowDecor = new Grid(256, world.decor.filter(d => (d.kind === 'shroom' || d.kind === 'shard') && regionOf(world, d.x).darkness > 0));
     this.liveDecor = new Grid(256, world.decor.filter(d => !BAKED_DECOR.has(d.kind)));
     this.bakedDecor = new Grid(256, world.decor.filter(d => BAKED_DECOR.has(d.kind)));
     this.roadBoxes = world.roads.map(pts => {
@@ -275,6 +276,30 @@ export class Renderer {
     });
   }
 
+  /** The part of the world the last frame showed. */
+  private view: View | null = null;
+  private warmJobs: Array<() => void> | null = null; private warmTotal = 1;
+  /**
+   * Gets everything within reach of the first steps ready before play begins (the world map, the ground around the
+   * view and the houses and trees near it), working for about `budget` ms per call. Returns how much is done (0…1).
+   * Call it after a frame has been drawn, while the game waits behind its loading card.
+   */
+  /** Starts the warm-up over (after the quality level changed, which remakes the ground and pieces). */
+  rewarm() { this.warmJobs = null; }
+  warmup(e: GameEngine, budget: number): number {
+    const v = this.view; if (!v) return 0;
+    if (!this.warmJobs) {
+      const jobs: Array<() => void> = [() => { worldMapCanvas(e.world); }];
+      const c0 = Math.floor(v.x / CHUNK) - 1, c1 = Math.floor((v.x + v.w) / CHUNK) + 1, r0 = Math.floor(v.y / CHUNK) - 1, r1 = Math.floor((v.y + v.h) / CHUNK) + 1;
+      for (let cy = Math.max(0, r0); cy <= r1; cy++) for (let cx = Math.max(0, c0); cx <= c1; cx++) jobs.push(() => { const k = `${cx},${cy}`, c = this.chunks.get(k); if (!c || this.stale(c)) { this.chunks.delete(k); this.bakeChunk(e, cx, cy); } });
+      for (const o of e.obstacleGrid.rect(v.x - 900, v.y - 700, v.x + v.w + 900, v.y + v.h + 800).slice()) jobs.push(() => { this.sprite(o, e); });
+      if (this.pasteKeep === 0 && this.decor !== 'off') for (const d of this.liveDecor.rect(v.x - 300, v.y - 300, v.x + v.w + 300, v.y + v.h + 300).slice()) jobs.push(() => { this.decorSpriteOf(d, e); });
+      this.warmJobs = jobs; this.warmTotal = jobs.length;
+    }
+    const jobs = this.warmJobs, t0 = performance.now();
+    while (jobs.length && performance.now() - t0 < budget) jobs.shift()!();
+    return 1 - jobs.length / this.warmTotal;
+  }
   render(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, time: number, dt: number, pixelRatio: number) {
     this.time = time;
     const world = e.world, hero = e.hero;
@@ -287,6 +312,8 @@ export class Renderer {
     const res = clamp(Math.round(pixelRatio * Math.min(scale, 1) * 2) / 2, 1, 2);
     this.chunkRes = res; this.px = scale * pixelRatio; this.cut.quality = this.quality;
     if (res !== this.memoRes) { this.memoRes = res; this.decorMemo = new WeakMap(); }
+    // Grass sways live on a strong device; on others it is pasted onto the ground as still pieces (see drawDecor).
+    this.pasteKeep = this.quality >= 1 || this.decor === 'off' ? 0 : this.decor === 'less' ? .45 : 1;
     const vw = w / scale, vh = h / scale;
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
     // In a cutscene the camera glides to what the story shows; otherwise it follows the hero a little ahead.
@@ -299,7 +326,7 @@ export class Renderer {
     const shake = this.shake ? e.shake * (this.reduced ? .25 : 1) : 0;
     const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
     const camX = this.cam.x, camY = this.cam.y;
-    const view: View = { x: camX, y: camY, w: vw, h: vh };
+    const view: View = { x: camX, y: camY, w: vw, h: vh }; this.view = view;
     this.lights = [];
     this.near = e.nearest();
 
@@ -377,7 +404,7 @@ export class Renderer {
     for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
       const key = `${cx},${cy}`;
       let c = this.chunks.get(key);
-      if (!c ? baked < 4 : c.width !== Math.ceil(CHUNK * this.chunkRes) && baked < 1) { c = this.bakeChunk(e, cx, cy); baked++; }
+      if (!c ? baked < 4 : this.stale(c) && baked < 1) { c = this.bakeChunk(e, cx, cy); baked++; }
       if (c) { ctx.drawImage(c, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK); this.chunks.delete(key); this.chunks.set(key, c); }
     }
     // Pre-bake the ring just outside the view so walking never waits on it.
@@ -389,38 +416,23 @@ export class Renderer {
   /** The chunks around the latest view, and whether a bake of them is waiting for idle time. */
   private ring: { e: GameEngine; c0: number; c1: number; r0: number; r1: number } | null = null;
   private ringQueued = false;
-  /** The grass tiles in view last frame, for cutting the next ones ahead. */
-  private ahead: { e: GameEngine; c0: number; c1: number; r0: number; r1: number; keep: number; res: number; rate: number } | null = null;
-  /** The next grass tile just beyond the view, on the side the hero is walking toward, that has no cut yet. */
-  private nextAheadTile(): [number, number, DecorTile] | null {
-    const A = this.ahead; if (!A) return null;
-    const h = A.e.hero, spots: Array<[number, number]> = [];
-    if (Math.abs(h.vx) > 20) for (let ty = A.r0; ty <= A.r1; ty++) spots.push([h.vx > 0 ? A.c1 + 1 : A.c0 - 1, ty]);
-    if (Math.abs(h.vy) > 20) for (let tx = A.c0; tx <= A.c1; tx++) spots.push([tx, h.vy > 0 ? A.r1 + 1 : A.r0 - 1]);
-    for (const [tx, ty] of spots) {
-      if (tx < 0 || ty < 0) continue;
-      const tile = this.decorTile(A.e, tx, ty);
-      if (tile.kept(A.keep) >= 5 && !(tile.c && tile.res === A.res && tile.keep === A.keep)) return [tx, ty, tile];
-    }
-    return null;
-  }
+  /** A chunk baked at another resolution, or with other grass pasted in than is wanted now. */
+  private stale(c: HTMLCanvasElement) { return c.width !== Math.ceil(CHUNK * this.chunkRes) || (this.chunkDecor.get(c) ?? 0) !== this.pasteKeep; }
   private nextRingChunk(): [number, number] | null {
     const R = this.ring; if (!R) return null;
-    for (let cy = R.r0 - 1; cy <= R.r1 + 1; cy++) for (let cx = R.c0 - 1; cx <= R.c1 + 1; cx++) if (cx >= 0 && cy >= 0 && !this.chunks.has(`${cx},${cy}`)) return [cx, cy];
+    for (let cy = R.r0 - 1; cy <= R.r1 + 1; cy++) for (let cx = R.c0 - 1; cx <= R.c1 + 1; cx++) { if (cx < 0 || cy < 0) continue; const c = this.chunks.get(`${cx},${cy}`); if (!c || this.stale(c)) return [cx, cy]; }
     return null;
   }
-  /** Bakes the ring's ground chunks, then the grass tiles ahead, in the browser's idle time between frames (where it
-   *  has some; at the latest a moment later), so making them never holds up a frame. */
+  /** Bakes the ring's ground chunks in the browser's idle time between frames (where it has some; at the latest a
+   *  moment later), so baking them never holds up a frame. */
   private queueRing() {
-    if (this.ringQueued || (!this.nextRingChunk() && !this.nextAheadTile())) return;
+    if (this.ringQueued || !this.nextRingChunk()) return;
     this.ringQueued = true;
     const run = (deadline?: IdleDeadline) => {
       this.ringQueued = false;
       for (let n = 0; n < 4; n++) {
-        const next = this.nextRingChunk(), tile = next ? null : this.nextAheadTile();
-        if (next && this.ring) this.bakeChunk(this.ring.e, next[0], next[1]);
-        else if (tile && this.ahead) { const A = this.ahead, beat = Math.floor(this.time * A.rate + tile[2].phase); this.cutDecorTile(tile[2], tile[0], tile[1], (beat - tile[2].phase) / A.rate, beat, A.e, A.res, A.keep); }
-        else return;
+        const next = this.nextRingChunk(); if (!next || !this.ring) return;
+        const key = `${next[0]},${next[1]}`; this.chunks.delete(key); this.bakeChunk(this.ring.e, next[0], next[1]);
         if (!deadline || deadline.timeRemaining() < 4) break;
       }
       this.queueRing();
@@ -484,6 +496,21 @@ export class Renderer {
       else if (d.kind === 'clover') { for (let i = 0; i < 3; i++) { const lx = d.x + Math.cos(i * 2.1) * 3.2, ly = d.y + Math.sin(i * 2.1) * 2.2; circle(g, lx + 1, ly + 1.5, 2.8, mix(p.ground, INK, .22)); circle(g, lx, ly, 2.8, p.foliage[2]); } if (d.seed > .7) circle(g, d.x, d.y - 4, 2, '#fff'); }
       else { g.strokeStyle = p.foliage[1]; g.lineWidth = 2.2; g.lineCap = 'round'; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(d.x, d.y); g.quadraticCurveTo(d.x + i * 6, d.y - 8, d.x + i * 9, d.y - 12); g.stroke(); } circle(g, d.x + 1, d.y - 11, 3.4, mix(p.ground, INK, .2)); circle(g, d.x, d.y - 12, 3.2, d.seed > .5 ? '#e0a040' : d.color); }
     }
+    // Where grass and flowers stand still (weaker devices), they are pasted onto the ground here as paper pieces, each
+    // with its own lean. Tufts rooted just outside the chunk whose pieces reach into it are pasted too, in the same order
+    // as next door, so they carry on seamlessly across the chunk's edge.
+    const keep = this.pasteKeep;
+    if (keep > 0) {
+      const tufts = this.liveDecor.rect(ox - TUFT_X, oy - TUFT_DOWN, ox + CHUNK + TUFT_X, oy + CHUNK + TUFT_UP).filter(d => d.seed <= keep).sort((a, b) => a.y - b.y || a.x - b.x);
+      for (const d of tufts) {
+        const sp = this.decorSpriteOf(d, e), k = stillLean(d);
+        g.setTransform(res, 0, res * k, res, (d.x - ox) * res, (d.y - oy) * res);
+        g.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
+      }
+      g.setTransform(res, 0, 0, res, -ox * res, -oy * res);
+      for (const d of this.glowDecor.rect(ox - TUFT_X, oy - TUFT_DOWN, ox + CHUNK + TUFT_X, oy + CHUNK + TUFT_UP)) if (d.seed <= keep) glow(g, d.x, d.y - 6, 16, d.color, .3 * .55);
+    }
+    this.chunkDecor.set(c, keep);
     this.chunks.set(`${cx},${cy}`, c);
     return c;
   }
@@ -561,43 +588,34 @@ export class Renderer {
     }
   }
   /**
-   * Grass and flowers are pasted onto tiles of their own, and each tile is cut again up to twelve times a second like
-   * the puppets, every tile on its own beat: the whole valley still sways in the wind for a fraction of the drawing. The
-   * tufts the hero is walking through are left out of the tile and drawn live, so they still bend away from their feet.
+   * Grass and flowers. On a strong device (High) they sway in the wind every frame and bend away from the hero's feet.
+   * On weaker ones they are pasted onto the ground as still paper pieces when it is baked (see bakeChunk), which costs
+   * nothing a frame. Ground not yet re-baked since the quality changed has its tufts drawn live meanwhile, so none go
+   * missing.
    */
   private drawDecor(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
-    if (this.decor === 'off') { this.ahead = null; return; }
-    const t = this.time, hero = e.hero, res = this.chunkRes, keep = this.decor === 'less' ? .45 : 1, M = ctx.getTransform();
-    const c0 = Math.floor((v.x - DECOR_MX) / DECOR_TILE), c1 = Math.floor((v.x + v.w + DECOR_MX) / DECOR_TILE);
-    const r0 = Math.floor((v.y - DECOR_MB) / DECOR_TILE), r1 = Math.floor((v.y + v.h + DECOR_MT) / DECOR_TILE);
-    // Re-cuts are spread over the frames by each tile's beat; a busy frame lets a few wait for the next one. Weaker
-    // devices sway on a slower beat.
-    let budget = 12;
-    const rate = this.quality >= 1 ? 12 : this.quality >= .75 ? 8 : 6;
-    for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) {
-      const tile = this.decorTile(e, tx, ty);
-      if (tile.kept(keep) < 5) { for (const d of tile.items) if (d.seed <= keep) this.drawTuft(ctx, M, d, e, t); continue; }
-      const beat = Math.floor(t * rate + tile.phase), fresh = tile.c && tile.res === res && tile.keep === keep;
-      const near = hero.x > tx * DECOR_TILE - 120 && hero.x < (tx + 1) * DECOR_TILE + 120 && hero.y > ty * DECOR_TILE - 100 && hero.y < (ty + 1) * DECOR_TILE + 100;
-      if (!fresh || (tile.beat !== beat && (near || budget-- > 0))) this.cutDecorTile(tile, tx, ty, (beat - tile.phase) / rate, beat, e, res, keep);
-      ctx.drawImage(tile.c!, tx * DECOR_TILE - DECOR_MX, ty * DECOR_TILE - DECOR_MT, tile.c!.width / res, tile.c!.height / res);
-      for (const d of tile.live) this.drawTuft(ctx, M, d, e, t);
+    if (this.decor === 'off') return;
+    const t = this.time, keep = this.decor === 'less' ? .45 : 1, M = ctx.getTransform(), still = this.pasteKeep > 0;
+    // Tufts rooted just outside the view can reach into it; the ground in view already has those pasted in.
+    const g0 = Math.floor(v.x / CHUNK), g1 = Math.floor((v.x + v.w) / CHUNK), h0 = Math.floor(v.y / CHUNK), h1 = Math.floor((v.y + v.h) / CHUNK);
+    const x0 = v.x - TUFT_X, x1 = v.x + v.w + TUFT_X, y0 = v.y - TUFT_DOWN, y1 = v.y + v.h + TUFT_UP;
+    const livePart = (x: number, y: number) => {
+      const cx = Math.floor(x / CHUNK), cy = Math.floor(y / CHUNK), c = this.chunks.get(`${cx},${cy}`);
+      if (c && (this.chunkDecor.get(c) ?? 0) > 0) return false;
+      return !still || (cx >= g0 && cx <= g1 && cy >= h0 && cy <= h1);
+    };
+    for (let cy = Math.floor(y0 / CHUNK); cy <= Math.floor(y1 / CHUNK); cy++) for (let cx = Math.floor(x0 / CHUNK); cx <= Math.floor(x1 / CHUNK); cx++) {
+      if (!livePart(cx * CHUNK, cy * CHUNK)) continue;
+      for (const d of this.liveDecor.rect(Math.max(x0, cx * CHUNK), Math.max(y0, cy * CHUNK), Math.min(x1, (cx + 1) * CHUNK - .001), Math.min(y1, (cy + 1) * CHUNK - .001))) if (d.seed <= keep) this.drawTuft(ctx, M, d, e, t);
     }
     ctx.setTransform(M);
-    // Glowing mushrooms and shards light up the dark around them; a tiled one's glow is painted into its tile.
-    for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) {
-      const tile = this.decorTile(e, tx, ty), tiled = tile.kept(keep) >= 5;
-      for (const d of tile.glows) {
-        if (d.seed > keep) continue;
-        const a = shroomGlow(d, t); if (!tiled) glow(ctx, d.x, d.y - 6, 16, d.color, .3 * a); this.lights.push({ x: d.x, y: d.y - 6, r: 34, color: d.color, a });
-      }
+    // Glowing mushrooms and shards light up the dark around them (a pasted one's glow is on the ground already).
+    for (const d of this.glowDecor.rect(x0, y0, x1, y1)) {
+      if (d.seed > keep) continue;
+      const a = shroomGlow(d, t);
+      if (livePart(d.x, d.y)) glow(ctx, d.x, d.y - 6, 16, d.color, .3 * a);
+      this.lights.push({ x: d.x, y: d.y - 6, r: 34, color: d.color, a });
     }
-    // The row and column of tiles the hero is walking toward are cut ahead in idle time, like the ground.
-    this.ahead = { e, c0, c1, r0, r1, keep, res, rate }; this.queueRing();
-    // Tiles are big canvases: only those in view and the ring around it are kept, and tiles that scrolled away give
-    // their canvases back for new ones.
-    const most = (c1 - c0 + 2) * (r1 - r0 + 2);
-    while (this.decorTiles.size > most) { const [k, old] = this.decorTiles.entries().next().value!; this.decorTiles.delete(k); if (old.c && this.tilePool.length < 4) this.tilePool.push(old.c); }
   }
   /** How far a tuft leans at time `t`, from the wind and (when `hero` is given) the hero brushing past. */
   private swayOf(d: Decor, t: number, hero: Point | null) {
@@ -611,40 +629,12 @@ export class Renderer {
     ctx.setTransform(M.a, M.b, M.c + M.a * k, M.d, M.a * d.x + M.c * d.y + M.e, M.b * d.x + M.d * d.y + M.f);
     ctx.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
   }
-  private decorTiles = new Map<number, DecorTile>();
-  private tilePool: HTMLCanvasElement[] = [];
-  private decorTile(e: GameEngine, tx: number, ty: number): DecorTile {
-    const key = tx * 65536 + ty;
-    let tile = this.decorTiles.get(key);
-    if (tile) { this.decorTiles.delete(key); this.decorTiles.set(key, tile); return tile; }
-    const x0 = tx * DECOR_TILE, y0 = ty * DECOR_TILE;
-    const items = this.liveDecor.rect(x0, y0, x0 + DECOR_TILE - .001, y0 + DECOR_TILE - .001).slice().sort((a, b) => a.y - b.y);
-    const glows = items.filter(d => (d.kind === 'shroom' || d.kind === 'shard') && regionOf(e.world, d.x).darkness > 0);
-    const counts = new Map<number, number>();
-    tile = { items, glows, live: [], c: null, beat: -1, res: 0, keep: 0, phase: hash(tx * 7.13 + ty * 3.71), kept: k => { let n = counts.get(k); if (n === undefined) { n = items.filter(d => d.seed <= k).length; counts.set(k, n); } return n; } };
-    this.decorTiles.set(key, tile);
-    return tile;
-  }
-  /** Cuts a grass tile as it stands at time `t` (its beat `beat`). */
-  private cutDecorTile(tile: DecorTile, tx: number, ty: number, t: number, beat: number, e: GameEngine, res: number, keep: number) {
-    const W = Math.ceil((DECOR_TILE + DECOR_MX * 2) * res), H = Math.ceil((DECOR_TILE + DECOR_MT + DECOR_MB) * res);
-    let c = tile.c;
-    if (!c || c.width !== W || c.height !== H) { c = this.tilePool.pop() || document.createElement('canvas'); if (c.width !== W || c.height !== H) { c.width = W; c.height = H; } }
-    const g = c.getContext('2d')!, ox = tx * DECOR_TILE - DECOR_MX, oy = ty * DECOR_TILE - DECOR_MT, hero = e.hero;
-    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
-    tile.live = [];
-    for (const d of tile.items) {
-      if (d.seed > keep) continue;
-      // Near the hero a tuft is drawn live instead, with room for how far they can walk before the next re-cut.
-      if (Math.abs(d.x - hero.x) < 84 && Math.abs(d.y - hero.y) < 64) { tile.live.push(d); continue; }
-      const sp = this.decorSpriteOf(d, e), k = this.swayOf(d, t, null);
-      g.setTransform(res, 0, res * k, res, (d.x - ox) * res, (d.y - oy) * res);
-      g.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
-    }
-    g.setTransform(res, 0, 0, res, -ox * res, -oy * res);
-    for (const d of tile.glows) if (d.seed <= keep) glow(g, d.x, d.y - 6, 16, d.color, .3 * shroomGlow(d, t));
-    tile.c = c; tile.beat = beat; tile.res = res; tile.keep = keep;
-  }
+  /** Mushrooms and shards that glow (in the dark lands), found by where they stand. */
+  private glowDecor: Grid<Decor> = new Grid(256);
+  /** How much grass (the share of tufts kept, 0 for none) is pasted into each ground chunk, and how much should be:
+   *  none where it sways live. */
+  private chunkDecor = new WeakMap<HTMLCanvasElement, number>();
+  private pasteKeep = 0;
   /** Each tuft's baked piece, remembered on the tuft itself (reset when the ground resolution changes). */
   private decorMemo = new WeakMap<Decor, Sprite>();
   private decorSpriteOf(d: Decor, e: GameEngine) {

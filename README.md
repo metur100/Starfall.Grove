@@ -228,7 +228,8 @@ The whole game is a **pop-up paper storybook**, in the spirit of Cult of the Lam
 Phones and tablets come first: changes are measured in phone and tablet emulation with the CPU slowed 4× (roughly a mid-range phone).
 
 - **Ground:** pre-rendered into cached 512 px chunks. The chunks just outside the view are baked in the browser's idle time between frames, so walking into new ground doesn't stutter.
-- **Grass and flowers:** pasted onto 512 px tiles that are re-cut on a beat (12 times a second on High, 8 on Balanced, 6 below), each tile on its own beat. Tufts next to the hero are drawn live, so they still bend away from their feet. Glowing mushrooms are painted into their tile.
+- **Grass and flowers:** on High they sway every frame and bend away from the hero's feet. Below High (where phones and tablets play) they are pasted into the ground chunks as still paper pieces, each with its own lean, so they cost nothing a frame. Tufts rooted just outside a chunk that reach into it are pasted too, so nothing is clipped at a chunk's edge. While the ground is being re-baked after a quality change, tufts on ground not done yet are drawn live, so none go missing.
+- **Entering the world:** a short loading card ("Unfolding the valley") stays up while the first frames are drawn but not played. Meanwhile the ground, houses and trees around the start and the minimap's world map are prepared, so the first steps don't stutter. A fast device only sees a quick fade; a slow one waits four seconds at most, and anything left is finished in the background.
 - **Trees and buildings:** cached paper sprites that sway with a cheap skew. The ones just beyond the view are baked ahead, a few per frame. Scenery without moving parts skips the per-frame pass for smoke, flags and lights.
 - **Paper figures:** the edge, ink line and shadow are built once per pose, not every frame, with only as many outline copies as that edge's width on screen needs.
   - Villagers keep a cache of their poses (walk, work and sweep steps).
@@ -241,9 +242,9 @@ Phones and tablets come first: changes are measured in phone and tablet emulatio
 - **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
 - **Distant entities:** creatures, villagers and animals far from Mira sleep.
 - **Settings (pause menu → ⚙ Settings):** quality (Auto, High, Balanced, Low, Lowest), grass and flowers (Full, Less, Off), weather effects, a 30 fps cap, screen shake and an FPS counter.
-- **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn, and how often the hero and grass are re-cut. Auto starts lower on tablets and low-core devices. It steps down within a second when the game falls under about 50 fps. It steps back up after a calm half-minute in which frames keep up with the screen and use less than half of their time; this works on 60 Hz screens too.
+- **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn, and how often the hero is re-cut. Auto starts where it settled last time on this device, or with a guess the first time: lower on tablets and low-core devices. It judges each second of play by the average of the fastest nine tenths of the frames, so a moment of baking new ground doesn't count. It steps down after two slow seconds in a row (under about 50 fps), or at once below about 30 fps. It steps up after 8 calm seconds, but only when frames use less than a third of their time. After every change it waits until the ground and pieces have been remade at the new level before judging again, so a change can't set off another. A level it had to drop from right after reaching it is remembered as that device's ceiling.
 - **No live blur:** the HUD uses solid glass panels. `backdrop-filter` blur over the constantly redrawn canvas was the biggest cost on weak tablets.
-- **Memory:** the ground chunk and grass tile caches are sized to the view, and grass tiles that scroll away hand their canvases to new ones.
+- **Memory:** the ground chunk cache is sized to the view.
 
 ## Controls
 
