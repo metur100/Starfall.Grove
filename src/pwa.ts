@@ -17,5 +17,10 @@ export function startOffline() {
 }
 /** Calls back with true once a newer version of the game has been downloaded and is waiting. */
 export function onUpdateReady(l: Listener) { listeners.add(l); if (ready) l(true); return () => { listeners.delete(l); }; }
-/** Switches to the waiting version and reloads the page. */
-export function applyUpdate() { if (update) void update(true); else location.reload(); }
+/** Switches to the waiting version and reloads the page. A hard reload is scheduled as a fallback in case the
+ *  service worker never fires its own reload (the tab would otherwise be stuck showing the "Restart" button). */
+export function applyUpdate() {
+  const hardReload = () => location.reload();
+  if (update) { void update(true).catch(hardReload); window.setTimeout(hardReload, 2500); }
+  else hardReload();
+}
