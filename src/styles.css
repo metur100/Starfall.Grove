@@ -283,6 +283,10 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .spell.poor:not(.locked) .spell-icon-wrap b { opacity: .45; }
 .spell-icon-wrap { position: absolute; inset: 0; border-radius: inherit; display: grid; place-items: center; overflow: hidden; }
 .spell-icon-wrap b { font-size: 26px; color: var(--spell); text-shadow: 0 0 12px var(--spell); }
+/* Below full detail (phones and tablets) the HUD holds still: bars jump instead of gliding, and glows and sheens that
+   animate a painted property (repainting every frame, which a phone feels in a fight) stay put. */
+.hud-lite .health i, .hud-lite .mana i, .hud-lite .xp i, .hud-lite .boss-track i, .hud-lite .siege-track i { transition: none; }
+.hud-lite .spell.active, .hud-lite .ach-pop::before, .hud-lite .phase-2 .boss-track .fill, .hud-lite .btn.primary::after { animation: none; }
 .spell .cd { position: absolute; inset: 0; background: conic-gradient(rgba(4, 6, 14, .78) var(--cd), transparent 0); }
 .spell kbd { position: absolute; top: -8px; right: -6px; font-size: 10px; padding: 1px 5px; background: #141b33; }
 .spell small { position: absolute; bottom: 3px; left: 0; right: 0; text-align: center; font: 900 10px var(--ui); color: var(--mana); text-shadow: 0 1px 2px #000; }
@@ -778,6 +782,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .select-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 60% 70% at 50% 55%, rgba(10, 12, 30, 0) 30%, rgba(5, 6, 16, .82) 100%); }
 .select-top { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left)); }
 .select-top .btn { min-height: 40px; padding: 0 16px; }
+.select-top .eyebrow { position: absolute; left: 50%; transform: translateX(-50%); margin: 0; white-space: nowrap; pointer-events: none; }
 .select-stage { position: absolute; left: 50%; top: 6%; bottom: 13%; width: min(52vw, 760px); transform: translateX(-50%); z-index: 1; }
 .select-hint { position: absolute; left: 50%; top: 62px; transform: translateX(-50%); z-index: 1; margin: 0; font: 700 12px var(--ui); color: rgba(220, 225, 245, .6); pointer-events: none; }
 .select-info { position: absolute; left: max(3vw, 16px); top: 50%; transform: translateY(-50%); z-index: 2; width: min(330px, 26vw); padding: 20px 22px; border-radius: 22px; background: var(--glass); border: 1px solid var(--line); box-shadow: 0 20px 50px rgba(0, 0, 0, .45); animation: fade-in .5s both; }

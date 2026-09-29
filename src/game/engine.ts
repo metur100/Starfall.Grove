@@ -556,8 +556,10 @@ export class GameEngine {
 
   emit(x: number, y: number, count: number, color: string | string[], o: Partial<Particle> & { speed?: number; spread?: number; angle?: number } = {}) {
     const speed = o.speed ?? 160, spread = o.spread ?? Math.PI * 2, base = o.angle ?? 0;
-    count = this.fx < 1 ? Math.floor(count * this.fx + Math.random()) : count;
-    const cap = 900 * this.fx;
+    // Below full detail bursts are thinner and fewer sparks live at once: in a big fight they are what piles up.
+    const k = this.fx >= 1 ? 1 : this.fx * this.fx;
+    count = k < 1 ? Math.floor(count * k + Math.random()) : count;
+    const cap = this.fx >= 1 ? 900 : 540 * k;
     for (let i = 0; i < count && this.particles.length < cap; i++) {
       const a = base + (Math.random() - .5) * spread, v = speed * rand(.35, 1), life = (o.life ?? .7) * rand(.6, 1.2);
       this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, size: (o.size ?? 4) * rand(.6, 1.3), color: Array.isArray(color) ? pick(color) : color, kind: o.kind ?? 'dot', rot: Math.random() * 6.28, vr: rand(-8, 8), grav: o.grav ?? 0, drag: o.drag ?? 2.5, glow: o.glow ?? false });

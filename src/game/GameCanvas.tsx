@@ -71,6 +71,8 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     const applyTier = () => {
       const t = TIERS[tier];
       renderer.quality = t.quality; engine.fx = t.quality;
+      // Below full detail the HUD's bars jump instead of gliding: a glide restyles and repaints them every frame.
+      canvas.parentElement?.classList.toggle('hud-lite', t.quality < 1);
       const rect = canvas.getBoundingClientRect(); viewW = Math.max(1, rect.width); viewH = Math.max(1, rect.height);
       dpr = Math.min(t.dpr, window.devicePixelRatio || 1, Math.sqrt(t.budget / (viewW * viewH)));
       canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -143,8 +145,9 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
         if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · ${TIER_NAMES[tier]}`; }
         fpsFrames = 0; fpsSince = now;
       }
-      // The HUD hears about the game ten times a second, and only when something it shows has changed.
-      if (now - lastUi > 100) { const snap = share(lastSnap as GameSnapshot, engine.snapshot()); if (snap !== lastSnap) { lastSnap = snap; callbacks.current.onSnapshot(snap); } lastUi = now; }
+      // The HUD hears about the game ten times a second (five below full detail: each update restyles and repaints
+      // it, which a phone feels in a fight), and only when something it shows has changed. Its bars glide between.
+      if (now - lastUi > (renderer.quality >= 1 ? 100 : 200)) { const snap = share(lastSnap as GameSnapshot, engine.snapshot()); if (snap !== lastSnap) { lastSnap = snap; callbacks.current.onSnapshot(snap); } lastUi = now; }
       if (now - lastMusic > 250) { lastMusic = now; music.play(engine.musicTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
       if (!practice && !pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
     };

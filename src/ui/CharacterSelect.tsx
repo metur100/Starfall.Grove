@@ -50,7 +50,7 @@ export default function CharacterSelect({ hero, summary, touch, onHero, onEnter,
       })}
     </aside>
     <footer className="select-foot">
-      <button className="btn primary big enter" onClick={() => { sfx.play('ui'); onEnter(); }}>{practice ? 'Enter dummy world' : me.started ? 'Enter world' : 'Begin adventure'} <b>→</b></button>
+      <button className="btn primary big enter" onClick={() => { sfx.play('ui'); onEnter(); }}>{practice ? 'Enter the training grounds' : me.started ? 'Enter world' : 'Begin adventure'} <b>→</b></button>
       <small>{practice ? 'Test movement, damage and every spell. Adventure progress is untouched.' : me.started ? `${me.where} · ${me.gold} gold · ${'★'.repeat(me.stars)}${'☆'.repeat(Math.max(0, 12 - me.stars))}` : 'Every hero has their own level, bag and quests.'}</small>
     </footer>
   </main>;

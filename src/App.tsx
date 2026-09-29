@@ -599,7 +599,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
       <p className="title-tag">Four lands · five heroes · one fallen star</p>
       <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods, the silver summit and the burning Ember Wastes. Help the valley folk, gather loot, earn achievements — and learn what hides inside the Hollow Star.</p>
-      <div className="menu-actions title-actions"><button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button><button className="btn ghost big" onClick={onTutorial}>Tutorial <b>✦</b></button></div>
+      <div className="menu-actions title-actions"><button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button><button className="btn ghost big" onClick={onTutorial}>Training <b>✦</b></button></div>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
     {!touch && <footer className="title-foot"><span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> move</span><span><kbd>{kl('spell1')}</kbd> attack</span><span><kbd>{kl('spell2')} {kl('spell3')} {kl('spell4')} {kl('spell5')}</kbd> abilities</span><span><kbd>{kl('interact')}</kbd> interact</span><span><kbd>{kl('ride')}</kbd> ride</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>{kl('bag')}</kbd> bag</span><span><kbd>{kl('map')}</kbd> map</span></footer>}
@@ -764,7 +764,7 @@ const SpellButton = memo(function SpellButton({ spell, onCast, touch }: { spell:
 
 function PracticeSpellGuide({ hero }: { hero: HeroId }) {
   return <aside className="practice-guide" aria-label="Spell guide">
-    <header><span><small>Dummy world</small><strong>Spell guide</strong></span><em>All unlocked</em></header>
+    <header><span><small>Training grounds</small><strong>Spell guide</strong></span><em>All unlocked</em></header>
     {HEROES[hero].spells.map(id => { const s = SPELLS[id]; return <article key={id} style={{ '--spell': s.color } as CSSProperties}><span className="guide-icon">{s.icon}</span><div><b>{s.name} <kbd>{s.key}</kbd></b><p>{s.description}</p></div></article>; })}
   </aside>;
 }

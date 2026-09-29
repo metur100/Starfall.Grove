@@ -27,7 +27,7 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
 const DISPLAY = 'Cinzel, Georgia, serif';
 const UI = 'Nunito, "Trebuchet MS", sans-serif';
-const BUBBLE_FONT = `800 13px ${UI}`;
+const BUBBLE_FONT = `800 13px ${UI}`, TAG_FONT = `900 11px ${UI}`;
 const CHUNK = 512;
 /** How far a tuft's piece (with its lean and shadow) reaches from its root: sideways, up and down. */
 const TUFT_X = 40, TUFT_UP = 50, TUFT_DOWN = 16;
@@ -158,6 +158,22 @@ function spriteBounds(o: Obstacle): [number, number, number, number] {
 }
 
 /** How far each solid object reaches around its anchor, for its cutout. */
+/**
+ * How far each creature's paper piece reaches around its anchor (left, top, right, bottom), in units of its radius:
+ * measured over every frame of it fighting, as normal, elite and heroic, with room to spare. Its cut is only as big as
+ * that, which matters in a crowd, where every creature is re-cut several times a second. Others get a roomy box.
+ */
+const ENEMY_REACH: Partial<Record<Enemy['kind'], [number, number, number, number]>> = {
+  gloomling: [-1.79, -2.31, 1.24, .91], thornling: [-1.58, -1.63, 1.56, 1.37], wisp: [-1.3, -2.75, 1.29, 2.06],
+  bristleboar: [-1.56, -1.17, 1.43, 1.02], sporecap: [-1.4, -1.31, 1.38, 1.16], shadewolf: [-1.97, -1.2, 1.7, 1.09],
+  webspinner: [-1.81, -1.26, 1.81, 1.27], frostwraith: [-1.81, -2.64, 1.79, 1.2], cragGolem: [-1.28, -1.21, 1.27, .98],
+  emberImp: [-1.9, -2.73, 1.92, .77], ashScorpion: [-1.78, -1.3, 1.31, 1.05], magmaHulk: [-1.62, -1.34, 1.77, .98],
+};
+const reachBox = (reach: [number, number, number, number] | undefined, R: number): Box => {
+  if (!reach) return [-R * 3.2, -R * 4.2, R * 6.4, R * 5.6];
+  const [l, t, r, b] = reach.map(v => v * 1.12 + Math.sign(v) * .15);
+  return [l * R, t * R, (r - l) * R, (b - t) * R];
+};
 const OBJECT_BOX: Partial<Record<WorldObject['kind'], Box>> = {
   chest: [-32, -46, 64, 66], sign: [-36, -54, 72, 66], lore: [-28, -56, 56, 74], crack: [-72, -86, 144, 102], cage: [-52, -124, 104, 150],
   shrine: [-72, -76, 144, 104], finale: [-64, -132, 158, 172], site: [-80, -170, 160, 210], switch: [-34, -84, 68, 104],
@@ -208,16 +224,24 @@ export class Renderer {
   shake = true;
 
   /**
-   * Living things are paper puppets animated "on twos", like stop-motion: each is cut again `fps` times a second (twelve
-   * for creatures, quicker for the hero) into a canvas of its own, with the shadows, glows and lights it made noted
-   * down, and that one piece is drawn every frame wherever it stands. `key` names the thing; `worldCoords` painters
+   * Living things are paper puppets animated "on twos", like stop-motion: each is cut again `fps` times a second (for
+   * creatures twelve, eight or six by quality level; quicker for the hero) into a canvas of its own, with the shadows,
+   * glows and lights it made noted down, and that one piece is drawn every frame wherever it stands. `key` names the thing; `worldCoords` painters
    * draw at its world position.
    */
-  private living(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string, worldCoords = false, fps = 12) {
+  private living(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string, worldCoords = false, fps = this.creatureFps) {
     // Each thing keeps its own phase, so their re-cuts are spread over the frames instead of all landing on one.
     let L = this.alive.get(key);
     const phase = L?.phase ?? Math.random(), beat = Math.floor(this.time * fps + phase), ov = overlay || '';
-    if (!L || L.beat !== beat || L.px !== this.px || L.overlay !== ov || L.box[0] !== box[0] || L.box[1] !== box[1] || L.box[2] !== box[2] || L.box[3] !== box[3]) {
+    const due = !L || L.beat !== beat || L.px !== this.px || L.overlay !== ov || L.box[0] !== box[0] || L.box[1] !== box[1] || L.box[2] !== box[2] || L.box[3] !== box[3];
+    // Only so many re-cuts fit in a frame. In a crowd a piece has to be a few beats behind before it is cut again (the
+    // stalest first), so a big fight animates each creature a little less often instead of making frames slow. The
+    // hero and anything seen for the first time are always cut.
+    const behind = L ? beat - L.beat : 99, stale = this.cutStale;
+    const cut = due && (!L || key === 'hero' || behind < 0 || (this.cutBudget > 0 && behind >= stale) || behind > stale + 2);
+    if (due && !cut) this.cutSkipped++;
+    if (cut && L && key !== 'hero') { this.cutBudget--; this.cutUsed++; }
+    if (cut || !L) {
       const now = this.time; this.time = (beat - phase) / fps;
       let piece: Piece;
       try { piece = this.cutPiece(L?.b.c, x, y, box, style, draw, overlay, worldCoords); } finally { this.time = now; }
@@ -228,6 +252,10 @@ export class Renderer {
     this.drawPiece(ctx, L, x, y);
   }
   private alive = new Map<unknown, Piece & { beat: number; px: number; overlay: string; box: Box; phase: number }>();
+  /** Re-cuts still allowed this frame, and how many times a second creatures are re-cut (fewer on weaker levels). */
+  private cutBudget = 0; private creatureFps = 12;
+  /** How many beats behind a piece must be to be re-cut (raised while the budget runs short), and last frame's tally. */
+  private cutStale = 1; private cutSkipped = 0; private cutUsed = 0;
   /** A piece that looks the same whenever it is drawn with the same `key` (which must name everything it depends on,
    *  apart from where it stands): cut once and reused, like the villagers' poses. */
   private still(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void) {
@@ -314,6 +342,10 @@ export class Renderer {
     if (res !== this.memoRes) { this.memoRes = res; this.decorMemo = new WeakMap(); }
     // Grass sways live on a strong device; on others it is pasted onto the ground as still pieces (see drawDecor).
     this.pasteKeep = this.quality >= 1 || this.decor === 'off' ? 0 : this.decor === 'less' ? .45 : 1;
+    this.creatureFps = this.quality >= 1 ? 12 : this.quality >= .75 ? 8 : 6;
+    const budget = this.quality >= 1 ? 8 : 2;
+    this.cutStale = this.cutSkipped ? Math.min(6, this.cutStale + 1) : this.cutUsed < budget / 2 ? Math.max(1, this.cutStale - 1) : this.cutStale;
+    this.cutBudget = budget; this.cutSkipped = this.cutUsed = 0;
     const vw = w / scale, vh = h / scale;
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
     // In a cutscene the camera glides to what the story shows; otherwise it follows the hero a little ahead.
@@ -763,7 +795,7 @@ export class Renderer {
     const box = OBJECT_BOX[o.kind];
     // Chests, signs and lore stones only glint and pulse slowly, so they are re-cut half as often as the rest.
     const calm = o.kind === 'chest' || o.kind === 'sign' || o.kind === 'lore';
-    if (box) this.cutWorld(ctx, o, o.x, o.y, box, g => this.paintObject(g, o, e), SCENERY_LIVE, calm ? 6 : 12); else this.paintObject(ctx, o, e);
+    if (box) this.cutWorld(ctx, o, o.x, o.y, box, g => this.paintObject(g, o, e), SCENERY_LIVE, calm ? 6 : this.creatureFps); else this.paintObject(ctx, o, e);
     const near = this.near; if (near?.kind === 'object' && near.o === o) this.label(ctx, o.x, o.y + 44, o.name, regionOf(e.world, o.x).palette.accent);
   }
   private paintObject(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
@@ -1279,18 +1311,18 @@ export class Renderer {
     if (w === undefined) { const was = ctx.font; ctx.font = font; w = ctx.measureText(text).width; ctx.font = was; if (fontsReady()) { this.widths.set(k, w); if (this.widths.size > 600) this.widths.delete(this.widths.keys().next().value!); } }
     return w;
   }
-  private badge(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, box: Box, paint: (g: CanvasRenderingContext2D) => void) {
+  private badge(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, box: Box, paint: (g: CanvasRenderingContext2D) => void, scale = 1) {
     const res = Math.min(3, this.px), k = `${key}|${res}`;
     let s = this.badges.get(k);
     if (!s) {
       // Text measured from a font that hasn't loaded yet would be baked wrong for good, so wait for the fonts.
-      if (!fontsReady()) { ctx.save(); ctx.translate(x, y); paint(ctx); ctx.restore(); return; }
+      if (!fontsReady()) { ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); paint(ctx); ctx.restore(); return; }
       const [l, t, w, h] = box, c = document.createElement('canvas'); c.width = Math.ceil(w * res); c.height = Math.ceil(h * res);
       const g = c.getContext('2d')!; g.setTransform(res, 0, 0, res, -l * res, -t * res); paint(g);
       s = { c, l, t, w: c.width / res, h: c.height / res }; this.badges.set(k, s);
-      while (this.badges.size > 120) this.badges.delete(this.badges.keys().next().value!);
-    }
-    ctx.drawImage(s.c, x + s.l, y + s.t, s.w, s.h);
+      while (this.badges.size > 240) this.badges.delete(this.badges.keys().next().value!);
+    } else { this.badges.delete(k); this.badges.set(k, s); }
+    ctx.drawImage(s.c, x + s.l * scale, y + s.t * scale, s.w * scale, s.h * scale);
   }
   private paperDot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) { circle(ctx, x, y, r + 1.2, INK); circle(ctx, x, y, r, color); }
   /** Someone walking with the hero wears a green ring (red while scared); a thief a red one. */
@@ -1303,15 +1335,16 @@ export class Renderer {
     ctx.fillStyle = c; ctx.font = `900 13px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(n.role === 'thief' ? '✋' : n.scared ? '!' : '♥', n.x, my + 5);
   }
   private drawBubbles(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
-    ctx.font = BUBBLE_FONT; ctx.textAlign = 'center';
     for (const n of e.npcs) {
       if (n.barkT <= 0 || n.x < v.x - 100 || n.x > v.x + v.w + 100 || n.y < v.y - 100 || n.y > v.y + v.h + 100) continue;
       const a = Math.min(1, n.barkT * 2, (3.2 - n.barkT) * 5), y = n.y - 72 - (1 - Math.min(1, (3.2 - n.barkT) * 4)) * 8;
-      const w = this.textWidth(ctx, BUBBLE_FONT, n.bark) + 20;
+      const w = this.textWidth(ctx, BUBBLE_FONT, n.bark) + 20, bark = n.bark;
       ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(255,250,236,.95)'; ctx.beginPath(); ctx.roundRect(n.x - w / 2, y - 18, w, 26, 13); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(n.x - 6, y + 7); ctx.lineTo(n.x, y + 15); ctx.lineTo(n.x + 5, y + 7); ctx.fill();
-      ctx.fillStyle = '#3a2e24'; ctx.fillText(n.bark, n.x, y);
+      this.badge(ctx, `bub|${bark}`, n.x, y, [-w / 2 - 1, -19, w + 2, 36], g => {
+        g.fillStyle = 'rgba(255,250,236,.95)'; g.beginPath(); g.roundRect(-w / 2, -18, w, 26, 13); g.fill();
+        g.beginPath(); g.moveTo(-6, 7); g.lineTo(0, 15); g.lineTo(5, 7); g.fill();
+        g.font = BUBBLE_FONT; g.textAlign = 'center'; g.fillStyle = '#3a2e24'; g.fillText(bark, 0, 0);
+      });
       ctx.globalAlpha = 1;
     }
   }
@@ -1659,7 +1692,7 @@ export class Renderer {
       const r = en.kind === 'shadewolf' ? 115 : 80; ctx.save(); ctx.translate(en.x, en.y); ctx.scale(1, .62); ctx.fillStyle = 'rgba(224,70,56,.14)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(190,40,30,.75)'; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]); ctx.restore();
     }
     if (en.rage > .15) glow(ctx, en.x, en.y + (en.kind === 'wisp' || en.kind === 'frostwraith' ? -10 : -en.r * .15), en.r * (en.boss ? 2 : 2.5), '#ff3b2e', (bv ? .18 : .5) * en.rage * (.85 + Math.sin(t * 9) * .15));
-    const R = en.r * (en.boss ? 1.25 : 1) * Math.max(1, spawn), box: Box = [-R * 3.2, -R * 4.2, R * 6.4, R * 5.6];
+    const R = en.r * (en.boss ? 1.25 : 1) * Math.max(1, spawn), box = reachBox(bv ? undefined : ENEMY_REACH[en.kind], R);
     const a0 = ctx.globalAlpha; if (en.stunT > 0) ctx.globalAlpha = a0 * .85;
     this.living(ctx, en, en.x, en.y, box, en.boss ? BOSS : STICKER, ctx => {
     const t = this.time + en.homeX * .01;
@@ -1717,7 +1750,7 @@ export class Renderer {
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
   }
   /** Wraps a painter that draws in world coordinates into a sticker cutout anchored at (x, y). */
-  private cutWorld(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, draw: (g: CanvasRenderingContext2D) => void, style: CutStyle = STICKER, fps = 12) {
+  private cutWorld(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, draw: (g: CanvasRenderingContext2D) => void, style: CutStyle = STICKER, fps = this.creatureFps) {
     this.living(ctx, key, x, y, box, style, draw, undefined, true, fps);
   }
   private drawTrainingDummy(ctx: CanvasRenderingContext2D, en: Enemy) { this.cutWorld(ctx, en, en.x, en.y, [-50, -90, 100, 124], g => this.paintDummy(g, en)); }
@@ -1738,20 +1771,24 @@ export class Renderer {
   /** "Lv 9" over creatures near Mira, coloured by how dangerous they are compared to her. */
   private drawLevelTags(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     const h = e.hero, me = e.profile.level;
-    ctx.font = `900 11px ${UI}`; ctx.textAlign = 'center';
     for (const en of e.enemies) {
       if (en.dead || en.boss || en.spawnT > 0 || en.x < v.x - 40 || en.x > v.x + v.w + 40 || en.y < v.y - 40 || en.y > v.y + v.h + 60) continue;
       if (!en.aggro && Math.abs(en.x - h.x) + Math.abs(en.y - h.y) > 620) continue;
       const d = en.level - me, c = d >= 5 ? '#ff4d4d' : d >= 3 ? '#ff9a4a' : d >= -2 ? '#fff1b8' : d >= -4 ? '#9fe870' : '#9aa0aa';
       const text = en.heroic ? `Heroic · Lv ${en.level}` : `Lv ${en.level}`, y = en.y - en.r * (en.heroic ? 1.45 : en.elite ? 1.6 : 1) - (en.hp < en.maxHp || en.heroic ? 28 : 18) - (en.elite ? 14 : 0);
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(12,14,22,.8)'; ctx.strokeText(text, en.x, y); ctx.fillStyle = c; ctx.fillText(text, en.x, y);
-      if (en.heroic) { ctx.font = `900 14px ${DISPLAY}`; ctx.strokeText(en.heroic, en.x, y - 15); ctx.fillStyle = '#f0c8ff'; ctx.fillText(en.heroic, en.x, y - 15); ctx.font = `900 11px ${UI}`; }
-      if (d >= 5) {
-        // A tiny skull: far too strong for Mira.
-        const sx = en.x - ctx.measureText(text).width / 2 - 9, sy = y - 4;
-        circle(ctx, sx, sy, 5.5, 'rgba(12,14,22,.85)'); circle(ctx, sx, sy - .5, 4.2, c); rect(ctx, sx - 2.4, sy + 2, 4.8, 2.6, c);
-        circle(ctx, sx - 1.6, sy - .6, 1.1, '#1a0a0a'); circle(ctx, sx + 1.6, sy - .6, 1.1, '#1a0a0a');
-      }
+      // Painted once per wording and colour, then stamped (a crowd shows dozens of these).
+      const tw = this.textWidth(ctx, TAG_FONT, text), heroic = en.heroic, hw = heroic ? this.textWidth(ctx, `900 14px ${DISPLAY}`, heroic) : 0, half = Math.max(tw / 2 + 18, hw / 2 + 4);
+      this.badge(ctx, `lv|${text}|${c}|${heroic || ''}|${d >= 5 ? 1 : 0}`, en.x, y, [-half, heroic ? -32 : -14, half * 2, heroic ? 40 : 22], g => {
+        g.font = TAG_FONT; g.textAlign = 'center'; g.lineJoin = 'round';
+        g.lineWidth = 3; g.strokeStyle = 'rgba(12,14,22,.8)'; g.strokeText(text, 0, 0); g.fillStyle = c; g.fillText(text, 0, 0);
+        if (heroic) { g.font = `900 14px ${DISPLAY}`; g.strokeText(heroic, 0, -15); g.fillStyle = '#f0c8ff'; g.fillText(heroic, 0, -15); }
+        if (d >= 5) {
+          // A tiny skull: far too strong for the hero.
+          const sx = -tw / 2 - 9, sy = -4;
+          circle(g, sx, sy, 5.5, 'rgba(12,14,22,.85)'); circle(g, sx, sy - .5, 4.2, c); rect(g, sx - 2.4, sy + 2, 4.8, 2.6, c);
+          circle(g, sx - 1.6, sy - .6, 1.1, '#1a0a0a'); circle(g, sx + 1.6, sy - .6, 1.1, '#1a0a0a');
+        }
+      });
     }
   }
   private drawBoar(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
@@ -2631,7 +2668,8 @@ export class Renderer {
     }
   }
   private drawParticles(ctx: CanvasRenderingContext2D, list: Particle[]) {
-    const rich = this.quality > .5;
+    // Glows around sparks are extra light on the GPU for every one of dozens of sparks: full detail only.
+    const rich = this.quality >= 1;
     for (const p of list) {
       const k = p.life / p.max;
       if (p.kind === 'ring') {
@@ -2663,13 +2701,17 @@ export class Renderer {
     for (const p of list) if (p.glow && p.kind !== 'ring' && n < most && p.life / p.max > .5) { this.lights.push({ x: p.x, y: p.y, r: p.size * 10, color: p.color, a: .5 }); n++; }
   }
   private drawFloating(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    ctx.textAlign = 'center';
-    for (const f of e.floating) {
+    // A spell that hits a crowd raises a number over every creature: below full detail only the newest ten are shown.
+    const most = this.quality >= 1 ? Infinity : 10, from = Math.max(0, e.floating.length - most);
+    for (let i = from; i < e.floating.length; i++) {
+      const f = e.floating[i];
       const k = f.life / f.max, pop = k > .8 ? 1 + (k - .8) * 3 : 1;
+      // Painted once per number, colour and size, and stamped (popping in by scale) for the rest of its life.
+      const font = `900 ${f.size}px ${UI}`, w = this.textWidth(ctx, font, f.text), size = f.size, text = f.text, color = f.color;
       ctx.globalAlpha = Math.min(1, k * 2.2);
-      ctx.font = `900 ${Math.round(f.size * pop)}px ${UI}`;
-      ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.strokeText(f.text, f.x, f.y);
-      ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+      this.badge(ctx, `f|${text}|${color}|${size}`, f.x, f.y, [-w / 2 - 5, -size - 4, w + 10, size * 1.35 + 8], g => {
+        g.font = font; g.textAlign = 'center'; g.lineWidth = 5; g.lineJoin = 'round'; g.strokeStyle = INK; g.strokeText(text, 0, 0); g.fillStyle = color; g.fillText(text, 0, 0);
+      }, pop);
       ctx.globalAlpha = 1;
     }
   }

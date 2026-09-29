@@ -76,7 +76,7 @@ function applyVolumes() {
 type Out = { node: AudioNode; t: number };
 let listener = { x: 0, y: 0 };
 let voices = 0;
-const MAX_VOICES = 48;
+const MAX_VOICES = 20;
 
 /** Output chain for one sound: optional stereo pan and distance attenuation, plus a reverb send. */
 function output(a: Core, vol: number, rev: number, delay = 0, pos?: { x: number; y: number }): Out | null {
@@ -190,7 +190,9 @@ export const sfx = {
     if (!core && !audioCore()) return;
     if (!core) return;
     const now = performance.now();
-    if (now - (lastPlayed.get(name) || 0) < 40) return;
+    // The same sound at most every 70 ms, and 20 at once: a spell hitting a crowd would otherwise start dozens of voices
+    // in one frame, which a phone feels.
+    if (now - (lastPlayed.get(name) || 0) < 70) return;
     if (voices >= MAX_VOICES) return;
     lastPlayed.set(name, now);
     try {
