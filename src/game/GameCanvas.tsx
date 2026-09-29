@@ -15,6 +15,22 @@ const TIERS = [
   { budget: 2_300_000, dpr: 2, quality: 1 },
 ];
 
+/** `next` with every part that equals the same part of `prev` swapped for prev's own, so an unchanged snapshot (or an
+ *  unchanged part of one) keeps its identity and the HUD skips redrawing it. */
+function share<T>(prev: T, next: T): T {
+  if (Object.is(prev, next)) return prev;
+  if (!prev || !next || typeof prev !== 'object' || typeof next !== 'object' || Array.isArray(prev) !== Array.isArray(next)) return next;
+  if (Array.isArray(next)) {
+    const p = prev as unknown[]; let same = p.length === next.length;
+    const out = next.map((v, i) => { const x = share(p[i], v); if (x !== p[i]) same = false; return x; });
+    return (same ? prev : out) as T;
+  }
+  const p = prev as Record<string, unknown>, n = next as Record<string, unknown>, keys = Object.keys(n), out: Record<string, unknown> = {};
+  let same = keys.length === Object.keys(p).length;
+  for (const k of keys) { const x = share(p[k], n[k]); out[k] = x; if (x !== p[k]) same = false; }
+  return (same ? prev : out) as T;
+}
+
 type Props = { hero: HeroId; runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; practice?: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
 export default function GameCanvas({ hero, runKey, paused, graphics, touch, practice = false, onReady, onSnapshot, onEvent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,6 +49,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // Auto quality starts from a guess about the device and then follows the measured frame time.
     let quality: GraphicsSettings['quality'] | null = null, tier = 0, ceiling = TIERS.length - 1;
     let frameSum = 0, busySum = 0, frames = 0, calmUntil = 0, lastUp = -1e9, fpsFrames = 0, fpsSince = 0;
+    let lastSnap: GameSnapshot | null = null, nearX = '', nearY = '';
     const applyTier = () => {
       const t = TIERS[tier];
       renderer.quality = t.quality; engine.fx = t.quality;
@@ -56,9 +73,13 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       }
       if (!pausedRef.current) engine.update(dt); else engine.settleFx(dt);
       renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
-      // The touch prompt follows the person in reach; styles are written directly so the HUD doesn't re-render every frame.
-      const stage = canvas.parentElement, ns = renderer.nearScreen;
-      if (stage && ns) { stage.style.setProperty('--near-x', `${Math.round(ns.x)}px`); stage.style.setProperty('--near-y', `${Math.round(ns.y)}px`); }
+      // The touch prompt follows the person in reach. Its position is written straight onto the prompt, and only when it
+      // moves: set on the stage it would restyle the whole HUD every frame.
+      const ns = renderer.nearScreen, prompt = ns && canvas.parentElement?.querySelector<HTMLElement>('.near-prompt.compact');
+      if (ns) {
+        const x = `${Math.round(ns.x)}px`, y = `${Math.round(ns.y)}px`;
+        if (prompt && (x !== nearX || y !== nearY || prompt.style.getPropertyValue('--near-x') !== x)) { prompt.style.setProperty('--near-x', x); prompt.style.setProperty('--near-y', y); nearX = x; nearY = y; }
+      }
       const busy = (performance.now() - now) / 1000;
       if (quality === 'auto' && raw > 0 && raw < .25 && !pausedRef.current && now > calmUntil) {
         frameSum += raw; busySum += busy; frames++;
@@ -66,7 +87,9 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
         // With the 30 fps cap the frame interval is fixed, so the time spent drawing is what counts.
         if (frames >= 60 || frameSum > 1) {
           const avg = frameSum / frames, work = busySum / frames; frameSum = busySum = frames = 0;
-          const slow = capped ? avg > .045 || work > .024 : avg > .024, smooth = capped ? work < .008 : avg < .0135;
+          // Uncapped, falling under ~50 fps steps down; keeping up with the screen with most of each frame to spare
+          // (even at a steady 60 Hz, where the interval alone can't show spare time) is room to step up.
+          const slow = capped ? avg > .045 || work > .024 : avg > .0205, smooth = capped ? work < .008 : avg < .0185 && work < .0065;
           if (slow && tier > 0) {
             // Dropping right after a step up means that tier is too much for this device: stay below it.
             if (now - lastUp < 30000) ceiling = tier - 1;
@@ -80,7 +103,8 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
         if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · ${TIER_NAMES[tier]}`; }
         fpsFrames = 0; fpsSince = now;
       }
-      if (now - lastUi > 100) { callbacks.current.onSnapshot(engine.snapshot()); lastUi = now; }
+      // The HUD hears about the game ten times a second, and only when something it shows has changed.
+      if (now - lastUi > 100) { const snap = share(lastSnap as GameSnapshot, engine.snapshot()); if (snap !== lastSnap) { lastSnap = snap; callbacks.current.onSnapshot(snap); } lastUi = now; }
       if (now - lastMusic > 250) { lastMusic = now; music.play(engine.musicTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
       if (!practice && !pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
     };

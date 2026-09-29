@@ -120,7 +120,10 @@ export class Cutter {
    * every draw from a small software canvas is a texture upload.
    */
   private compose(out: CanvasRenderingContext2D, x: number, y: number, W: number, H: number, pad: number, res: number, style: CutStyle, shadowOnly = false) {
-    const n = this.quality >= .75 ? 12 : 8, sx = Math.round(style.shadowX * res), sy = Math.round(style.shadowY * res);
+    // A ring of n copies leaves the outline r·(1 − cos π/n) short between copies: a narrow ring needs fewer copies than
+    // a wide one for the same smooth edge. These keep every ring within half a pixel of round.
+    const count = (r: number) => r <= 3.5 ? 6 : r <= 6.5 || this.quality < .75 ? 8 : 12;
+    const sx = Math.round(style.shadowX * res), sy = Math.round(style.shadowY * res);
     const RW = W + Math.max(0, sx) + 2, RH = H + Math.max(0, sy) + 2;
     this.fit(this.out, RW, RH);
     const o = this.out.getContext('2d')!;
@@ -128,10 +131,11 @@ export class Cutter {
     this.tint(W, H, style.ink);
     if (style.shadow > 0) { o.globalAlpha = style.shadow; o.drawImage(this.sil, 0, 0, W, H, sx, sy, W, H); o.globalAlpha = 1; }
     if (!shadowOnly) {
-      if (style.inkW > 0) for (const [ox, oy] of ring((style.edgeW + style.inkW) * res, n)) o.drawImage(this.sil, 0, 0, W, H, ox, oy, W, H);
+      const ri = (style.edgeW + style.inkW) * res, re = style.edgeW * res;
+      if (style.inkW > 0) for (const [ox, oy] of ring(ri, count(ri))) o.drawImage(this.sil, 0, 0, W, H, ox, oy, W, H);
       if (style.edgeW > 0) {
         if (style.edge !== style.ink) this.tint(W, H, style.edge);
-        for (const [ox, oy] of ring(style.edgeW * res, n)) o.drawImage(this.sil, 0, 0, W, H, ox, oy, W, H);
+        for (const [ox, oy] of ring(re, count(re))) o.drawImage(this.sil, 0, 0, W, H, ox, oy, W, H);
       }
       o.drawImage(this.body, 0, 0, W, H, 0, 0, W, H);
     }

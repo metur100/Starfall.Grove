@@ -225,19 +225,25 @@ The whole game is a **pop-up paper storybook**, in the spirit of Cult of the Lam
 
 ## Performance
 
-- **Ground:** pre-rendered into cached 512 px chunks.
-- **Trees and buildings:** cached paper sprites that sway with a cheap skew. The ones just beyond the view are baked ahead, a few per frame.
-- **Paper figures:** the edge, ink line and shadow are built once per pose, not every frame.
+Phones and tablets come first: changes are measured in phone and tablet emulation with the CPU slowed 4× (roughly a mid-range phone).
+
+- **Ground:** pre-rendered into cached 512 px chunks. The chunks just outside the view are baked in the browser's idle time between frames, so walking into new ground doesn't stutter.
+- **Grass and flowers:** pasted onto 512 px tiles that are re-cut on a beat (12 times a second on High, 8 on Balanced, 6 below), each tile on its own beat. Tufts next to the hero are drawn live, so they still bend away from their feet. Glowing mushrooms are painted into their tile.
+- **Trees and buildings:** cached paper sprites that sway with a cheap skew. The ones just beyond the view are baked ahead, a few per frame. Scenery without moving parts skips the per-frame pass for smoke, flags and lights.
+- **Paper figures:** the edge, ink line and shadow are built once per pose, not every frame, with only as many outline copies as that edge's width on screen needs.
   - Villagers keep a cache of their poses (walk, work and sweep steps).
-  - Creatures, pets, critters and objects move in stop-motion at 12 frames a second, each on its own beat, so their redraws are spread across frames.
-  - Only the hero is cut fresh every frame.
+  - Creatures, pets, critters and objects move in stop-motion at 12 frames a second (chests, signs and lore stones at 6), each on its own beat, so their redraws are spread across frames. Mana pods share twelve rocking frames per land.
+  - The hero is cut every frame on High, 30 times a second on Balanced and 20 below. They are still drawn where they stand every frame, so movement stays smooth.
+  - Quest badges, shop signs and place names are painted once and stamped.
+- **Minimap:** the map, fog and markers are redrawn ten times a second into a slightly larger canvas that slides under the window every frame. The hero's arrow is drawn live.
+- **HUD:** the game sends the HUD a snapshot ten times a second, and only when something in it changed. Unchanged parts keep their identity, so memoised HUD pieces (vitals, quest tracker, spell and potion buttons) don't re-render. The touch prompt's position is written straight onto the prompt, so the rest of the HUD isn't restyled every frame. Quest rows reuse reward texts and look people up by id.
 - **Big screens:** on large monitors the camera comes closer, so a 1440p screen shows about the same part of the valley as a laptop. The ground is still baked at screen resolution, because larger ground textures were too much for the GPU.
 - **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
 - **Distant entities:** creatures, villagers and animals far from Mira sleep.
 - **Settings (pause menu → ⚙ Settings):** quality (Auto, High, Balanced, Low, Lowest), grass and flowers (Full, Less, Off), weather effects, a 30 fps cap, screen shake and an FPS counter.
-- **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn. Auto starts lower on tablets and low-core devices, then steps down within a second if frames run long and back up once they are smooth.
+- **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn, and how often the hero and grass are re-cut. Auto starts lower on tablets and low-core devices. It steps down within a second when the game falls under about 50 fps. It steps back up after a calm half-minute in which frames keep up with the screen and use less than half of their time; this works on 60 Hz screens too.
 - **No live blur:** the HUD uses solid glass panels. `backdrop-filter` blur over the constantly redrawn canvas was the biggest cost on weak tablets.
-- **Memory:** the ground chunk cache is sized to the view.
+- **Memory:** the ground chunk and grass tile caches are sized to the view, and grass tiles that scroll away hand their canvases to new ones.
 
 ## Controls
 

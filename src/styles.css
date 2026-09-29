@@ -932,8 +932,9 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 }
 
 /* ─────────── title: everything centred in one column, the tools tucked in the corner */
-/* !important: the generic menu rule that lifts page content above the backdrop would otherwise put this back in the flow. */
-.title-page .title-top { position: absolute !important; top: 0; left: 0; right: 0; z-index: 3; width: auto; justify-content: flex-end; padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+/* !important: the generic menu rule that lifts page content above the backdrop would otherwise put this back in the flow,
+   and under the title block, which on phones reaches up behind the mute and settings buttons and took their taps. */
+.title-page .title-top { position: absolute !important; top: 0; left: 0; right: 0; z-index: 3 !important; width: auto; justify-content: flex-end; padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
 .title-page .title-hero { position: relative; flex: 1 0 auto; width: min(720px, calc(100% - 32px)); justify-content: center; padding: 72px 0 6vh; }
 /* A soft pool of shadow behind the text so it reads over the moon and the aurora. */
 .title-page .title-hero::before { content: ''; position: absolute; left: 50%; top: 50%; z-index: -1; width: 130%; height: 110%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, rgba(8, 10, 26, .6), rgba(8, 10, 26, 0)); pointer-events: none; }

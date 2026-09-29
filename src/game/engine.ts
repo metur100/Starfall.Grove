@@ -1248,7 +1248,15 @@ export class GameEngine {
   }
   private rewardXp(q: QuestDef) { return Math.round(q.reward.xp * this.region(q.region).xpScale); }
   private rewardGold(q: QuestDef) { return q.reward.gold ?? Math.round(q.reward.xp * this.region(q.region).xpScale * .3 / 5) * 5; }
+  /** What a quest pays, as one line. It depends only on the quest and the hero, so each is worked out once (the quest
+   *  rows in every snapshot ask for all of them). */
   rewardText(q: QuestDef) {
+    let text = this.rewardTexts.get(q.id);
+    if (text === undefined) { text = this.makeRewardText(q); this.rewardTexts.set(q.id, text); }
+    return text;
+  }
+  private rewardTexts = new Map<string, string>();
+  private makeRewardText(q: QuestDef) {
     const r = q.reward, parts = [`${this.rewardXp(q)} XP`, `${this.rewardGold(q)} gold`];
     if (r.hearts) parts.push(`+${r.hearts * HP_UNIT} max health`);
     if (r.mana) parts.push(`+${r.mana} max magic`);
@@ -3321,7 +3329,7 @@ export class GameEngine {
   mainTarget(): Point | null { const q = this.currentMain(); return q ? this.targetOf(q) : null; }
   questTarget(): Point | null { const q = this.tracked ? this.quest(this.tracked) : null; return q && !q.main ? this.targetOf(q) : null; }
   private goalOf(q: QuestDef) {
-    const st = this.qs(q.id), name = (id?: string) => this.npcs.find(n => n.id === id)?.name || '', s = this.region(q.region).script;
+    const st = this.qs(q.id), name = (id?: string) => this.npcNamed(id)?.name || '', s = this.region(q.region).script;
     if (st.status === 'available') return q.giver === 'fox' ? (this.hasPet ? 'Follow Tuft' : 'Follow the road') : `Talk to ${name(q.giver)}`;
     if (st.status === 'ready') return `Report to ${name(this.reportTo(q))}`;
     if (st.status === 'done') return 'Complete';
@@ -3339,22 +3347,38 @@ export class GameEngine {
       case 'chase': return `Catch ${q.who?.name}`;
       case 'trail': return 'Follow the trail';
       case 'herd': return `${q.animal === 'goat' ? 'Goats' : 'Sheep'} in the pen`;
-      case 'key': { const k = this.world.objects.find(o => o.id === this.keyId(q, q.keys![0])), at = k ? this.poiAt(k, 400)?.name : ''; return `Find the ${k?.name.toLowerCase() || 'relic'}${at ? ` · ${at}` : ''}`; }
+      case 'key': {
+        // Where a relic lies never changes, so its goal is worked out once.
+        let goal = this.keyGoals.get(q.id);
+        if (goal === undefined) { const k = this.world.objects.find(o => o.id === this.keyId(q, q.keys![0])), at = k ? this.poiAt(k, 400)?.name : ''; goal = `Find the ${k?.name.toLowerCase() || 'relic'}${at ? ` · ${at}` : ''}`; this.keyGoals.set(q.id, goal); }
+        return goal;
+      }
       case 'boss': {
-        const b = this.enemies.find(e => e.id === q.boss);
+        const b = this.enemyNamed(q.boss);
         const bn = b ? this.bossName(b) : q.boss?.endsWith(':final') ? s.final?.name || 'Umbra' : s.bossName;
         return this.main.bosses.includes(q.boss!) ? `Restore the ${s.finaleName}` : `Defeat ${bn}`;
       }
     }
   }
   private rowFor(q: QuestDef): QuestRow {
-    const st = this.qs(q.id), giver = this.npcs.find(n => n.id === q.giver), to = this.npcs.find(n => n.id === this.reportTo(q));
+    const st = this.qs(q.id), giver = this.npcNamed(q.giver), to = this.npcNamed(this.reportTo(q));
     const detail = st.status === 'available' ? (q.giver === 'fox' ? this.personal([q.summary])[0] : `${giver?.name} in ${giver?.poiName} has a request.`)
       : st.status === 'ready' ? `Report to ${to?.name} in ${to?.poiName}.` : st.status === 'done' ? 'Complete' : q.summary;
     const counted = st.status === 'active' && q.count > 1 && COUNTED.has(q.kind);
     return { id: q.id, title: q.title, giver: giver?.name || this.guideVoice.name, status: st.status, detail, goal: this.goalOf(q), progress: counted ? st.progress : 0, count: counted ? q.count : 0, xp: this.rewardXp(q), reward: this.rewardText(q), tracked: this.tracked === q.id, chapter: this.region(q.region).chapter, personal: !!q.hero,
       canAbandon: this.canAbandon(q.id), abandoned: st.status === 'available' && this.abandoned.has(q.id) };
   }
+  /** The villager with this id: while a snapshot is being made (its quest rows ask for dozens), from an index made for it. */
+  private npcNamed(id: string | undefined) { return this.npcIndex ? (id ? this.npcIndex.get(id) : undefined) : this.npcs.find(n => n.id === id); }
+  private npcIndex: Map<string, Npc> | null = null;
+  /** The creature with this id: while a snapshot is being made, from an index made (when first asked) for it. */
+  private enemyNamed(id: string | undefined) {
+    if (!this.npcIndex) return this.enemies.find(e => e.id === id);
+    if (!this.enemyIndex) { this.enemyIndex = new Map(); for (const e of this.enemies) if (!this.enemyIndex.has(e.id)) this.enemyIndex.set(e.id, e); }
+    return id ? this.enemyIndex.get(id) : undefined;
+  }
+  private enemyIndex: Map<string, Enemy> | null = null;
+  private keyGoals = new Map<string, string>();
   private mainRow() {
     const cur = this.currentMain();
     if (!cur) { const all = this.world.quests.filter(q => q.main && q.region === this.lastRegion); return { title: 'The valley is saved', step: 'Every light is shining', progress: 0, count: 0, index: all.length, total: all.length }; }
@@ -3374,6 +3398,11 @@ export class GameEngine {
     return n.role === 'merchant' || n.role === 'armorer' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
   }
   snapshot(): GameSnapshot {
+    const index = new Map<string, Npc>(); for (const n of this.npcs) if (!index.has(n.id)) index.set(n.id, n);
+    this.npcIndex = index;
+    try { return this.buildSnapshot(); } finally { this.npcIndex = null; this.enemyIndex = null; }
+  }
+  private buildSnapshot(): GameSnapshot {
     const near = this.nearest(), h = this.hero, p = this.profile;
     const b = this.enemies.find(e => e.boss && !e.dead && e.aggro && this.canHurt(e));
     let nearName: string | null = null, nearAction: string | null = null;
@@ -3382,8 +3411,7 @@ export class GameEngine {
       const o = near.o; nearName = o.name;
       nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore', site: 'Build', switch: 'Light', barrier: 'Inspect', clue: '', pen: '', ward: '' } as const)[o.kind];
     }
-    const chests = this.world.objects.filter(o => o.kind === 'chest'), lore = this.world.objects.filter(o => o.kind === 'lore');
-    const sides = this.sideQuests();
+    const { chests, lore, sides } = this.fixedLists();
     return {
       hero: this.heroId, region: this.heroRegion.id, chapter: this.chapter, hp: h.hp, maxHp: h.maxHp, mana: Math.round(h.mana), maxMana: h.maxMana, shield: h.shieldTime > 0,
       level: p.level, xp: p.xp, xpNext: xpToNext(p.level), gold: p.gold, upgrades: { ...p.upgrades },
@@ -3397,7 +3425,7 @@ export class GameEngine {
       items: ITEM_ORDER.map(id => ({ id, count: p.items[id] || 0 })),
       buffs: ITEM_ORDER.filter(id => this.buffs[id]).map(id => ({ id, time: this.buffs[id]!, max: ITEMS[id].duration })),
       gear: [...p.gear], equipped: { ...p.equipped }, bagSize: BAG_SIZE, quick: p.quick,
-      stats: { regen: h.manaRegen, power: this.power, speed: this.moveSpeed, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.sp(this.spellIds[0])), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1), crit: this.critChance, elapsed: this.elapsed, questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
+      stats: { regen: h.manaRegen, power: this.power, speed: this.moveSpeed, spark: Math.round((SPELLS[this.spellIds[0]].dmg || 10) * this.sp(this.spellIds[0])), guard: 1 - armorAt(p) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1), crit: this.critChance, elapsed: Math.floor(this.elapsed), questsDone: sides.filter(q => this.qs(q.id).status === 'done').length, totalQuests: sides.length },
       boss: b ? { name: this.bossName(b), title: this.bossTitle(b), hp: Math.max(0, b.hp), maxHp: b.maxHp, phase: b.phase, level: b.level } : null,
       cine: this.cineState(),
       siege: this.siege ? { title: this.siege.q.title, ward: this.siege.q.ward || 'The barricade', wave: Math.min(this.siege.q.waves?.length || 3, this.siege.wave + 1), waves: this.siege.q.waves?.length || 3, hp: Math.max(0, this.siege.hp), max: SIEGE_HP, left: this.siege.raiders.filter(e => !e.dead).length, resting: this.siege.spawned ? 0 : Math.ceil(this.siege.waveT) } : null,
@@ -3405,6 +3433,13 @@ export class GameEngine {
       discovered: this.discovered.size, totalPlaces: this.world.pois.length, chests: this.opened.size, totalChests: chests.length, lore: lore.filter(o => this.read.has(o.id)).length, totalLore: lore.length,
     };
   }
+  /** The world's chests, lore stones and side quests never change during a run, so the snapshot counts them from lists
+   *  made once. */
+  private fixedLists() {
+    if (this.fixed?.world !== this.world) this.fixed = { world: this.world, chests: this.world.objects.filter(o => o.kind === 'chest'), lore: this.world.objects.filter(o => o.kind === 'lore'), sides: this.sideQuests() };
+    return this.fixed;
+  }
+  private fixed: { world: WorldDefinition; chests: WorldObject[]; lore: WorldObject[]; sides: QuestDef[] } | null = null;
   private cineState(): CineState | null {
     const c = this.cine; if (!c || c.i < 0 || c.i >= c.shots.length) return null;
     const s = c.shots[c.i];

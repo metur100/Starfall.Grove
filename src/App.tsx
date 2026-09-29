@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import GameCanvas from './game/GameCanvas';
 import TitleBackdrop from './TitleBackdrop';
 import { GameEngine, type AchRow } from './game/engine';
@@ -73,6 +73,11 @@ function exitApp() {
 // hand attacks on L and casts the other spells leftward along the home row in the order they are learned (K J H); the
 // row above opens menus: U spellbook, I inventory, O quest log, P character. F still attacks when it is not bound.
 /** Re-renders when the key bindings change, and hands back the label of an action's key. */
+/** A function that keeps one identity across renders but always runs the latest `fn`: memoised HUD parts stay put. */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R) {
+  const ref = useRef(fn); ref.current = fn;
+  return useCallback((...args: A) => ref.current(...args), []);
+}
 function useKeys() {
   const [, set] = useState(0);
   useEffect(() => onKeysChange(() => set(n => n + 1)), []);
@@ -234,6 +239,9 @@ function App() {
   /** The bag and the character sheet are one screen with two tabs; the same key or button again closes it. */
   const openSheet = (tab: SheetTab) => { engineRef.current?.setMovement(0, 0); setJournal(false); setPanel(v => v === 'sheet' && sheetTab === tab ? null : 'sheet'); setSheetTab(tab); sfx.play('page'); };
   const dismissSpell = () => setSpellQueue(q => q.slice(1));
+  // The HUD's buttons keep one identity across renders, so the memoised ones only redraw when their own state changes.
+  const onCast = useStable(cast), onDrink = useStable(drink), onProfile = useStable(() => openSheet('stats'));
+  const onTracker = useStable(() => { setJournal(true); setJournalTab('quests'); sfx.play('page'); });
 
   // The chapter title plays when a run starts, once the first snapshot says which chapter it is.
   useEffect(() => { if (mode === 'play' && snapshot && !chapterBanner && !film && !snapshot.cine && !engineRef.current?.needsIntro) setChapterBanner({ chapter: snapshot.chapter, key: 1 }); }, [mode, snapshot, chapterBanner, film]);
@@ -428,7 +436,7 @@ function App() {
         <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} practice={mode === 'practice'} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
         <div className="hud-top">
-          <Vitals snapshot={snapshot} onProfile={() => openSheet('stats')} />
+          <Vitals snapshot={snapshot} onProfile={onProfile} />
           <div className="hud-center">
             {snapshot?.boss && <BossBar boss={snapshot.boss} />}
             {snapshot?.siege && !snapshot.boss && <SiegeBar siege={snapshot.siege} />}
@@ -444,7 +452,7 @@ function App() {
         </div>
         {mode === 'practice' && <button className={`practice-guide-toggle ${practiceGuideOpen ? 'guide-button-on' : ''}`} onClick={() => setPracticeGuideOpen(open => !open)} aria-pressed={practiceGuideOpen} aria-label={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'} title={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'}><span>Spell guide</span><i className="guide-toggle-track"><b /></i></button>}
         {mode === 'practice' && practiceGuideOpen && <PracticeSpellGuide hero={hero} />}
-        {snapshot && !journal && !panel && !mapOpen && <QuestTracker snapshot={snapshot} onOpen={() => { setJournal(true); setJournalTab('quests'); sfx.play('page'); }} />}
+        {snapshot && !journal && !panel && !mapOpen && <QuestTracker snapshot={snapshot} onOpen={onTracker} />}
 
         {snapshot && snapshot.combo >= 3 && <div className="combo" key={`combo-${snapshot.combo}`}><b>{snapshot.combo}</b><small>COMBO</small></div>}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast tone-${t.tone} ${t.color ? 'loot' : ''}`} style={t.color ? { '--r': t.color } as CSSProperties : undefined}>{t.text}</div>)}</div>
@@ -455,9 +463,9 @@ function App() {
         </button>}
 
         <div className="spellbar">
-          {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} />)}
+          {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={onCast} />)}
           <span className="bar-gap" />
-          {snapshot && ['healthPotion' as ItemId, snapshot.quick].map(id => <PotionButton key={id} id={id} count={snapshot.items.find(i => i.id === id)?.count ?? 0} onUse={drink} />)}
+          {snapshot && ['healthPotion' as ItemId, snapshot.quick].map(id => <PotionButton key={id} id={id} count={snapshot.items.find(i => i.id === id)?.count ?? 0} onUse={onDrink} />)}
         </div>
 
         <div className="touch-controls">
@@ -469,9 +477,9 @@ function App() {
             <div className="virtual-stick" ref={stickRef}><i className="stick-thumb" ref={thumbRef} /></div>
           </div>
           <div className="touch-actions">
-            {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={cast} touch />)}
-            <PotionButton id="healthPotion" count={potions} onUse={drink} touch />
-            {snapshot && <PotionButton id={snapshot.quick} count={snapshot.items.find(i => i.id === snapshot.quick)?.count ?? 0} onUse={drink} touch quick />}
+            {snapshot?.spells.map(s => <SpellButton key={s.id} spell={s} onCast={onCast} touch />)}
+            <PotionButton id="healthPotion" count={potions} onUse={onDrink} touch />
+            {snapshot && <PotionButton id={snapshot.quick} count={snapshot.items.find(i => i.id === snapshot.quick)?.count ?? 0} onUse={onDrink} touch quick />}
           </div>
         </div>
 
@@ -703,7 +711,9 @@ function VolumeControls() {
   </div>;
 }
 
-function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProfile: () => void }) {
+/** Only redraws when the values it shows change, not on every snapshot. */
+const VITAL_KEYS = ['hp', 'maxHp', 'mana', 'maxMana', 'level', 'xp', 'xpNext', 'hero', 'shield', 'gold', 'buffs'] as const;
+const Vitals = memo(function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProfile: () => void }) {
   const hp = snapshot?.hp ?? 100, max = snapshot?.maxHp ?? 100, mana = snapshot?.mana ?? 80, maxMana = snapshot?.maxMana ?? 100;
   const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1, pct = Math.max(0, hp / max) * 100;
   return <div className="vitals-wrap">
@@ -720,17 +730,17 @@ function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProf
       {!!snapshot?.buffs.length && <div className="buffs">{snapshot.buffs.map(b => <span key={b.id} className="buff" title={`${ITEMS[b.id].name} · ${Math.ceil(b.time)}s`} style={{ '--c': ITEMS[b.id].color, '--p': `${(b.time / b.max) * 360}deg` } as CSSProperties}><span className="buff-icon"><ItemIcon id={b.id} size={20} /></span><b>{Math.ceil(b.time)}</b></span>)}</div>}
     </div>
   </div>;
-}
+}, (a, b) => a.onProfile === b.onProfile && VITAL_KEYS.every(k => a.snapshot?.[k] === b.snapshot?.[k]));
 
 /** WoW-style objective list: the main quest in gold, followed side quests in blue, just goals and counts. */
-function QuestTracker({ snapshot, onOpen }: { snapshot: GameSnapshot; onOpen: () => void }) {
+const QuestTracker = memo(function QuestTracker({ snapshot, onOpen }: { snapshot: GameSnapshot; onOpen: () => void }) {
   const main = snapshot.main;
   const sides = snapshot.quests.filter(q => q.status === 'active' || q.status === 'ready').sort((a, b) => Number(b.tracked) - Number(a.tracked)).slice(0, 3);
   return <button className="tracker" onClick={onOpen} aria-label="Open quest log">
     <span className="trk trk-main"><b>{main.title}<i> {main.index}/{main.total}</i></b><span>{main.step}{main.count > 0 && <em>{main.progress}/{main.count}</em>}</span></span>
     {sides.map(q => <span key={q.id} className={`trk trk-side ${q.status === 'ready' ? 'ready' : ''}`}><b>{q.title}</b><span>{q.goal}{q.count > 0 && <em>{q.progress}/{q.count}</em>}</span></span>)}
   </button>;
-}
+}, (a, b) => a.onOpen === b.onOpen && a.snapshot.main === b.snapshot.main && a.snapshot.quests === b.snapshot.quests);
 
 function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
   const pct = (boss.hp / boss.maxHp) * 100;
@@ -740,7 +750,7 @@ function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
   </div>;
 }
 
-function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id: SpellId) => void; touch?: boolean }) {
+const SpellButton = memo(function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id: SpellId) => void; touch?: boolean }) {
   const ready = spell.unlocked && spell.cooldown <= 0 && spell.affordable;
   const style = { '--cd': `${spell.cooldown * 360}deg`, '--spell': SPELLS[spell.id].color } as CSSProperties;
   return <button className={`spell spell-${spell.id} slot-${SPELLS[spell.id].slot} ${ready ? 'ready' : ''} ${spell.active ? 'active' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
@@ -750,7 +760,7 @@ function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id:
     {spell.cost > 0 && spell.unlocked && <small>{spell.cost}</small>}
     {!spell.unlocked && <small className="lvl">Lv {spell.level}</small>}
   </button>;
-}
+});
 
 function PracticeSpellGuide({ hero }: { hero: HeroId }) {
   return <aside className="practice-guide" aria-label="Spell guide">
@@ -759,14 +769,14 @@ function PracticeSpellGuide({ hero }: { hero: HeroId }) {
   </aside>;
 }
 
-function PotionButton({ id, count, onUse, touch, quick }: { id: ItemId; count: number; onUse: (id: ItemId) => void; touch?: boolean; quick?: boolean }) {
+const PotionButton = memo(function PotionButton({ id, count, onUse, touch, quick }: { id: ItemId; count: number; onUse: (id: ItemId) => void; touch?: boolean; quick?: boolean }) {
   return <button className={`spell potion potion-${id} ${quick ? 'quick' : ''} ${touch ? 'touch' : ''} ${count ? 'ready' : 'poor'}`} style={{ '--spell': ITEMS[id].color } as CSSProperties}
     onPointerDown={e => { e.preventDefault(); onUse(id); }} aria-label={`${ITEMS[id].name} (${count})`} title={`${ITEMS[id].name}${ITEMS[id].key ? ` (${ITEMS[id].key})` : ''} · ${ITEMS[id].description}`}>
     <span className="spell-icon-wrap"><ItemIcon id={id} size={touch ? 30 : 34} /></span>
     {!touch && ITEMS[id].key && <kbd>{ITEMS[id].key}</kbd>}
     <small className="count">{count}</small>
   </button>;
-}
+});
 
 /** Merchants sell potions and bombs and buy loot; smiths forge the three permanent upgrades; armourers sell costly equipment. */
 function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: GameSnapshot; engine: GameEngine; onClose: () => void }) {

@@ -27,11 +27,18 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
 const DISPLAY = 'Cinzel, Georgia, serif';
 const UI = 'Nunito, "Trebuchet MS", sans-serif';
+const BUBBLE_FONT = `800 13px ${UI}`;
 const CHUNK = 512;
+/** Grass tiles: the ground each covers (big tiles mean fewer canvases to hand to the GPU), and how far its tufts (with
+ *  their lean and shadow) reach past its edges. */
+const DECOR_TILE = 512, DECOR_MX = 40, DECOR_MT = 50, DECOR_MB = 16;
+type DecorTile = { items: Decor[]; glows: Decor[]; live: Decor[]; c: HTMLCanvasElement | null; beat: number; res: number; keep: number; phase: number; kept: (keep: number) => number };
 const BAKED_DECOR = new Set(['pebble', 'clover', 'crop']);
 const TALL = new Set(['tree', 'pine', 'house', 'manor', 'windmill', 'tower', 'deadtree', 'mushroom', 'crystal', 'cliff']);
 /** Buildings and cliffs don't sway in the wind. */
 const STILL = new Set(['house', 'manor', 'tower', 'windmill', 'cliff']);
+/** Scenery with moving parts drawn over its baked piece (water, smoke, flags, sails, flames, glows, falling leaves). */
+const LIVELY = new Set(['fountain', 'banner', 'manor', 'tree', 'crystal', 'mushroom', 'lamppost', 'campfire', 'windmill', 'house', 'tower']);
 /** The region a world x position belongs to. */
 const regionOf = (world: WorldDefinition, x: number): Region => world.regions[clamp(Math.floor(x / REGION_W), 0, world.regions.length - 1)];
 
@@ -75,6 +82,8 @@ function glowSprite(color: string) {
  *  they don't get a paper edge. */
 type Deferred = { g: CanvasRenderingContext2D; inv: DOMMatrix; x: number; y: number; res: number; glows: Array<[number, number, number, string, number]>; shadows: Array<[number, number, number, number, number]> };
 let DEFER: Deferred | null = null;
+/** A cut piece in its own canvas, with the ground shadows, glows and lights it made (relative to its anchor). */
+type Piece = { b: Baked; glows: Deferred['glows']; shadows: Deferred['shadows']; lights: Light[] };
 function deferPoint(d: Deferred, x: number, y: number): [number, number, number] {
   const m = d.g.getTransform(), p = d.inv.transformPoint(m.transformPoint(new DOMPoint(x, y)));
   return [p.x + d.x, p.y + d.y, Math.hypot(m.a, m.b) / d.res];
@@ -87,6 +96,16 @@ function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, co
   ctx.drawImage(glowSprite(color), x - r, y - r, r * 2, r * 2);
   ctx.globalAlpha = prevA; ctx.globalCompositeOperation = prevOp;
 }
+/** Text baked into a canvas stays as it was drawn, so nothing with text is baked until the web fonts it uses (the
+ *  storybook capitals and the rounded UI face) have loaded. */
+let fontsLoaded = false;
+const fontsReady = () => {
+  if (fontsLoaded || typeof document === 'undefined' || !document.fonts) return true;
+  try { fontsLoaded = document.fonts.status === 'loaded' && document.fonts.check('700 24px Cinzel') && document.fonts.check('900 16px Nunito'); } catch { fontsLoaded = true; }
+  return fontsLoaded;
+};
+/** How brightly a glowing mushroom or shard shines at time `t` (each pulses on its own). */
+const shroomGlow = (d: Decor, t: number) => .55 + Math.sin(t * 2 + d.seed * 9) * .2;
 function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, points = 4, inner = .38, rot = 0) {
   ctx.beginPath();
   for (let i = 0; i < points * 2; i++) { const a = rot + (i / (points * 2)) * TAU - Math.PI / 2, rr = i % 2 ? r * inner : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
@@ -170,9 +189,11 @@ export class Renderer {
   private lookCache = { key: '-', look: {} as Look };
   /** The paper-cutout compositor, and device pixels per world unit this frame. */
   private cut = new Cutter(); private px = 1;
-  /** The hero's own compositor: the hero is cut live every frame, and sharing scratch canvases with the re-cuts of
-   *  everything else would make the browser flush mid-frame. */
-  private liveCut = new Cutter();
+  /** The page's world transform this frame (camera scale, position and shake), and the ground resolution the tuft
+   *  memo was made for. */
+  private worldM = new DOMMatrix(); private memoRes = 0;
+  /** The joints (and cast progress) the hero was last cut with, for glows that sit on their staff. */
+  private heroCut: { joints: Joints | null; k: number } = { joints: null, k: 0 };
   /** Villagers' poses, cut once and reused (most recently used last). */
   private people = new Map<string, { b: Baked; j: Joints | null }>();
   /** Screen position (CSS px) just above the nearby person or object, or null when nothing is in reach. */
@@ -186,50 +207,65 @@ export class Renderer {
   weather = true;
   shake = true;
 
-  /** Paints something living as a paper cutout at (x, y): `draw` paints it around the origin in world units. Ground
-   *  shadows it draws go under it and glows over it, both without an edge. */
-  private cutout(ctx: CanvasRenderingContext2D, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string) {
-    const g = this.liveCut.begin(box, this.px, style, overlay);
-    const d: Deferred = { g, inv: g.getTransform().inverse(), x, y, res: this.px, glows: [], shadows: [] };
-    DEFER = d;
-    try { draw(g); } finally { DEFER = null; }
-    for (const [sx, sy, rx, ry, a] of d.shadows) ellipse(ctx, sx, sy, rx, ry, `rgba(40,24,40,${a})`);
-    this.liveCut.finish(ctx, x, y);
-    for (const [gx, gy, r, c, a] of d.glows) glow(ctx, gx, gy, r, c, a);
-  }
   /**
-   * Living things other than the hero are paper puppets animated "on twos", like stop-motion: each is cut again twelve
-   * times a second into a canvas of its own (with the shadows, glows and lights it made noted down), and that one piece
-   * is drawn every frame wherever it stands. `key` names the thing; `worldCoords` painters draw at its world position.
+   * Living things are paper puppets animated "on twos", like stop-motion: each is cut again `fps` times a second (twelve
+   * for creatures, quicker for the hero) into a canvas of its own, with the shadows, glows and lights it made noted
+   * down, and that one piece is drawn every frame wherever it stands. `key` names the thing; `worldCoords` painters
+   * draw at its world position.
    */
-  private living(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string, worldCoords = false) {
+  private living(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string, worldCoords = false, fps = 12) {
     // Each thing keeps its own phase, so their re-cuts are spread over the frames instead of all landing on one.
     let L = this.alive.get(key);
-    const phase = L?.phase ?? Math.random(), beat = Math.floor(this.time * 12 + phase), stamp = `${beat}|${this.px}|${overlay || ''}|${box[0]},${box[1]},${box[2]},${box[3]}`;
-    if (!L || L.stamp !== stamp) {
-      const extra = Math.max(style.shadowX, style.shadowY) + 2, [l, t, w, h] = box, bl = l - extra, bt = t - extra, bw = w + extra * 3, bh = h + extra * 3;
-      const W = Math.ceil(bw * this.px), H = Math.ceil(bh * this.px);
-      let c = L?.b.c; if (!c || c.width !== W || c.height !== H) { c = document.createElement('canvas'); c.width = W; c.height = H; }
-      const o = c.getContext('2d')!; o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, W, H); o.setTransform(this.px, 0, 0, this.px, -bl * this.px, -bt * this.px);
-      const g = this.cut.begin(box, this.px, style, overlay), lights = this.lights.length, now = this.time;
-      const d: Deferred = { g, inv: g.getTransform().inverse(), x: 0, y: 0, res: this.px, glows: [], shadows: [] };
-      DEFER = d; this.time = (beat - phase) / 12;
-      try { if (worldCoords) g.translate(-x, -y); draw(g); } finally { DEFER = null; this.time = now; }
-      this.cut.finish(o, 0, 0);
-      const lit = this.lights.splice(lights).map(li => ({ ...li, x: li.x - x, y: li.y - y }));
-      L = { stamp, phase, b: { c, l: bl, t: bt, w: bw, h: bh }, glows: d.glows, shadows: d.shadows, lights: lit };
+    const phase = L?.phase ?? Math.random(), beat = Math.floor(this.time * fps + phase), ov = overlay || '';
+    if (!L || L.beat !== beat || L.px !== this.px || L.overlay !== ov || L.box[0] !== box[0] || L.box[1] !== box[1] || L.box[2] !== box[2] || L.box[3] !== box[3]) {
+      const now = this.time; this.time = (beat - phase) / fps;
+      let piece: Piece;
+      try { piece = this.cutPiece(L?.b.c, x, y, box, style, draw, overlay, worldCoords); } finally { this.time = now; }
+      L = { ...piece, beat, px: this.px, overlay: ov, box: [box[0], box[1], box[2], box[3]], phase };
       this.alive.delete(key); this.alive.set(key, L);
       while (this.alive.size > 160) this.alive.delete(this.alive.keys().next().value);
     } else { this.alive.delete(key); this.alive.set(key, L); }
+    this.drawPiece(ctx, L, x, y);
+  }
+  private alive = new Map<unknown, Piece & { beat: number; px: number; overlay: string; box: Box; phase: number }>();
+  /** A piece that looks the same whenever it is drawn with the same `key` (which must name everything it depends on,
+   *  apart from where it stands): cut once and reused, like the villagers' poses. */
+  private still(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void) {
+    const k = `${key}|${this.px}`;
+    let L = this.frames.get(k);
+    if (L) { this.frames.delete(k); this.frames.set(k, L); }
+    else {
+      L = this.cutPiece(undefined, 0, 0, box, style, draw, undefined, false); this.frames.set(k, L);
+      while (this.frames.size > 200) this.frames.delete(this.frames.keys().next().value!);
+    }
+    this.drawPiece(ctx, L, x, y);
+  }
+  private frames = new Map<string, Piece>();
+  /** Cuts a piece into a canvas of its own (reusing `reuse` when it fits), noting the ground shadows, glows and lights
+   *  it made, relative to its anchor at (x, y). `worldCoords` painters draw at the anchor's world position. */
+  private cutPiece(reuse: HTMLCanvasElement | undefined, x: number, y: number, box: Box, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay: string | undefined, worldCoords: boolean): Piece {
+    const extra = Math.max(style.shadowX, style.shadowY) + 2, [l, t, w, h] = box, bl = l - extra, bt = t - extra, bw = w + extra * 3, bh = h + extra * 3;
+    const W = Math.ceil(bw * this.px), H = Math.ceil(bh * this.px);
+    let c = reuse; if (!c || c.width !== W || c.height !== H) { c = document.createElement('canvas'); c.width = W; c.height = H; }
+    const o = c.getContext('2d')!; o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, W, H); o.setTransform(this.px, 0, 0, this.px, -bl * this.px, -bt * this.px);
+    const g = this.cut.begin(box, this.px, style, overlay), lights = this.lights.length;
+    const d: Deferred = { g, inv: g.getTransform().inverse(), x: 0, y: 0, res: this.px, glows: [], shadows: [] };
+    DEFER = d;
+    try { if (worldCoords) g.translate(-x, -y); draw(g); } finally { DEFER = null; }
+    this.cut.finish(o, 0, 0);
+    const lit = this.lights.splice(lights).map(li => ({ ...li, x: li.x - x, y: li.y - y }));
+    return { b: { c, l: bl, t: bt, w: bw, h: bh }, glows: d.glows, shadows: d.shadows, lights: lit };
+  }
+  private drawPiece(ctx: CanvasRenderingContext2D, L: Piece, x: number, y: number) {
     for (const [sx, sy, rx, ry, a] of L.shadows) ellipse(ctx, x + sx, y + sy, rx, ry, `rgba(40,24,40,${a})`);
     ctx.drawImage(L.b.c, x + L.b.l, y + L.b.t, L.b.w, L.b.h);
     for (const [gx, gy, r, c, a] of L.glows) glow(ctx, x + gx, y + gy, r, c, a);
-    for (const li of L.lights) this.lights.push({ ...li, x: li.x + x, y: li.y + y });
+    for (const li of L.lights) this.lights.push({ x: li.x + x, y: li.y + y, r: li.r, color: li.color, a: li.a });
   }
-  private alive = new Map<unknown, { stamp: string; phase: number; b: Baked; glows: Deferred['glows']; shadows: Deferred['shadows']; lights: Light[] }>();
   private setup(world: WorldDefinition) {
     if (this.worldRef === world) return;
     this.worldRef = world; this.chunks.clear(); this.sprites.clear(); this.prefetched = null; this.decorSprites.clear(); this.ambient = [];
+    this.obstacleMemo = new WeakMap(); this.decorMemo = new WeakMap(); this.decorTiles.clear(); this.frames.clear(); this.ring = null; this.ahead = null;
     this.liveDecor = new Grid(256, world.decor.filter(d => !BAKED_DECOR.has(d.kind)));
     this.bakedDecor = new Grid(256, world.decor.filter(d => BAKED_DECOR.has(d.kind)));
     this.roadBoxes = world.roads.map(pts => {
@@ -249,7 +285,8 @@ export class Renderer {
     // The ground sheets are soft paper shapes, so on a big monitor they are baked at screen resolution and drawn a little
     // larger: baking them at the camera's zoom as well made textures the GPU could not keep up with.
     const res = clamp(Math.round(pixelRatio * Math.min(scale, 1) * 2) / 2, 1, 2);
-    this.chunkRes = res; this.px = scale * pixelRatio; this.cut.quality = this.liveCut.quality = this.quality;
+    this.chunkRes = res; this.px = scale * pixelRatio; this.cut.quality = this.quality;
+    if (res !== this.memoRes) { this.memoRes = res; this.decorMemo = new WeakMap(); }
     const vw = w / scale, vh = h / scale;
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
     // In a cutscene the camera glides to what the story shows; otherwise it follows the hero a little ahead.
@@ -268,6 +305,7 @@ export class Renderer {
 
     ctx.save();
     ctx.scale(scale, scale); ctx.translate(-camX + sx, -camY + sy);
+    this.worldM = ctx.getTransform();
     this.drawGround(ctx, e, view);
     this.drawWater(ctx, e, view);
     this.drawDecor(ctx, e, view);
@@ -343,9 +381,51 @@ export class Renderer {
       if (c) { ctx.drawImage(c, cx * CHUNK, cy * CHUNK, CHUNK, CHUNK); this.chunks.delete(key); this.chunks.set(key, c); }
     }
     // Pre-bake the ring just outside the view so walking never waits on it.
-    if (baked === 0) outer: for (let cy = r0 - 1; cy <= r1 + 1; cy++) for (let cx = c0 - 1; cx <= c1 + 1; cx++) if (!this.chunks.has(`${cx},${cy}`) && cx >= 0 && cy >= 0) { this.bakeChunk(e, cx, cy); break outer; }
+    this.ring = { e, c0, c1, r0, r1 };
+    if (baked === 0) this.queueRing();
     const keep = (c1 - c0 + 3) * (r1 - r0 + 3) + 4;
     while (this.chunks.size > keep) this.chunks.delete(this.chunks.keys().next().value!);
+  }
+  /** The chunks around the latest view, and whether a bake of them is waiting for idle time. */
+  private ring: { e: GameEngine; c0: number; c1: number; r0: number; r1: number } | null = null;
+  private ringQueued = false;
+  /** The grass tiles in view last frame, for cutting the next ones ahead. */
+  private ahead: { e: GameEngine; c0: number; c1: number; r0: number; r1: number; keep: number; res: number; rate: number } | null = null;
+  /** The next grass tile just beyond the view, on the side the hero is walking toward, that has no cut yet. */
+  private nextAheadTile(): [number, number, DecorTile] | null {
+    const A = this.ahead; if (!A) return null;
+    const h = A.e.hero, spots: Array<[number, number]> = [];
+    if (Math.abs(h.vx) > 20) for (let ty = A.r0; ty <= A.r1; ty++) spots.push([h.vx > 0 ? A.c1 + 1 : A.c0 - 1, ty]);
+    if (Math.abs(h.vy) > 20) for (let tx = A.c0; tx <= A.c1; tx++) spots.push([tx, h.vy > 0 ? A.r1 + 1 : A.r0 - 1]);
+    for (const [tx, ty] of spots) {
+      if (tx < 0 || ty < 0) continue;
+      const tile = this.decorTile(A.e, tx, ty);
+      if (tile.kept(A.keep) >= 5 && !(tile.c && tile.res === A.res && tile.keep === A.keep)) return [tx, ty, tile];
+    }
+    return null;
+  }
+  private nextRingChunk(): [number, number] | null {
+    const R = this.ring; if (!R) return null;
+    for (let cy = R.r0 - 1; cy <= R.r1 + 1; cy++) for (let cx = R.c0 - 1; cx <= R.c1 + 1; cx++) if (cx >= 0 && cy >= 0 && !this.chunks.has(`${cx},${cy}`)) return [cx, cy];
+    return null;
+  }
+  /** Bakes the ring's ground chunks, then the grass tiles ahead, in the browser's idle time between frames (where it
+   *  has some; at the latest a moment later), so making them never holds up a frame. */
+  private queueRing() {
+    if (this.ringQueued || (!this.nextRingChunk() && !this.nextAheadTile())) return;
+    this.ringQueued = true;
+    const run = (deadline?: IdleDeadline) => {
+      this.ringQueued = false;
+      for (let n = 0; n < 4; n++) {
+        const next = this.nextRingChunk(), tile = next ? null : this.nextAheadTile();
+        if (next && this.ring) this.bakeChunk(this.ring.e, next[0], next[1]);
+        else if (tile && this.ahead) { const A = this.ahead, beat = Math.floor(this.time * A.rate + tile[2].phase); this.cutDecorTile(tile[2], tile[0], tile[1], (beat - tile[2].phase) / A.rate, beat, A.e, A.res, A.keep); }
+        else return;
+        if (!deadline || deadline.timeRemaining() < 4) break;
+      }
+      this.queueRing();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 250 }); else setTimeout(run, 0);
   }
   private bakeChunk(e: GameEngine, cx: number, cy: number) {
     const res = this.chunkRes, world = e.world, ox = cx * CHUNK, oy = cy * CHUNK, region = regionOf(world, ox + 1), p = region.palette;
@@ -480,24 +560,97 @@ export class Renderer {
       if (summit) this.lights.push({ x: pond.x, y: pond.y, r: pond.r * 1.1, color: p.water, a: .5 });
     }
   }
+  /**
+   * Grass and flowers are pasted onto tiles of their own, and each tile is cut again up to twelve times a second like
+   * the puppets, every tile on its own beat: the whole valley still sways in the wind for a fraction of the drawing. The
+   * tufts the hero is walking through are left out of the tile and drawn live, so they still bend away from their feet.
+   */
   private drawDecor(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
-    if (this.decor === 'off') return;
-    const t = this.time, hero = e.hero, w = this.wind;
-    const list = this.liveDecor.rect(v.x - 30, v.y - 30, v.x + v.w + 30, v.y + v.h + 40);
-    const keep = this.decor === 'less' ? .45 : 1, M = ctx.getTransform(), glows: Decor[] = [];
-    for (const d of list) {
-      if (d.seed > keep) continue;
-      let sway = Math.sin(t * 1.9 + d.x * .013 + d.y * .007) * .2 * w + Math.sin(t * 4.3 + d.seed * 30) * .04;
-      const dx = d.x - hero.x, dy = d.y - hero.y;
-      if (Math.abs(dx) < 42 && Math.abs(dy) < 28) sway += Math.sign(dx || 1) * (1 - Math.abs(dx) / 42) * .9;
-      const reg = regionOf(e.world, d.x), sp = this.decorSprite(d, reg), k = -Math.sin(sway) * .9;
-      // Paper plants bend from the root: a shear of the baked piece.
-      ctx.setTransform(M.a, M.b, M.c + M.a * k, M.d, M.a * d.x + M.c * d.y + M.e, M.b * d.x + M.d * d.y + M.f);
-      ctx.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
-      if ((d.kind === 'shroom' || d.kind === 'shard') && reg.darkness > 0) glows.push(d);
+    if (this.decor === 'off') { this.ahead = null; return; }
+    const t = this.time, hero = e.hero, res = this.chunkRes, keep = this.decor === 'less' ? .45 : 1, M = ctx.getTransform();
+    const c0 = Math.floor((v.x - DECOR_MX) / DECOR_TILE), c1 = Math.floor((v.x + v.w + DECOR_MX) / DECOR_TILE);
+    const r0 = Math.floor((v.y - DECOR_MB) / DECOR_TILE), r1 = Math.floor((v.y + v.h + DECOR_MT) / DECOR_TILE);
+    // Re-cuts are spread over the frames by each tile's beat; a busy frame lets a few wait for the next one. Weaker
+    // devices sway on a slower beat.
+    let budget = 12;
+    const rate = this.quality >= 1 ? 12 : this.quality >= .75 ? 8 : 6;
+    for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) {
+      const tile = this.decorTile(e, tx, ty);
+      if (tile.kept(keep) < 5) { for (const d of tile.items) if (d.seed <= keep) this.drawTuft(ctx, M, d, e, t); continue; }
+      const beat = Math.floor(t * rate + tile.phase), fresh = tile.c && tile.res === res && tile.keep === keep;
+      const near = hero.x > tx * DECOR_TILE - 120 && hero.x < (tx + 1) * DECOR_TILE + 120 && hero.y > ty * DECOR_TILE - 100 && hero.y < (ty + 1) * DECOR_TILE + 100;
+      if (!fresh || (tile.beat !== beat && (near || budget-- > 0))) this.cutDecorTile(tile, tx, ty, (beat - tile.phase) / rate, beat, e, res, keep);
+      ctx.drawImage(tile.c!, tx * DECOR_TILE - DECOR_MX, ty * DECOR_TILE - DECOR_MT, tile.c!.width / res, tile.c!.height / res);
+      for (const d of tile.live) this.drawTuft(ctx, M, d, e, t);
     }
     ctx.setTransform(M);
-    for (const d of glows) { const a = .55 + Math.sin(t * 2 + d.seed * 9) * .2; glow(ctx, d.x, d.y - 6, 16, d.color, .3 * a); this.lights.push({ x: d.x, y: d.y - 6, r: 34, color: d.color, a }); }
+    // Glowing mushrooms and shards light up the dark around them; a tiled one's glow is painted into its tile.
+    for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) {
+      const tile = this.decorTile(e, tx, ty), tiled = tile.kept(keep) >= 5;
+      for (const d of tile.glows) {
+        if (d.seed > keep) continue;
+        const a = shroomGlow(d, t); if (!tiled) glow(ctx, d.x, d.y - 6, 16, d.color, .3 * a); this.lights.push({ x: d.x, y: d.y - 6, r: 34, color: d.color, a });
+      }
+    }
+    // The row and column of tiles the hero is walking toward are cut ahead in idle time, like the ground.
+    this.ahead = { e, c0, c1, r0, r1, keep, res, rate }; this.queueRing();
+    // Tiles are big canvases: only those in view and the ring around it are kept, and tiles that scrolled away give
+    // their canvases back for new ones.
+    const most = (c1 - c0 + 2) * (r1 - r0 + 2);
+    while (this.decorTiles.size > most) { const [k, old] = this.decorTiles.entries().next().value!; this.decorTiles.delete(k); if (old.c && this.tilePool.length < 4) this.tilePool.push(old.c); }
+  }
+  /** How far a tuft leans at time `t`, from the wind and (when `hero` is given) the hero brushing past. */
+  private swayOf(d: Decor, t: number, hero: Point | null) {
+    let sway = Math.sin(t * 1.9 + d.x * .013 + d.y * .007) * .2 * this.wind + Math.sin(t * 4.3 + d.seed * 30) * .04;
+    if (hero) { const dx = d.x - hero.x, dy = d.y - hero.y; if (Math.abs(dx) < 42 && Math.abs(dy) < 28) sway += Math.sign(dx || 1) * (1 - Math.abs(dx) / 42) * .9; }
+    return -Math.sin(sway) * .9;
+  }
+  /** One tuft drawn live onto the page (whose world transform is `M`). Paper plants bend from the root: a shear. */
+  private drawTuft(ctx: CanvasRenderingContext2D, M: DOMMatrix, d: Decor, e: GameEngine, t: number) {
+    const sp = this.decorSpriteOf(d, e), k = this.swayOf(d, t, e.hero);
+    ctx.setTransform(M.a, M.b, M.c + M.a * k, M.d, M.a * d.x + M.c * d.y + M.e, M.b * d.x + M.d * d.y + M.f);
+    ctx.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
+  }
+  private decorTiles = new Map<number, DecorTile>();
+  private tilePool: HTMLCanvasElement[] = [];
+  private decorTile(e: GameEngine, tx: number, ty: number): DecorTile {
+    const key = tx * 65536 + ty;
+    let tile = this.decorTiles.get(key);
+    if (tile) { this.decorTiles.delete(key); this.decorTiles.set(key, tile); return tile; }
+    const x0 = tx * DECOR_TILE, y0 = ty * DECOR_TILE;
+    const items = this.liveDecor.rect(x0, y0, x0 + DECOR_TILE - .001, y0 + DECOR_TILE - .001).slice().sort((a, b) => a.y - b.y);
+    const glows = items.filter(d => (d.kind === 'shroom' || d.kind === 'shard') && regionOf(e.world, d.x).darkness > 0);
+    const counts = new Map<number, number>();
+    tile = { items, glows, live: [], c: null, beat: -1, res: 0, keep: 0, phase: hash(tx * 7.13 + ty * 3.71), kept: k => { let n = counts.get(k); if (n === undefined) { n = items.filter(d => d.seed <= k).length; counts.set(k, n); } return n; } };
+    this.decorTiles.set(key, tile);
+    return tile;
+  }
+  /** Cuts a grass tile as it stands at time `t` (its beat `beat`). */
+  private cutDecorTile(tile: DecorTile, tx: number, ty: number, t: number, beat: number, e: GameEngine, res: number, keep: number) {
+    const W = Math.ceil((DECOR_TILE + DECOR_MX * 2) * res), H = Math.ceil((DECOR_TILE + DECOR_MT + DECOR_MB) * res);
+    let c = tile.c;
+    if (!c || c.width !== W || c.height !== H) { c = this.tilePool.pop() || document.createElement('canvas'); if (c.width !== W || c.height !== H) { c.width = W; c.height = H; } }
+    const g = c.getContext('2d')!, ox = tx * DECOR_TILE - DECOR_MX, oy = ty * DECOR_TILE - DECOR_MT, hero = e.hero;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
+    tile.live = [];
+    for (const d of tile.items) {
+      if (d.seed > keep) continue;
+      // Near the hero a tuft is drawn live instead, with room for how far they can walk before the next re-cut.
+      if (Math.abs(d.x - hero.x) < 84 && Math.abs(d.y - hero.y) < 64) { tile.live.push(d); continue; }
+      const sp = this.decorSpriteOf(d, e), k = this.swayOf(d, t, null);
+      g.setTransform(res, 0, res * k, res, (d.x - ox) * res, (d.y - oy) * res);
+      g.drawImage(sp.c, sp.l, sp.t, sp.w, sp.h);
+    }
+    g.setTransform(res, 0, 0, res, -ox * res, -oy * res);
+    for (const d of tile.glows) if (d.seed <= keep) glow(g, d.x, d.y - 6, 16, d.color, .3 * shroomGlow(d, t));
+    tile.c = c; tile.beat = beat; tile.res = res; tile.keep = keep;
+  }
+  /** Each tuft's baked piece, remembered on the tuft itself (reset when the ground resolution changes). */
+  private decorMemo = new WeakMap<Decor, Sprite>();
+  private decorSpriteOf(d: Decor, e: GameEngine) {
+    let s = this.decorMemo.get(d);
+    if (!s) { s = this.decorSprite(d, regionOf(e.world, d.x)); this.decorMemo.set(d, s); }
+    return s;
   }
   private decorSprites = new Map<string, Sprite>();
   private decorSprite(d: Decor, reg: Region): Sprite {
@@ -511,12 +664,18 @@ export class Renderer {
     return sp;
   }
   private drawPlaceNames(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
-    ctx.textAlign = 'center'; ctx.font = `700 24px ${DISPLAY}`;
+    const font = `700 24px ${DISPLAY}`;
     for (const z of e.world.pois) {
       if (Math.abs(z.x - (v.x + v.w / 2)) > v.w || Math.abs(z.y - (v.y + v.h / 2)) > v.h) continue;
-      const y = z.y - z.r * .55;
-      ctx.fillStyle = 'rgba(10,20,15,.2)'; ctx.fillText(z.name.toUpperCase(), z.x + 2, y + 2);
-      ctx.fillStyle = `rgba(255,250,225,${.3 + Math.sin(this.time * 1.5 + z.x) * .05})`; ctx.fillText(z.name.toUpperCase(), z.x, y);
+      // Printed faintly on the ground: the name and its shadow are stamped from one piece, breathing in and out.
+      const name = z.name.toUpperCase();
+      const tw = this.textWidth(ctx, font, name);
+      ctx.globalAlpha = .3 + Math.sin(this.time * 1.5 + z.x) * .05;
+      this.badge(ctx, `pn|${name}`, z.x, z.y - z.r * .55, [-tw / 2 - 4, -26, tw + 10, 34], g => {
+        g.font = font; g.textAlign = 'center';
+        g.fillStyle = 'rgba(10,20,15,.67)'; g.fillText(name, 2, 2); g.fillStyle = 'rgb(255,250,225)'; g.fillText(name, 0, 0);
+      });
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -525,6 +684,7 @@ export class Renderer {
     return `${reg.id}|${o.kind}|${Math.round(o.r / 4) * 4}|${Math.floor(o.seed * 3)}|${o.color || ''}|${o.w || 0}`;
   }
   private sprite(o: Obstacle, e: GameEngine): Sprite {
+    const memo = this.obstacleMemo.get(o); if (memo) return memo;
     const rq = Math.round(o.r / 4) * 4, variant = Math.floor(o.seed * 3), res = this.chunkRes, reg = regionOf(e.world, o.x);
     const key = this.spriteKey(o, reg);
     let s = this.sprites.get(key);
@@ -534,29 +694,34 @@ export class Renderer {
       s = this.cut.bake([l, t, r - l, b - t], res, SCENERY, g => paintProp(g, q, reg.palette, reg.ambient, reg.darkness > 0), g => propShadow(g, q));
       this.sprites.set(key, s);
     }
+    this.obstacleMemo.set(o, s);
     return s;
   }
+  /** Each obstacle's baked piece, remembered on the obstacle itself (reset when the resolution changes). */
+  private obstacleMemo = new WeakMap<Obstacle, Sprite>();
   /** Bakes the houses and trees just beyond the view a few at a time, so walking (or a big, sharp screen) never waits on them. */
   private prefetchSprites(e: GameEngine, x0: number, y0: number, x1: number, y1: number) {
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, done = this.prefetched;
     if (done && Math.hypot(cx - done.x, cy - done.y) < 120) return;
     const t0 = performance.now();
     for (const o of e.obstacleGrid.rect(x0, y0, x1, y1)) {
-      if (this.sprites.has(this.spriteKey(o, regionOf(e.world, o.x)))) continue;
+      if (this.obstacleMemo.has(o)) continue;
       this.sprite(o, e);
       if (performance.now() - t0 > 2.5) { this.prefetched = null; return; }
     }
     this.prefetched = { x: cx, y: cy };
   }
   private drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle, e: GameEngine) {
-    const t = this.time, hero = e.hero, s = this.sprite(o, e);
-    const sway = TALL.has(o.kind) && !STILL.has(o.kind) ? (Math.sin(t * 1.15 + o.seed * 40) * .6 + Math.sin(t * 2.7 + o.seed * 13) * .25) * this.wind : 0;
-    const behind = TALL.has(o.kind) && hero.y < o.y && hero.y > o.y + s.t * .9 && Math.abs(hero.x - o.x) < s.w * .45;
-    ctx.globalAlpha = behind ? .5 : 1;
-    if (sway) { ctx.save(); ctx.translate(o.x, o.y); ctx.transform(1, 0, sway * .035, 1, 0, 0); ctx.drawImage(s.c, s.l, s.t, s.w, s.h); ctx.restore(); }
+    const t = this.time, hero = e.hero, s = this.sprite(o, e), tall = TALL.has(o.kind);
+    const sway = tall && !STILL.has(o.kind) ? (Math.sin(t * 1.15 + o.seed * 40) * .6 + Math.sin(t * 2.7 + o.seed * 13) * .25) * this.wind : 0;
+    const behind = tall && hero.y < o.y && hero.y > o.y + s.t * .9 && Math.abs(hero.x - o.x) < s.w * .45;
+    if (behind) ctx.globalAlpha = .5;
+    // Trees lean from the root in the wind: a shear of the baked piece, set straight on the page's world transform.
+    if (sway) { const M = this.worldM, k = sway * .035; ctx.setTransform(M.a, M.b, M.c + M.a * k, M.d, M.a * o.x + M.c * o.y + M.e, M.b * o.x + M.d * o.y + M.f); ctx.drawImage(s.c, s.l, s.t, s.w, s.h); ctx.setTransform(M); }
     else ctx.drawImage(s.c, o.x + s.l, o.y + s.t, s.w, s.h);
-    ctx.globalAlpha = 1;
-    // Living parts on top of the cached sprite.
+    if (behind) ctx.globalAlpha = 1;
+    // Living parts on top of the cached sprite (most scenery has none).
+    if (!LIVELY.has(o.kind)) return;
     const reg = regionOf(e.world, o.x), p = reg.palette, dark = reg.darkness > 0;
     switch (o.kind) {
       case 'fountain': {
@@ -606,7 +771,9 @@ export class Renderer {
   /** Solid world objects are paper pieces with an ink edge; glowing pickups, clues and ground marks are drawn as they are. */
   private drawObject(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
     const box = OBJECT_BOX[o.kind];
-    if (box) this.cutWorld(ctx, o, o.x, o.y, box, g => this.paintObject(g, o, e), SCENERY_LIVE); else this.paintObject(ctx, o, e);
+    // Chests, signs and lore stones only glint and pulse slowly, so they are re-cut half as often as the rest.
+    const calm = o.kind === 'chest' || o.kind === 'sign' || o.kind === 'lore';
+    if (box) this.cutWorld(ctx, o, o.x, o.y, box, g => this.paintObject(g, o, e), SCENERY_LIVE, calm ? 6 : 12); else this.paintObject(ctx, o, e);
     const near = this.near; if (near?.kind === 'object' && near.o === o) this.label(ctx, o.x, o.y + 44, o.name, regionOf(e.world, o.x).palette.accent);
   }
   private paintObject(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
@@ -1020,20 +1187,25 @@ export class Renderer {
     }
     if (Math.random() < .3 * size) this.pushAmbient({ x: x + rand(-6, 6), y: y - 14 * size, vx: rand(-10, 10), vy: rand(-70, -40), life: .9, max: .9, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#ffcf6e', phase: 0 });
   }
-  private drawPod(ctx: CanvasRenderingContext2D, x: number, y: number, e: GameEngine) { this.cutWorld(ctx, `pod${x},${y}`, x, y, [-30, -40, 60, 64], g => this.paintPod(g, x, y, e)); }
-  private paintPod(ctx: CanvasRenderingContext2D, x: number, y: number, e: GameEngine) {
-    const pal = regionOf(e.world, x).palette, t = this.time, c = pal.pod, wob = Math.sin(t * 2.4 + x) * .08, pulse = .6 + Math.sin(t * 3 + y) * .4;
-    shadow(ctx, x, y + 14, 18, 6);
-    for (let i = -1; i <= 1; i++) ellipse(ctx, x + i * 12, y + 10, 10, 4, pal.foliage[1], i * .6);
-    ctx.save(); ctx.translate(x, y + 10); ctx.rotate(wob);
+  /** Mana pods rock gently on their leaves: twelve rocking frames per land, cut once and shared by every pod there. */
+  private drawPod(ctx: CanvasRenderingContext2D, x: number, y: number, e: GameEngine) {
+    const reg = regionOf(e.world, x), c = reg.palette.pod, f = Math.floor(((((this.time * 2.4 + x) / TAU) % 1) + 1) % 1 * 12);
+    this.still(ctx, `pod|${reg.id}|${f}`, x, y, [-30, -40, 60, 64], STICKER, g => this.paintPod(g, reg.palette, (f + .5) / 12 * TAU));
+    glow(ctx, x, y - 5, 30, c, .35 * (.6 + Math.sin(this.time * 3 + y) * .4));
+    this.lights.push({ x, y: y - 5, r: 60, color: c, a: .6 });
+  }
+  /** One pod around its anchor, `a` along its rocking. */
+  private paintPod(ctx: CanvasRenderingContext2D, pal: Palette, a: number) {
+    const c = pal.pod, wob = Math.sin(a) * .08, pulse = .6 + Math.sin(a + 1.2) * .4;
+    shadow(ctx, 0, 14, 18, 6);
+    for (let i = -1; i <= 1; i++) ellipse(ctx, i * 12, 10, 10, 4, pal.foliage[1], i * .6);
+    ctx.save(); ctx.translate(0, 10); ctx.rotate(wob);
     ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(0, -15, 14, 17, 0, 0, TAU); ctx.fill();
     ellipse(ctx, -4, -21, 5, 7, 'rgba(255,255,255,.55)');
     ctx.strokeStyle = alpha(c, .5 + pulse * .5); ctx.lineWidth = 1.5;
-    for (const a of [-.5, 0, .5]) { ctx.beginPath(); ctx.ellipse(0, -15, 14 * Math.abs(Math.cos(a + 1.57)) + 2, 16, 0, -1.3, 1.3); ctx.stroke(); }
+    for (const s of [-.5, 0, .5]) { ctx.beginPath(); ctx.ellipse(0, -15, 14 * Math.abs(Math.cos(s + 1.57)) + 2, 16, 0, -1.3, 1.3); ctx.stroke(); }
     ctx.fillStyle = pal.foliage[1]; ctx.beginPath(); ctx.moveTo(-5, -31); ctx.quadraticCurveTo(0, -38, 6, -34); ctx.lineTo(0, -30); ctx.fill();
     ctx.restore();
-    glow(ctx, x, y - 5, 30, c, .35 * pulse);
-    this.lights.push({ x, y: y - 5, r: 60, color: c, a: .6 });
   }
 
   // ───────────────────────────── villagers
@@ -1041,7 +1213,7 @@ export class Renderer {
     const t = this.time, L = n.look, act = n.activity, h = e.hero;
     if (n.beast) { this.drawBeast(ctx, n, e); this.drawQuestPersonMark(ctx, n, 46); return; }
     const a0 = ctx.globalAlpha; if (n.spirit) ctx.globalAlpha = a0 * .55;
-    const x = n.x, y = n.y, fig = villagerFigure(n.id, L), s = L.small ? .78 : 1;
+    const x = n.x, y = n.y, fig = this.figureOf(n), s = L.small ? .78 : 1;
     // Walking: side-on in the way they go, or toward/away from us. Standing: facing us, or turned to the hero nearby.
     let facing: Facing = 'front', dir: 1 | -1 = n.faceX < 0 ? -1 : 1;
     if (n.moving) { const f = facingOf(n.tx - n.x, (n.ty - n.y) * 1.3); facing = f.facing; dir = f.dir; }
@@ -1081,20 +1253,54 @@ export class Renderer {
     this.drawQuestPersonMark(ctx, n, 72 * s);
     const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 46, n.name, reg.palette.accent);
   }
+  /** Each villager's puppet, remembered on the villager (their look can change with the story). */
+  private figures = new WeakMap<Npc, { look: Npc['look']; fig: ReturnType<typeof villagerFigure> }>();
+  private figureOf(n: Npc) {
+    let f = this.figures.get(n);
+    if (!f || f.look !== n.look) { f = { look: n.look, fig: villagerFigure(n.id, n.look) }; this.figures.set(n, f); }
+    return f.fig;
+  }
   /** A quest mark: a paper badge with an ink rim, gold for the story, blue for side quests. */
   private questTag(ctx: CanvasRenderingContext2D, x: number, y: number, mark: string, color: string) {
     glow(ctx, x, y, 30, color, .6);
-    ctx.beginPath(); ctx.moveTo(x - 6, y + 11); ctx.lineTo(x, y + 19); ctx.lineTo(x + 6, y + 11); ctx.closePath(); ctx.fillStyle = INK; ctx.fill();
-    circle(ctx, x + 1.5, y + 2.5, 14, 'rgba(47,35,48,.3)');
-    circle(ctx, x, y, 14, INK); circle(ctx, x, y, 12.2, PAPER); circle(ctx, x, y, 10, color);
-    ctx.fillStyle = INK; ctx.font = `900 16px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(mark, x, y + 6);
+    this.badge(ctx, `q|${mark}|${color}`, x, y, [-16, -16, 34, 38], g => {
+      g.beginPath(); g.moveTo(-6, 11); g.lineTo(0, 19); g.lineTo(6, 11); g.closePath(); g.fillStyle = INK; g.fill();
+      circle(g, 1.5, 2.5, 14, 'rgba(47,35,48,.3)');
+      circle(g, 0, 0, 14, INK); circle(g, 0, 0, 12.2, PAPER); circle(g, 0, 0, 10, color);
+      g.fillStyle = INK; g.font = `900 16px ${UI}`; g.textAlign = 'center'; g.fillText(mark, 0, 6);
+    });
   }
   /** A shop's sign over its keeper: a little wooden board with the trade's mark. */
   private shopTag(ctx: CanvasRenderingContext2D, x: number, y: number, icon: string) {
-    ctx.fillStyle = 'rgba(47,35,48,.28)'; ctx.beginPath(); ctx.roundRect(x - 13, y - 11, 30, 26, 6); ctx.fill();
-    ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x - 15, y - 13, 30, 26, 7); ctx.fill();
-    ctx.fillStyle = '#b98a52'; ctx.beginPath(); ctx.roundRect(x - 13, y - 11, 26, 22, 5); ctx.fill();
-    ctx.fillStyle = PAPER; ctx.font = `900 15px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(icon, x, y + 5);
+    this.badge(ctx, `s|${icon}`, x, y, [-16, -14, 34, 30], g => {
+      g.fillStyle = 'rgba(47,35,48,.28)'; g.beginPath(); g.roundRect(-13, -11, 30, 26, 6); g.fill();
+      g.fillStyle = INK; g.beginPath(); g.roundRect(-15, -13, 30, 26, 7); g.fill();
+      g.fillStyle = '#b98a52'; g.beginPath(); g.roundRect(-13, -11, 26, 22, 5); g.fill();
+      g.fillStyle = PAPER; g.font = `900 15px ${UI}`; g.textAlign = 'center'; g.fillText(icon, 0, 5);
+    });
+  }
+  /** Small flat pieces drawn many times a frame (quest badges, shop signs, place names): painted once at this
+   *  resolution into a canvas of their own, and stamped from there. */
+  private badges = new Map<string, Sprite>();
+  /** How wide `text` is in `font`, measured once (after the fonts have loaded). Leaves `ctx.font` as it found it. */
+  private widths = new Map<string, number>();
+  private textWidth(ctx: CanvasRenderingContext2D, font: string, text: string) {
+    const k = `${font}|${text}`; let w = this.widths.get(k);
+    if (w === undefined) { const was = ctx.font; ctx.font = font; w = ctx.measureText(text).width; ctx.font = was; if (fontsReady()) { this.widths.set(k, w); if (this.widths.size > 600) this.widths.delete(this.widths.keys().next().value!); } }
+    return w;
+  }
+  private badge(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, box: Box, paint: (g: CanvasRenderingContext2D) => void) {
+    const res = Math.min(3, this.px), k = `${key}|${res}`;
+    let s = this.badges.get(k);
+    if (!s) {
+      // Text measured from a font that hasn't loaded yet would be baked wrong for good, so wait for the fonts.
+      if (!fontsReady()) { ctx.save(); ctx.translate(x, y); paint(ctx); ctx.restore(); return; }
+      const [l, t, w, h] = box, c = document.createElement('canvas'); c.width = Math.ceil(w * res); c.height = Math.ceil(h * res);
+      const g = c.getContext('2d')!; g.setTransform(res, 0, 0, res, -l * res, -t * res); paint(g);
+      s = { c, l, t, w: c.width / res, h: c.height / res }; this.badges.set(k, s);
+      while (this.badges.size > 120) this.badges.delete(this.badges.keys().next().value!);
+    }
+    ctx.drawImage(s.c, x + s.l, y + s.t, s.w, s.h);
   }
   private paperDot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) { circle(ctx, x, y, r + 1.2, INK); circle(ctx, x, y, r, color); }
   /** Someone walking with the hero wears a green ring (red while scared); a thief a red one. */
@@ -1107,11 +1313,11 @@ export class Renderer {
     ctx.fillStyle = c; ctx.font = `900 13px ${UI}`; ctx.textAlign = 'center'; ctx.fillText(n.role === 'thief' ? '✋' : n.scared ? '!' : '♥', n.x, my + 5);
   }
   private drawBubbles(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
-    ctx.font = `800 13px ${UI}`; ctx.textAlign = 'center';
+    ctx.font = BUBBLE_FONT; ctx.textAlign = 'center';
     for (const n of e.npcs) {
       if (n.barkT <= 0 || n.x < v.x - 100 || n.x > v.x + v.w + 100 || n.y < v.y - 100 || n.y > v.y + v.h + 100) continue;
       const a = Math.min(1, n.barkT * 2, (3.2 - n.barkT) * 5), y = n.y - 72 - (1 - Math.min(1, (3.2 - n.barkT) * 4)) * 8;
-      const w = ctx.measureText(n.bark).width + 20;
+      const w = this.textWidth(ctx, BUBBLE_FONT, n.bark) + 20;
       ctx.globalAlpha = a;
       ctx.fillStyle = 'rgba(255,250,236,.95)'; ctx.beginPath(); ctx.roundRect(n.x - w / 2, y - 18, w, 26, 13); ctx.fill();
       ctx.beginPath(); ctx.moveTo(n.x - 6, y + 7); ctx.lineTo(n.x, y + 15); ctx.lineTo(n.x + 5, y + 7); ctx.fill();
@@ -1277,8 +1483,11 @@ export class Renderer {
     const fig = heroFigure(id, L), hooks = heroHooks(id, L, casting ? k : 0, t, { bowDraw: casting ? Math.sin(k * Math.PI) : 0 });
     const x = h.x + dx, y = h.y + dy, box: Box = riding ? [-70 * s, -130 * s, 140 * s, 168 * s] : [FIGURE_BOX[0] * s, (FIGURE_BOX[1] - 22) * s + 22, FIGURE_BOX[2] * s, FIGURE_BOX[3] * s];
     if (!riding) shadow(ctx, x, h.y + 22, 19 * s, 6.5 * s, .28);
-    let joints: Joints | null = null;
-    this.cutout(ctx, x, y, box, STICKER, g => {
+    // The hero is cut on a quick beat of their own (every frame on a strong device, 30 or 20 times a second on a weaker
+    // one) and stands wherever they are every frame, so walking stays smooth while the puppet costs far less.
+    const fps = this.quality >= 1 ? 60 : this.quality >= .75 ? 30 : 20;
+    this.living(ctx, 'hero', x, y, box, STICKER, g => {
+      let joints: Joints | null = null;
       if (s !== 1) { g.translate(0, 22); g.scale(s, s); g.translate(0, -22); }
       if (riding) {
         const bob = moving ? Math.abs(Math.sin(h.walkTime)) * 2.5 : 0;
@@ -1286,11 +1495,12 @@ export class Renderer {
         g.save(); g.beginPath(); g.rect(-70, -140, 140, 132); g.clip(); g.translate(0, -24 - bob); joints = drawFigure(g, fig, pose, hooks); g.restore();
         g.save(); g.translate(-h.x, -h.y); this.drawMount(g, e, true); g.restore();
       } else joints = drawFigure(g, fig, pose, hooks);
-    }, flash ? 'rgba(255,255,255,.72)' : undefined);
-    const j = joints as Joints | null;
+      this.heroCut = { joints, k: casting ? k : 0 };
+    }, flash ? 'rgba(255,255,255,.72)' : undefined, false, fps);
+    const j = this.heroCut.joints;
     // Staff heads glow; epic and legendary gear shimmers where it is worn.
     if (j && (id === 'mira' || id === 'lyra') && j.facing !== 'back' && !riding) {
-      const tip = staffTip(j, casting ? k : 0), W = L.weapon;
+      const tip = staffTip(j, this.heroCut.k), W = L.weapon;
       glow(ctx, x + tip.x * s, y + tip.y * s, (16 + (casting ? 22 : 0) + (W?.glow ? 8 : 0)) * s, W?.color || (id === 'mira' ? '#ffe38a' : '#9fe4ff'), .85);
       this.lights.push({ x: x + tip.x * s, y: y + tip.y * s, r: 110 + (casting ? 120 : 0), color: id === 'mira' ? '#ffe38a' : '#9fe4ff', a: .9 });
       if (Math.random() < .25) this.pushAmbient({ x: x + tip.x * s + rand(-3, 3), y: y + tip.y * s, vx: rand(-12, 12), vy: id === 'mira' ? rand(-30, -10) : rand(10, 30), life: .7, max: .7, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: id === 'mira' ? '#ffe38a' : '#dff6ff', phase: 0 });
@@ -1517,8 +1727,8 @@ export class Renderer {
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
   }
   /** Wraps a painter that draws in world coordinates into a sticker cutout anchored at (x, y). */
-  private cutWorld(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, draw: (g: CanvasRenderingContext2D) => void, style: CutStyle = STICKER) {
-    this.living(ctx, key, x, y, box, style, draw, undefined, true);
+  private cutWorld(ctx: CanvasRenderingContext2D, key: unknown, x: number, y: number, box: Box, draw: (g: CanvasRenderingContext2D) => void, style: CutStyle = STICKER, fps = 12) {
+    this.living(ctx, key, x, y, box, style, draw, undefined, true, fps);
   }
   private drawTrainingDummy(ctx: CanvasRenderingContext2D, en: Enemy) { this.cutWorld(ctx, en, en.x, en.y, [-50, -90, 100, 124], g => this.paintDummy(g, en)); }
   private paintDummy(ctx: CanvasRenderingContext2D, en: Enemy) {
@@ -2577,7 +2787,8 @@ export class Renderer {
     let n = 0;
     const most = this.quality >= 1 ? 60 : this.quality > .5 ? 25 : 0;
     for (const li of this.lights) {
-      if (!li.color || n >= most) continue;
+      // Below full detail only the bigger lights (lamps, fires, the hero) get a coloured halo, not every firefly.
+      if (!li.color || n >= most || (this.quality < 1 && li.r < 70)) continue;
       const p = toScreen(li);
       if (p.x < -200 || p.x > w + 200 || p.y < -200 || p.y > h + 200) continue;
       glow(ctx, p.x, p.y, li.r * scale * .6, li.color, .12 * li.a); n++;
@@ -2631,24 +2842,44 @@ export class Renderer {
     if (e.respawnFade > 0) { ctx.fillStyle = `rgba(6,8,14,${Math.min(1, e.respawnFade * 1.3)})`; ctx.fillRect(0, 0, w, h); }
     if (e.cineFade > 0) { ctx.fillStyle = `rgba(4,6,12,${Math.min(1, e.cineFade)})`; ctx.fillRect(0, 0, w, h); }
   }
+  /**
+   * The minimap: its card frame is painted once, and the map, fog and markers ten times a second into a canvas a little
+   * larger than the window. Every frame that canvas is slid under the window by how far the hero has walked since, so the
+   * map still glides with them, and the hero's arrow is drawn on top as it is.
+   */
+  private mini = { c: document.createElement('canvas'), frame: document.createElement('canvas'), key: '', frameKey: '', beat: -1, cx: 0, cy: 0 };
   private drawMinimap(ctx: CanvasRenderingContext2D, w: number, sh: number, e: GameEngine) {
     const small = w < 640 || sh < 520, MW = small ? 128 : 190, MH = small ? 96 : 140, span = 2800, S = MW / span;
-    const x0 = w - MW - (small ? 8 : 14), y0 = small ? 54 : 64, h = e.hero;
-    const map = worldMapCanvas(e.world), MS = MAP_SCALE;
-    const vx = h.x - span / 2, vy = h.y - (MH / S) / 2;
+    const x0 = w - MW - (small ? 8 : 14), y0 = small ? 54 : 64, h = e.hero, m = this.mini, dpr = Math.max(1, ctx.getTransform().a), PAD = 24;
+    // The card behind the map, and the key hint under it.
+    const frameKey = `${MW}|${MH}|${dpr}|${this.touch}`, FL = 8, FT = 8, FW = MW + 22, FH = MH + 34;
+    if (m.frameKey !== frameKey && fontsReady()) {
+      const f = m.frame; f.width = Math.ceil(FW * dpr); f.height = Math.ceil(FH * dpr);
+      const g = f.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, FL * dpr, FT * dpr);
+      g.fillStyle = 'rgba(18,10,20,.5)'; g.beginPath(); g.roundRect(-3, -2, MW + 12, MH + 12, 12); g.fill();
+      g.fillStyle = INK; g.beginPath(); g.roundRect(-6.5, -6.5, MW + 13, MH + 13, 13); g.fill();
+      g.fillStyle = PAPER; g.beginPath(); g.roundRect(-5, -5, MW + 10, MH + 10, 12); g.fill();
+      if (!this.touch) { g.font = `800 10px ${UI}`; g.textAlign = 'right'; g.lineWidth = 3; g.lineJoin = 'round'; g.strokeStyle = INK; g.strokeText('M · map', MW, MH + 18); g.fillStyle = PAPER; g.fillText('M · map', MW, MH + 18); }
+      m.frameKey = frameKey;
+    }
+    if (m.frameKey === frameKey) ctx.drawImage(m.frame, x0 - FL, y0 - FT, m.frame.width / dpr, m.frame.height / dpr);
+    // The map itself, redrawn on a beat or when the hero has nearly walked off the canvas's margin.
+    const CW = MW + PAD * 2, CH = MH + PAD * 2, key = `${MW}|${MH}|${dpr}`, beat = Math.floor(this.time * 10);
+    if (m.key !== key || m.beat !== beat || Math.abs(h.x - m.cx) * S > PAD * .8 || Math.abs(h.y - m.cy) * S > PAD * .8) {
+      const c = m.c; if (m.key !== key) { c.width = Math.ceil(CW * dpr); c.height = Math.ceil(CH * dpr); }
+      const g = c.getContext('2d')!, map = worldMapCanvas(e.world), MS = MAP_SCALE, vx = h.x - (CW / S) / 2, vy = h.y - (CH / S) / 2;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = MAP_PAPER; g.fillRect(0, 0, CW, CH);
+      g.drawImage(map, vx * MS, vy * MS, (CW / S) * MS, (CH / S) * MS, 0, 0, CW, CH);
+      drawFog(g, e, -vx * S, -vy * S, S);
+      drawMapMarkers(g, e, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), 1, this.time, vx - 40, vx + CW / S + 40, vy - 40, vy + CH / S + 40, false);
+      m.key = key; m.beat = beat; m.cx = h.x; m.cy = h.y;
+    }
     ctx.save();
-    ctx.fillStyle = 'rgba(18,10,20,.5)'; ctx.beginPath(); ctx.roundRect(x0 - 3, y0 - 2, MW + 12, MH + 12, 12); ctx.fill();
-    ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x0 - 6.5, y0 - 6.5, MW + 13, MH + 13, 13); ctx.fill();
-    ctx.fillStyle = PAPER; ctx.beginPath(); ctx.roundRect(x0 - 5, y0 - 5, MW + 10, MH + 10, 12); ctx.fill();
     ctx.beginPath(); ctx.roundRect(x0, y0, MW, MH, 8); ctx.clip();
-    ctx.fillStyle = MAP_PAPER; ctx.fillRect(x0, y0, MW, MH);
-    ctx.drawImage(map, vx * MS, vy * MS, span * MS, (MH / S) * MS, x0, y0, MW, MH);
-    drawFog(ctx, e, x0 - vx * S, y0 - vy * S, S);
-    const P = (p: Point) => ({ x: x0 + (p.x - vx) * S, y: y0 + (p.y - vy) * S });
-    drawMapMarkers(ctx, e, P, 1, this.time);
+    ctx.drawImage(m.c, x0 - PAD - (h.x - m.cx) * S, y0 - PAD - (h.y - m.cy) * S, CW, CH);
+    heroArrow(ctx, e, x0 + MW / 2, y0 + MH / 2, 1);
     ctx.restore();
     ctx.strokeStyle = MAP_INK; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.roundRect(x0, y0, MW, MH, 8); ctx.stroke();
-    if (!this.touch) { ctx.font = `800 10px ${UI}`; ctx.textAlign = 'right'; ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText('M · map', x0 + MW, y0 + MH + 18); ctx.fillStyle = PAPER; ctx.fillText('M · map', x0 + MW, y0 + MH + 18); }
   }
 }
 
@@ -2716,9 +2947,11 @@ function drawFog(ctx: CanvasRenderingContext2D, e: GameEngine, ox: number, oy: n
   ctx.drawImage(f.c, ox - C, oy - C, (cols + 2) * C, (rows + 2) * C);
 }
 const seen = (e: GameEngine, p: Point) => { const cx = Math.floor(p.x / EXPLORE_CELL), cy = Math.floor(p.y / EXPLORE_CELL); return !!e.explored[cy * e.exploreCols + cx]; };
-function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Point) => Point, size: number, t: number, x0 = -Infinity, x1 = Infinity) {
+/** Chests, keys, people, creatures and quest goals on a map; only those between x0…x1 and y0…y1 are drawn, and the
+ *  hero's own arrow unless `hero` is false. */
+function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Point) => Point, size: number, t: number, x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity, hero = true) {
   const dot = (p: Point, r: number, c: string) => { const q = P(p); circle(ctx, q.x, q.y, (r + .9) * size, MAP_INK); circle(ctx, q.x, q.y, r * size, c); };
-  const inside = (p: Point) => p.x >= x0 && p.x <= x1;
+  const inside = (p: Point) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
   for (const o of e.getObjects()) {
     if (!inside(o) || !seen(e, o)) continue;
     const acc = regionOf(e.world, o.x).palette.accent;
@@ -2734,9 +2967,13 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
   for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.heroic) { const q = P(en); glow(ctx, q.x, q.y, 8 * size, '#c98aff', .55 + Math.sin(t * 4) * .25); dot(en, 2.8, '#e8a0ff'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const mt = e.mainTarget(); if (mt && inside(mt) && size > 1) { const q = P(mt); ctx.strokeStyle = MAIN_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (6 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
-  const h = e.hero; if (!inside(h)) return;
-  const ha = Math.atan2(h.faceY, h.faceX), q = P(h);
-  ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(ha); ctx.scale(size, size);
+  const h = e.hero; if (!hero || !inside(h)) return;
+  const q = P(h); heroArrow(ctx, e, q.x, q.y, size);
+}
+/** The hero on a map: a white arrow pointing the way they face. */
+function heroArrow(ctx: CanvasRenderingContext2D, e: GameEngine, x: number, y: number, size: number) {
+  const h = e.hero, ha = Math.atan2(h.faceY, h.faceX);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ha); ctx.scale(size, size);
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -4); ctx.lineTo(-1.5, 0); ctx.lineTo(-4, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.restore();
