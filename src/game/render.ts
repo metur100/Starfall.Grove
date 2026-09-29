@@ -1856,6 +1856,7 @@ export class Renderer {
   }
   // ───────────────────────────── enemies
   private drawEnemy(ctx: CanvasRenderingContext2D, en: Enemy, e: GameEngine) {
+    if (e.practice) { this.drawTrainingDummy(ctx, en); return; }
     const t = this.time + en.homeX * .01, h = e.hero;
     const spawn = en.spawnT > 0 ? 1 - en.spawnT / .6 : 1;
     const look = { x: clamp((h.x - en.x) / 150, -1, 1), y: clamp((h.y - en.y) / 150, -1, 1) };
@@ -1926,6 +1927,20 @@ export class Renderer {
     if (bv) { /* lit above */ } else if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
     if (!bv && (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant')) this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
+  }
+  private drawTrainingDummy(ctx: CanvasRenderingContext2D, en: Enemy) {
+    const hit = en.hitFlash > 0, x = en.x, y = en.y, t = this.time;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 2 + x) * .015);
+    ctx.fillStyle = 'rgba(10,15,20,.35)'; ctx.beginPath(); ctx.ellipse(0, 18, 42, 13, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#815c45'; ctx.strokeStyle = hit ? '#fff1b8' : '#c59a68'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(-22, -34, 44, 70, 12); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#a87851'; ctx.beginPath(); ctx.arc(0, -42, 27, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2a1b22'; ctx.beginPath(); ctx.arc(-9, -45, 3, 0, TAU); ctx.arc(9, -45, 3, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#e8c08a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -39, 9, .15, Math.PI - .15); ctx.stroke();
+    ctx.fillStyle = '#f5d27a'; ctx.font = `800 11px ${UI}`; ctx.textAlign = 'center'; ctx.fillText('DUMMY', 0, 3);
+    ctx.restore();
+    const bw = 72, by = y - 76; ctx.fillStyle = 'rgba(10,15,20,.7)'; ctx.beginPath(); ctx.roundRect(x - bw / 2, by, bw, 7, 3); ctx.fill();
+    ctx.fillStyle = '#b9f29d'; ctx.beginPath(); ctx.roundRect(x - bw / 2, by + 1, bw * Math.max(0, en.hp / en.maxHp), 5, 2); ctx.fill();
   }
   /** "Lv 9" over creatures near Mira, coloured by how dangerous they are compared to her. */
   private drawLevelTags(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {

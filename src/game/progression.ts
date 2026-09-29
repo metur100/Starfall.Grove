@@ -35,6 +35,7 @@ export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
 const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mount: null, trail: null });
+export const practiceProfile = (hero: HeroId): Profile => ({ ...blank(hero), gold: 0, items: {} });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
 export type UpgradeInfo = { name: string; icon: string; description: string; per: string };

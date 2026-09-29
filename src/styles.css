@@ -92,6 +92,95 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .title-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; padding: 12px 16px 26px; color: var(--muted); font-size: 12px; }
 .title-foot kbd { margin-right: 4px; }
 
+/* ─────────── tutorial */
+.title-actions { width: min(500px, 100%); margin-top: 4px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.title-actions .btn { width: 100%; min-width: 0; min-height: 70px; padding-left: 12px; padding-right: 12px; font-size: 18px; }
+.title-page .title-actions .play-button { width: 100%; }
+.tutorial-page { padding: 0 16px 32px; }
+.tutorial-top { width: min(1180px, 100%); display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+.tutorial-heading { width: min(760px, 100%); text-align: center; padding: 16px 0 22px; }
+.tutorial-heading h1 { margin: 12px 0 8px; font: 900 clamp(34px, 6vw, 62px)/1 var(--display); color: var(--cream); text-shadow: 0 5px 24px rgba(0, 0, 0, .5); }
+.tutorial-heading p { margin: 0 auto; max-width: 650px; color: #d6dbef; line-height: 1.6; }
+.tutorial-select-card { width: min(860px, 100%); display: grid; grid-template-columns: 1fr 220px; gap: 22px; align-items: stretch; padding: 24px; border: 1px solid var(--line); border-radius: 22px; background: rgba(10, 14, 28, .76); box-shadow: 0 24px 70px rgba(0, 0, 0, .35); }
+.tutorial-selected-hero { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.tutorial-large-face { width: 104px; height: 104px; margin-bottom: 12px; font-size: 54px; border-width: 3px; }
+.tutorial-selected-hero > small { color: var(--gold); font: 800 11px var(--ui); letter-spacing: .18em; text-transform: uppercase; }
+.tutorial-selected-hero h2 { margin: 4px 0; font: 900 34px var(--display); }
+.tutorial-selected-hero p { max-width: 440px; margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
+.tutorial-selected-hero .btn { margin-top: 18px; }
+.tutorial-kit { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.tutorial-kit span { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--cream); background: rgba(255, 255, 255, .06); font-size: 11px; }
+.tutorial-note { margin-top: 12px; color: var(--muted); font-size: 11px; }
+.tutorial-layout { width: min(1180px, 100%); display: grid; grid-template-columns: 210px 1fr; gap: 18px; align-items: start; }
+.tutorial-roster { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: rgba(10, 14, 28, .7); }
+.tutorial-hero { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; text-align: left; cursor: pointer; transition: background .2s, border-color .2s, transform .2s; }
+.tutorial-hero:hover { transform: translateX(3px); background: rgba(255, 255, 255, .08); }
+.tutorial-hero.on { border-color: var(--gold); background: rgba(245, 210, 122, .12); }
+.tutorial-hero .portrait { width: 42px; height: 42px; font-size: 23px; }
+.tutorial-hero span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.tutorial-hero b { font: 700 15px var(--display); }
+.tutorial-hero small { color: var(--muted); font-size: 11px; }
+.practice-board { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 22px; background: rgba(10, 14, 28, .76); box-shadow: 0 24px 70px rgba(0, 0, 0, .32); }
+.practice-hero { display: flex; align-items: center; gap: 14px; padding-bottom: 18px; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.practice-face { width: 58px; height: 58px; font-size: 32px; }
+.practice-hero small { color: var(--gold); text-transform: uppercase; letter-spacing: .14em; font-weight: 800; font-size: 10px; }
+.practice-hero h2 { margin: 2px 0; font: 800 25px var(--display); }
+.practice-hero p { margin: 0; color: var(--muted); font-size: 13px; }
+.dummy-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 24px 0 18px; }
+.dummy { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 18px 10px 12px; border: 1px solid rgba(255, 255, 255, .13); border-radius: 16px; background: radial-gradient(circle at 50% 10%, rgba(245, 210, 122, .16), rgba(255, 255, 255, .04)); transition: transform .2s, box-shadow .2s; }
+.dummy.lit { animation: dummy-hit .35s ease both; }
+.dummy-head { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: #f5d27a; background: #5d4a43; border: 3px solid #bb9260; font-size: 22px; box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .16); }
+.dummy b { font: 700 13px var(--display); }
+.dummy small { color: var(--muted); font-size: 10px; }
+.dummy-health { width: 100%; height: 7px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .12); }
+.dummy-health i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #e56865, #f4c46f); transition: width .3s ease; }
+.practice-status { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 18px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, .06); }
+.practice-status > span { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; }
+.practice-status > span b { color: var(--mana); }
+.practice-status > span i { width: 100px; height: 7px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .12); }
+.practice-status > span em { display: block; height: 100%; border-radius: inherit; background: var(--mana); transition: width .25s; }
+.practice-status p { margin: 0; color: #d9def2; font-size: 12px; }
+.tutorial-spells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 14px; }
+.tutorial-spell { display: flex; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid color-mix(in srgb, var(--spell) 35%, transparent); border-radius: 15px; background: linear-gradient(145deg, color-mix(in srgb, var(--spell) 10%, rgba(255,255,255,.04)), rgba(255,255,255,.025)); transition: transform .2s, border-color .2s, box-shadow .2s; }
+.tutorial-spell.cast { transform: translateY(-3px); border-color: var(--spell); box-shadow: 0 0 22px color-mix(in srgb, var(--spell) 25%, transparent); }
+.tutorial-spell-head { display: flex; align-items: center; gap: 10px; }
+.tutorial-spell-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: #181326; background: var(--spell); box-shadow: 0 0 16px color-mix(in srgb, var(--spell) 45%, transparent); font-size: 20px; }
+.tutorial-spell h3 { margin: 0; font: 700 16px var(--display); }
+.tutorial-spell-head small { color: var(--muted); font-size: 10px; }
+.tutorial-spell p { flex: 1; margin: 0; color: #d6dbef; font-size: 12px; line-height: 1.5; }
+.spell-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+.tutorial-cast { min-height: 38px; padding: 0 12px; font-size: 12px; }
+.tutorial-cast:disabled { cursor: not-allowed; opacity: .65; transform: none; }
+@keyframes dummy-hit { 0%, 100% { transform: translateX(0); } 35% { transform: translateX(-4px) rotate(-1deg); } 70% { transform: translateX(4px) rotate(1deg); } }
+@media (max-width: 760px) {
+  .practice-guide-toggle { top: 130px; left: 8px; }
+  .practice-guide { top: 176px; left: 8px; width: min(270px, calc(100vw - 16px)); max-height: calc(100% - 216px); padding: 9px; }
+  .practice-guide header strong { font-size: 16px; }
+  .practice-guide article { padding: 6px 0; }
+  .practice-guide article p { font-size: 10px; }
+  .tutorial-page { padding-left: 10px; padding-right: 10px; }
+  .tutorial-top { padding-top: 10px; }
+  .tutorial-top .eyebrow { font-size: 9px; letter-spacing: .16em; }
+  .tutorial-layout { grid-template-columns: 1fr; }
+  .tutorial-select-card { grid-template-columns: 1fr; padding: 16px; }
+  .tutorial-select-card .tutorial-roster { order: 2; }
+  .tutorial-large-face { width: 82px; height: 82px; font-size: 44px; }
+  .tutorial-roster { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 5px; }
+  .tutorial-hero { flex-direction: column; justify-content: center; gap: 4px; padding: 6px 3px; text-align: center; }
+  .tutorial-hero:hover { transform: none; }
+  .tutorial-hero .portrait { width: 34px; height: 34px; font-size: 19px; }
+  .tutorial-hero b { font: 800 11px var(--ui); }
+  .tutorial-hero small { display: none; }
+  .practice-board { padding: 14px; }
+  .dummy-row { gap: 6px; padding: 16px 0 12px; }
+  .dummy { padding: 12px 5px 9px; }
+  .dummy-head { width: 38px; height: 38px; font-size: 17px; }
+  .dummy b { font-size: 10px; }
+  .dummy small { font-size: 9px; }
+  .practice-status { grid-template-columns: 1fr; gap: 7px; }
+  .tutorial-spells { grid-template-columns: 1fr; }
+}
+
 .panel { background: var(--glass-strong); border: 1px solid var(--line); border-radius: 26px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .08); }
 .victory-panel { margin: auto; width: min(620px, calc(100% - 32px)); padding: 36px 32px; text-align: center; animation: pop-in .6s cubic-bezier(.2, 1.4, .4, 1) both; }
 .victory-panel h1 { margin: 16px 0 10px; font: 900 clamp(32px, 5vw, 50px)/1.05 var(--display); background: linear-gradient(100deg, #fff4d0, #f5d27a, #fff9e6, #e8a14a); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 5s linear infinite; }
@@ -110,6 +199,27 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 /* ─────────── play */
 .play-page { position: absolute; inset: 0; }
 .game-stage { position: absolute; inset: 0; overflow: hidden; background: #000; touch-action: none; user-select: none; -webkit-user-select: none; }
+.practice-guide { position: absolute; top: 174px; left: 14px; z-index: 3; width: min(320px, calc(100vw - 28px)); max-height: calc(100% - 344px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: rgba(10, 14, 28, .88); box-shadow: 0 14px 35px rgba(0, 0, 0, .4); backdrop-filter: blur(8px); }
+.practice-guide-toggle { position: absolute; top: 124px; left: 14px; z-index: 4; display: inline-flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(10, 14, 28, .88); color: var(--cream); cursor: pointer; font: 800 12px var(--ui); box-shadow: 0 8px 20px rgba(0, 0, 0, .35); }
+.practice-guide-toggle:hover { background: rgba(30, 40, 70, .92); }
+.guide-toggle-track { position: relative; width: 34px; height: 19px; display: block; border-radius: 999px; background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .24); transition: background .2s, border-color .2s; }
+.guide-toggle-track b { position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; border-radius: 50%; background: #c5c9d8; transition: transform .2s, background .2s; }
+.practice-guide-toggle.guide-button-on { border-color: var(--gold); color: var(--gold); }
+.practice-guide-toggle.guide-button-on .guide-toggle-track { background: rgba(185, 242, 157, .35); border-color: #b9f29d; }
+.practice-guide-toggle.guide-button-on .guide-toggle-track b { transform: translateX(15px); background: #b9f29d; }
+.practice-guide header { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding-bottom: 9px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.practice-guide header span { display: flex; flex-direction: column; gap: 2px; }
+.practice-guide header small { color: var(--gold); font: 800 9px var(--ui); letter-spacing: .16em; text-transform: uppercase; }
+.practice-guide header strong { font: 800 19px var(--display); }
+.practice-guide header em { color: #b9f29d; font: 800 10px var(--ui); font-style: normal; }
+.guide-button-on { border-color: var(--gold); background: rgba(245, 210, 122, .18); color: var(--gold); }
+.practice-guide article { display: flex; gap: 9px; padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.practice-guide article:last-child { border-bottom: 0; }
+.guide-icon { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: #171323; background: var(--spell); font-size: 16px; }
+.practice-guide article > div { min-width: 0; }
+.practice-guide article b { font: 800 12px var(--display); color: var(--cream); }
+.practice-guide article b kbd { margin-left: 4px; padding: 1px 4px; min-width: 17px; font-size: 9px; }
+.practice-guide article p { margin: 3px 0 0; color: #c8cde0; font-size: 11px; line-height: 1.4; }
 .world-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .hud-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; z-index: 3; }
 .hud-top > * { pointer-events: auto; }
@@ -1098,6 +1208,18 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .q-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 4px 0 2px; }
 .q-actions em { margin-right: auto; font-size: 12px; color: var(--muted); font-style: italic; }
 .btn.small { padding: 5px 12px; min-height: 0; font-size: 12px; border-radius: 10px; }
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .title-actions { width: min(420px, 72vw); }
+  .title-actions .btn { min-height: 54px; font-size: 18px; }
+  .title-page .title-actions { gap: 8px; }
+  .hud-buttons { max-width: 180px; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  .hud-buttons .icon-button { width: 34px; height: 34px; border-radius: 10px; font-size: 13px; }
+  .practice-guide-toggle { top: 105px; left: 8px; }
+  .practice-guide { top: 151px; max-height: calc(100% - 167px); width: min(285px, 42vw); }
+  .practice-guide article { padding: 5px 0; }
+  .practice-guide article p { font-size: 10px; }
+}
 
 /* ── the hero's intro film: fills the screen at 16:9, black bars wherever the screen is another shape */
 .film { position: fixed; inset: 0; z-index: 60; background: #000; display: grid; place-items: center; overflow: hidden; }

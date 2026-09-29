@@ -2,7 +2,7 @@ import { ACHIEVEMENTS, goalOf, type AchDef, type Totals } from './achievements';
 import { ambience, footstep, sfx, type Sfx } from './audio';
 import { ITEMS, ITEM_ORDER, rollItem } from './items';
 import { RARITY, SLOT_ORDER, armouryStock, makeGear, rollRarity, seeded, sellPrice } from './gear';
-import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
+import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, practiceProfile, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
 import { HEROES, MAX_STARS, SPELLS, SPELL_UPGRADES, starCost, starLevel, upgradeText } from './spells';
 import { MOUNTS, MOUNT_ORDER, mountFor } from './mounts';
 import { TRAILS, trailFor } from './trails';
@@ -206,6 +206,7 @@ const HERD_SPARE = 2;
 const QUEST_ITEMS = ITEM_ORDER.filter(id => id !== 'phoenixFeather');
 
 export class GameEngine {
+  readonly practice: boolean;
   readonly world: WorldDefinition;
   readonly hero: Hero;
   readonly profile: Profile;
@@ -310,14 +311,26 @@ export class GameEngine {
   cineLit: RegionId | null = null;
   private introSeen = false; private barrierNoticeT = -99; private barriers: WorldObject[] = [];
 
-  constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
+  constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null, practice = false) {
+    this.practice = practice;
     this.heroId = heroId; this.spellIds = HEROES[heroId].spells;
     const base = getWorld(), quests = questsForHero(base.quests, heroId);
-    this.world = { ...base, ...worldForHero(base, heroId, quests), spawn: startFor(base, heroId), quests }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
-    this.profile = loadProfile(heroId);
+    const practiceSeeds: EnemySeed[] = [
+      { id: 'practice:one', kind: 'gloomling', x: 900, y: 900, level: 1, region: 'meadow' },
+      { id: 'practice:two', kind: 'gloomling', x: 1120, y: 900, level: 1, region: 'meadow' },
+      { id: 'practice:three', kind: 'gloomling', x: 1340, y: 900, level: 1, region: 'meadow' },
+    ];
+    const practiceWorld: WorldDefinition = {
+      ...base, width: 2400, height: 1800, spawn: { x: 650, y: 900 }, enemies: practiceSeeds,
+      obstacles: base.obstacles.filter(o => o.x < 2400 && o.y < 1800), decor: base.decor.filter(o => o.x < 2400 && o.y < 1800), ponds: base.ponds.filter(o => o.x < 2400 && o.y < 1800),
+      npcs: [], critters: [], pods: [], objects: [], quests: [], pois: [], roads: [],
+    };
+    this.world = practice ? practiceWorld : { ...base, ...worldForHero(base, heroId, quests), spawn: startFor(base, heroId), quests }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
+    this.profile = practice ? practiceProfile(heroId) : loadProfile(heroId);
     const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
     this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false, ghostT: 0 };
+    if (practice) { this.hero.maxMana = 240; this.hero.mana = 240; this.hero.manaRegen = 240; }
     this.obstacleGrid = new Grid(256, this.world.obstacles);
     this.collide(this.world.spawn, 34); this.hero.x = this.world.spawn.x; this.hero.y = this.world.spawn.y; this.checkpoint = { ...this.world.spawn };
     this.roads = new RoadIndex(this.world.roads);
@@ -341,7 +354,7 @@ export class GameEngine {
     this.syncAchievements();
     ambience.start(this.regionId);
   }
-  dispose() { ambience.stop(); if (this.profileDirty) saveProfile(this.profile); }
+  dispose() { ambience.stop(); if (this.profileDirty && !this.practice) saveProfile(this.profile); }
 
   private nearStart(s: EnemySeed, rest: Point): EnemySeed {
     const r = this.world.regions[0]; if (s.boss || s.region !== r.id || !HERO_START[this.heroId]) return s;
@@ -438,6 +451,7 @@ export class GameEngine {
   }
 
   // ───────────────────────────── helpers
+  private persistProfile(profile: Profile) { if (!this.practice) saveProfile(profile); }
   private notice(text: string, tone: NoticeTone = 'info', short?: string) { this.eventHandler({ type: 'notice', text, tone, short }); }
   /** The story is written for Mira; other heroes get their own name in it, and travel without Tuft the fox. */
   private personal(lines: string[]) { return lines.map(l => personalize(l, this.heroId)); }
@@ -469,7 +483,7 @@ export class GameEngine {
   bossUnlocked(e: Enemy) { const q = this.bossQuest(e); if (!q) return true; const st = this.qs(q.id).status; return st === 'active' || st === 'done'; }
   private canHurt(e: Enemy) { return !e.boss || this.bossUnlocked(e); }
   keysFound(region: RegionId) { return this.main.keys.filter(k => k.startsWith(`${region}:`)).length; }
-  spellUnlocked(id: SpellId) { return this.profile.level >= SPELLS[id].level; }
+  spellUnlocked(id: SpellId) { return this.practice || this.profile.level >= SPELLS[id].level; }
   get power() { return powerAt(this.profile) * (this.buffs.powerElixir ? 1.35 : 1) * (this.buffs.giantBrew ? 1.4 : 1); }
   /** Damage multiplier of one ability: overall power times its upgrade stars. */
   private sp(id: SpellId) { const u = SPELL_UPGRADES[id]; return this.power * (u.stat === 'damage' ? 1 + starsOf(this.profile, id) * u.per / 100 : 1); }
@@ -571,7 +585,7 @@ export class GameEngine {
       for (const id of this.spellIds) if (SPELLS[id].level === p.level) this.eventHandler({ type: 'spellLearned', spell: id });
     }
     if (p.level >= MAX_LEVEL) p.xp = 0;
-    saveProfile(p);
+    this.persistProfile(p);
   }
   private gainGold(n: number, x = this.hero.x, y = this.hero.y) {
     n = Math.round(n * (this.buffs.luckyClover ? 1.5 : 1)); if (n <= 0) return;
@@ -597,7 +611,7 @@ export class GameEngine {
     if (this.completeTimer > 0 || this.cine) return;
     const info = SPELLS[id], h = this.hero;
     if (this.riding && this.spellUnlocked(id)) this.dismount();
-    if (!this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
+    if (!this.practice && !this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
     if (id === 'spark') return this.attack();
     if (id === 'dash') return this.dash();
     if (id === 'slash') return this.swordSlash();
@@ -941,14 +955,14 @@ export class GameEngine {
     if (r.gold > 0) { this.profile.gold += r.gold; this.statMax('gold', this.profile.gold); }
     if (kind === 'dice' && r.won) this.bump('diceWins');
     if (kind === 'archery' && r.score !== undefined) this.statMax('archeryBest', r.score);
-    this.profileDirty = true; saveProfile(this.profile); this.play(r.won ? 'questDone' : 'page');
+    this.profileDirty = true; this.persistProfile(this.profile); this.play(r.won ? 'questDone' : 'page');
   }
-  trailUnlocked(id: TrailId) { return !!this.profile.ach.got[TRAILS[id].ach]; }
-  setTrail(id: TrailId | null) { if (id && !this.trailUnlocked(id)) return; this.profile.trail = id; saveProfile(this.profile); this.play('ui'); }
+  trailUnlocked(id: TrailId) { return this.practice || !!this.profile.ach.got[TRAILS[id].ach]; }
+  setTrail(id: TrailId | null) { if (id && !this.trailUnlocked(id)) return; this.profile.trail = id; this.persistProfile(this.profile); this.play('ui'); }
   get trail(): TrailId | null { const t = this.profile.trail; return t && this.trailUnlocked(t) ? t : null; }
 
   // ───────────────────────────── mounts
-  mountUnlocked(id: MountId) { return !!this.profile.ach.got[MOUNTS[id].ach]; }
+  mountUnlocked(id: MountId) { return this.practice || !!this.profile.ach.got[MOUNTS[id].ach]; }
   /** The mount the hero rides: the one chosen in the stable, or the fastest one earned. */
   get mountId(): MountId | null {
     const p = this.profile.mount;
@@ -956,7 +970,7 @@ export class GameEngine {
     for (let i = MOUNT_ORDER.length - 1; i >= 0; i--) if (this.mountUnlocked(MOUNT_ORDER[i])) return MOUNT_ORDER[i];
     return null;
   }
-  setMount(id: MountId) { if (!this.mountUnlocked(id)) return; this.profile.mount = id; saveProfile(this.profile); this.play('ui'); }
+  setMount(id: MountId) { if (!this.mountUnlocked(id)) return; this.profile.mount = id; this.persistProfile(this.profile); this.play('ui'); }
   private inCombat() { const h = this.hero; return this.bossFight || this.enemies.some(e => !e.dead && e.aggro && this.canHurt(e) && Math.abs(e.x - h.x) < 600 && Math.abs(e.y - h.y) < 600); }
   /** R: call the mount (not while creatures are after you), or step off it. */
   toggleMount() {
@@ -1769,7 +1783,7 @@ export class GameEngine {
   addItem(id: ItemId, count = 1) {
     const bag = this.profile.items;
     if (!bag[id] && bagUsed(this.profile) >= BAG_SIZE) { this.gainGold(ITEMS[id].price * .4 * count); this.notice(`Your bag is full — ${ITEMS[id].name} was sold.`, 'warn', 'Bag full'); return; }
-    bag[id] = Math.min(99, (bag[id] || 0) + count); saveProfile(this.profile);
+    bag[id] = Math.min(99, (bag[id] || 0) + count); this.persistProfile(this.profile);
     this.text(this.hero.x, this.hero.y - 70, `+${count} ${ITEMS[id].name}`, ITEMS[id].color, 15);
     this.eventHandler({ type: 'item', id, count });
   }
@@ -1782,7 +1796,7 @@ export class GameEngine {
     if (id === 'phoenixFeather') { this.play('nope'); this.notice('The Phoenix Feather works by itself: keep it in your bag and it saves you when you fall.', 'info', 'Works by itself'); return; }
     if (id === 'thunderJar' && !this.thunderTargets().length) { this.play('nope'); this.notice('No foes in reach — the lightning would be wasted.', 'warn', 'No foes near'); return; }
     if (have > 1) bag[id] = have - 1; else delete bag[id];
-    saveProfile(this.profile);
+    this.persistProfile(this.profile);
     if (info.kind === 'potion') this.bump('potions'); else if (info.kind === 'bomb' && id !== 'smokeBomb') this.bump('bombs');
     switch (id) {
       case 'healthPotion': { const heal = Math.min(h.maxHp - h.hp, Math.round(h.maxHp * .5)); h.hp += heal; this.text(h.x, h.y - 50, `+${heal}`, '#ff9aa8', 20); break; }
@@ -1832,10 +1846,10 @@ export class GameEngine {
     const bag = this.profile.items, have = bag[id] || 0; if (have <= 0) return 0;
     const n = Math.max(1, Math.round(ITEMS[id].price * .4));
     if (have > 1) bag[id] = have - 1; else delete bag[id];
-    this.profile.gold += n; saveProfile(this.profile); this.play('orb');
+    this.profile.gold += n; this.persistProfile(this.profile); this.play('orb');
     return n;
   }
-  setQuick(id: ItemId) { if (id === 'healthPotion') return; this.profile.quick = id; saveProfile(this.profile); this.play('ui'); }
+  setQuick(id: ItemId) { if (id === 'healthPotion') return; this.profile.quick = id; this.persistProfile(this.profile); this.play('ui'); }
 
   // ───────────────────────────── equipment
   /** Puts on a piece for an empty slot; anything else goes in the bag, or is sold on the spot if the bag is full. */
@@ -1852,7 +1866,7 @@ export class GameEngine {
       return;
     }
     if (bagUsed(p) >= BAG_SIZE) { const n = sellPrice(g); p.gold += n; this.profileDirty = true; this.notice(`Your bag is full — ${g.name} was sold for ${n} gold.`, 'warn', 'Bag full · sold'); return; }
-    p.gear.push(g); saveProfile(p);
+    p.gear.push(g); this.persistProfile(p);
     this.text(this.hero.x, this.hero.y - 88, g.name, c, 15);
     this.eventHandler({ type: 'loot', item: g });
   }
@@ -1866,7 +1880,7 @@ export class GameEngine {
     if (!s || s.sold || p.gold < s.price || p.level < s.needLevel || (p.equipped[s.item.slot] && bagUsed(p) >= BAG_SIZE)) { this.play('nope'); return false; }
     p.gold -= s.price; p.bought = [...p.bought, uid].slice(-60); this.play('orb'); this.bump('bought');
     this.addGear({ ...s.item, uid: `b${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}` });
-    saveProfile(p);
+    this.persistProfile(p);
     return true;
   }
   private dropGear(x: number, y: number, ilvl: number, rarity: Rarity) {
@@ -1876,7 +1890,7 @@ export class GameEngine {
   }
   private statsChanged(before: number) {
     this.refreshStats(false); this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + Math.max(0, this.hero.maxHp - before));
-    saveProfile(this.profile);
+    this.persistProfile(this.profile);
   }
   equip(uid: string) {
     const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return false;
@@ -1893,10 +1907,10 @@ export class GameEngine {
     const before = this.hero.maxHp; delete p.equipped[slot]; p.gear.push(g); this.statsChanged(before); this.play('page');
     return true;
   }
-  discardGear(uid: string) { const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return; p.gear.splice(i, 1); saveProfile(p); this.play('page'); }
+  discardGear(uid: string) { const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return; p.gear.splice(i, 1); this.persistProfile(p); this.play('page'); }
   sellGear(uid: string) {
     const p = this.profile, i = p.gear.findIndex(g => g.uid === uid); if (i < 0) return 0;
-    const n = sellPrice(p.gear[i]); p.gear.splice(i, 1); p.gold += n; saveProfile(p); this.play('orb');
+    const n = sellPrice(p.gear[i]); p.gear.splice(i, 1); p.gold += n; this.persistProfile(p); this.play('orb');
     return n;
   }
 
@@ -1909,7 +1923,7 @@ export class GameEngine {
   upgradeSpell(id: SpellId) {
     const r = this.spellRank(id), p = this.profile;
     if (!r.canBuy) { this.play('nope'); return false; }
-    p.gold -= r.cost; p.stars[id] = r.rank + 1; saveProfile(p); this.statMax('stars', r.rank + 1);
+    p.gold -= r.cost; p.stars[id] = r.rank + 1; this.persistProfile(p); this.statMax('stars', r.rank + 1);
     this.play('learn'); this.flash = .2;
     this.emit(this.hero.x, this.hero.y - 10, 30, [SPELLS[id].color, '#ffffff', '#ffd35c'], { speed: 200, life: .8, kind: 'star', glow: true });
     return true;
@@ -1920,7 +1934,7 @@ export class GameEngine {
     if (rank >= MAX_RANK || p.gold < cost) { this.play('nope'); return false; }
     p.gold -= cost; p.upgrades[id] = rank + 1; this.statMax('smith', rank + 1);
     const before = this.hero.maxHp; this.refreshStats(false); this.hero.hp += Math.max(0, this.hero.maxHp - before);
-    saveProfile(p); this.play('learn'); this.flash = .25;
+    this.persistProfile(p); this.play('learn'); this.flash = .25;
     this.emit(this.hero.x, this.hero.y, 30, ['#ffd35c', '#ffffff', '#ffb05c'], { speed: 200, life: .8, kind: 'star', glow: true });
     return true;
   }
@@ -2121,9 +2135,18 @@ export class GameEngine {
     if (e.dead || e.burrowT > 0) return;
     if (!this.canHurt(e)) { this.notice(this.region(e.region).script.sealed, 'warn', 'Sealed'); this.emit(e.x, e.y, 8, '#c9b6ff', { speed: 120, glow: true }); return; }
     amount = Math.max(1, Math.round(amount * this.dealMul(e.level)));
+    if (this.practice) {
+      e.hitFlash = .14;
+      this.combo++; this.comboTime = 2.4;
+      this.text(e.x, e.y - e.r - 18, crit ? `${amount}!` : `${amount}`, crit ? '#ffd35c' : '#fff3c0', crit ? 24 : 17);
+      this.emit(e.x, e.y, crit ? 12 : 7, ['#ffffff', '#fff3c0', this.region(e.region).palette.accent], { speed: 200, life: .35, glow: true, size: 3 });
+      this.play(crit ? 'crit' : 'hit', e);
+      if (crit) { this.hitStop = Math.max(this.hitStop, .05); this.addShake(3); }
+      return;
+    }
     e.hp -= amount; e.hitFlash = .14; e.aggro = true;
     this.combo++; this.comboTime = 2.4;
-    if (crit) this.bump('crits');
+    if (crit && !this.practice) this.bump('crits');
     if (this.combo >= 15) this.statMax('combo', this.combo);
     this.text(e.x, e.y - e.r - 18, crit ? `${amount}!` : `${amount}`, crit ? '#ffd35c' : '#fff3c0', crit ? 24 : 17);
     this.emit(e.x, e.y, crit ? 12 : 7, ['#ffffff', '#fff3c0', this.region(e.region).palette.accent], { speed: 200, life: .35, glow: true, size: 3 });
@@ -2133,6 +2156,7 @@ export class GameEngine {
   }
   private killEnemy(e: Enemy) {
     e.dead = true; e.deadT = 0; e.action = null; e.burrowT = 0; e.chillT = 0; e.frozenT = 0;
+    if (this.practice) { this.emit(e.x, e.y, 18, ['#fff1b8', '#ffd35c', '#ffffff'], { speed: 220, life: .7, kind: 'star', glow: true, size: 4 }); this.ring(e.x, e.y, 90, '#ffd35c', .5); return; }
     if (!e.summoned) { this.defeated++; this.bump('kills'); if (e.elite) this.bump('elites'); if (e.heroic) this.bump('heroics'); if (e.level - this.profile.level >= 4) this.statMax('underdog', 1); }
     const colors = KILL_COLORS[e.kind] || [this.region(e.region).palette.accent, '#ffffff', '#ffd27a', '#ff9a4a'];
     this.emit(e.x, e.y, e.boss ? 140 : 22, colors, { speed: e.boss ? 520 : 240, life: e.boss ? 1.8 : .8, kind: 'star', glow: true, size: e.boss ? 7 : 4, drag: 2 });
@@ -2210,7 +2234,7 @@ export class GameEngine {
   private rebirth() {
     const h = this.hero, bag = this.profile.items;
     if ((bag.phoenixFeather || 0) > 1) bag.phoenixFeather!--; else delete bag.phoenixFeather;
-    saveProfile(this.profile);
+    this.persistProfile(this.profile);
     h.hp = Math.round(h.maxHp * .6); h.hurtTime = 2.5; h.vx = h.vy = 0; this.bump('rebirths');
     this.emit(h.x, h.y, 70, ['#ff9a4a', '#ffd35c', '#ff5f3d', '#fff1b8'], { speed: 360, life: 1.2, kind: 'ember', glow: true, size: 6, grav: -80 });
     this.ring(h.x, h.y, 220, '#ff9a4a', .9); this.flash = .7; this.slowMo = .8; this.play('levelUp');
@@ -2268,7 +2292,7 @@ export class GameEngine {
     const cdRate = this.buffs.hourglass ? 2 : 1;
     for (const id of this.spellIds) h.cds[id] = Math.max(0, h.cds[id] - dt * cdRate);
     h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt); h.slowT = Math.max(0, h.slowT - dt);
-    h.mana = Math.min(h.maxMana, h.mana + h.manaRegen * dt);
+    h.mana = this.practice ? h.maxMana : Math.min(h.maxMana, h.mana + h.manaRegen * dt);
     this.comboTime -= dt; if (this.comboTime <= 0) this.combo = 0;
     for (const id of ITEM_ORDER) {
       const left = this.buffs[id]; if (left === undefined) continue;
@@ -2292,7 +2316,7 @@ export class GameEngine {
     if (this.slowTick <= 0) {
       this.slowTick = .25; this.updateZone(); this.markExplored(); this.updateSoundscape(); this.respawnEnemies(); this.flushFox(); this.checkAmbushes(); this.checkClues();
       if (++this.exploreTick % 16 === 0) this.statMax('explore', this.exploredPercent());
-      if (this.profileDirty) { this.profileDirty = false; saveProfile(this.profile); }
+      if (this.profileDirty) { this.profileDirty = false; this.persistProfile(this.profile); }
     }
     if (this.completeTimer > 0) this.updateCelebration(dt);
     if (this.foxDelay > 0) this.foxDelay -= dt;
@@ -2363,6 +2387,15 @@ export class GameEngine {
 
   private updateEnemies(dt: number) {
     const h = this.hero;
+    if (this.practice) {
+      for (const e of this.enemies) {
+        if (e.dead) { e.deadT += dt; if (e.deadT > .8) { e.dead = false; e.hp = e.maxHp; e.deadT = 0; e.spawnT = 0; } else continue; }
+        e.hitFlash = Math.max(0, e.hitFlash - dt);
+        e.rage = 0; e.aggro = false; e.kx = 0; e.ky = 0;
+      }
+      this.combat = 0; this.danger = 0;
+      return;
+    }
     let threats = 0, near = false;
     for (const e of this.enemies) {
       if (e.dead) { e.deadT += dt; continue; }

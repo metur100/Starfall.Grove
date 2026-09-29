@@ -25,7 +25,7 @@ import { CineOverlay, IntroFilm, SiegeBar } from './ui/Story';
 import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
 import { TRAILS, TRAIL_ORDER } from './game/trails';
 
-type Mode = 'title' | 'select' | 'play' | 'ending';
+type Mode = 'title' | 'select' | 'tutorial' | 'practice' | 'play' | 'ending';
 type Save = { version: 2; done: Record<RegionId, boolean>; stars: Record<RegionId, number>; bestTime: Record<RegionId, number> };
 /** `choice` ends the conversation with two answers instead of a close. */
 type Dialogue = { speaker: string; portrait: string; lines: string[]; index: number; then?: 'complete'; offer?: QuestOffer; choice?: { quest: string; title: string; a: string; b: string } };
@@ -55,6 +55,7 @@ function heroSummary(id: HeroId): HeroSummary {
   const points = ACHIEVEMENTS.reduce((n, d) => n + (p.ach.got[d.id] ? d.points : 0), 0);
   return { started: heroStarted(id), level: p.level, gold: p.gold, where: `Chapter ${ROMAN[WORLDS[next].chapter]} · ${WORLDS[next].title}`, stars: LEVEL_ORDER.reduce((n, r) => n + (sv.stars[r] || 0), 0), equipped: p.equipped, points };
 }
+const practiceSummary = (_id: HeroId): HeroSummary => ({ started: false, level: 1, gold: 0, where: 'Dummy training grounds', stars: 0, equipped: {}, points: 0 });
 /** Closes the app when it runs inside an Android wrapper that offers a way to; returns false in a plain browser. */
 function exitApp() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,6 +115,7 @@ function App() {
   const [muted, setMuted] = useState(sfx.isMuted());
   const [graphics, setGraphics] = useState<GraphicsSettings>(loadGraphics);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [practiceGuideOpen, setPracticeGuideOpen] = useState(false);
   const [chapterBanner, setChapterBanner] = useState<{ chapter: number; key: number } | null>(null);
   const [regionBanner, setRegionBanner] = useState<{ region: RegionId; danger: boolean; key: number } | null>(null);
   const [zone, setZone] = useState<{ name: string; discovered: boolean; key: number } | null>(null);
@@ -139,7 +141,7 @@ function App() {
   const achPop = achQueue[0] ?? null;
   useEffect(() => { if (!achPop) return; const t = window.setTimeout(() => setAchQueue(q => q.slice(1)), 4600); return () => window.clearTimeout(t); }, [achPop]);
   useEffect(() => {
-    const unlock = () => { sfx.unlock(); if (music.current() === null && mode !== 'play') music.play('menu'); };
+    const unlock = () => { sfx.unlock(); if (music.current() === null && mode !== 'play' && mode !== 'practice') music.play('menu'); };
     window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock);
     return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); };
   }, [mode]);
@@ -205,6 +207,10 @@ function App() {
     setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setFilm(false); setAchQueue([]); resetStick();
     setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('play');
   };
+  const startPractice = (as: HeroId = hero) => {
+    engineRef.current = null; chooseHero(as); setPracticeGuideOpen(false); setRunKey(k => k + 1); setSnapshot(null); setDialogue(null); setPaused(false); setJournal(false); setMapOpen(false); setPanel(null); setShop(null); setEndingPending(false); setFilm(false); setAchQueue([]); resetStick();
+    setSpellQueue([]); setLevelBanner(null); setBossBanner(null); setZone(null); setRegionBanner(null); setToasts([]); setChapterBanner(null); setMode('practice');
+  };
   /** Erases the adventure, the hero's level, gold, bag and quest progress. Sound and graphics settings are kept. */
   /** Erases one hero's adventure, level, gold, bag and quest progress. Sound and graphics settings are kept. */
   const wipeHero = (h: HeroId) => { clearSession(h); resetProfile(h); const s = blankSave(); saveNow(h, s); if (h === hero) setSave(s); };
@@ -214,7 +220,7 @@ function App() {
     engineRef.current = null; wipeHero(h); if (h !== hero) chooseHero(h); setSettingsOpen(false); startGame(true, h);
   };
   const deleteAll = () => { engineRef.current = null; for (const h of HERO_ORDER) wipeHero(h); setSave(blankSave()); setPaused(false); setSettingsOpen(false); setJournal(false); setPanel(null); setDialogue(null); setEndingPending(false); setMode('title'); };
-  const leaveToTitle = () => { const e = engineRef.current; if (e) saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setFilm(false); setMode('title'); };
+  const leaveToTitle = () => { const e = engineRef.current; if (e && mode === 'play') saveSession(hero, e.exportSave()); setPaused(false); setEndingPending(false); setFilm(false); setMode(mode === 'practice' ? 'tutorial' : 'title'); };
   const toggleMute = () => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.play('ui'); };
   const changeGraphics = (patch: Partial<GraphicsSettings>) => { const g = { ...graphics, ...patch }; setGraphics(g); saveGraphics(g); sfx.play('ui'); };
   // New spells and level-ups wait until a cutscene or the intro film is over.
@@ -333,7 +339,7 @@ function App() {
   };
   const keyHandler = useRef(onKeyDown); keyHandler.current = onKeyDown;
   useEffect(() => {
-    if (mode !== 'play') return;
+    if (mode !== 'play' && mode !== 'practice') return;
     const down = (e: KeyboardEvent) => keyHandler.current(e);
     const up = (e: KeyboardEvent) => { keys.current.delete(e.key.toLowerCase()); syncKeys(); };
     const blur = () => { keys.current.clear(); engineRef.current?.setMovement(0, 0); };
@@ -347,7 +353,8 @@ function App() {
   // steps back from the hero select, and on the title screen asks whether to leave the game.
   const onBack = () => {
     if (mode === 'title') { if (settingsOpen) setSettingsOpen(false); else setExitAsk(a => a ? null : 'ask'); return; }
-    if (mode === 'select' || mode === 'ending') { setMode('title'); return; }
+    if (mode === 'select' || mode === 'tutorial' || mode === 'ending') { setMode('title'); return; }
+    if (mode === 'practice') { engineRef.current?.setMovement(0, 0); setMode('tutorial'); return; }
     if (showSpell) { dismissSpell(); return; }
     if (miniGame) { endGame({ won: false, gold: 0 }); return; }
     if (film) { setFilm(false); engineRef.current?.startIntro(true); return; }
@@ -381,7 +388,7 @@ function App() {
   useEffect(() => { if (mode !== 'title') { setExitAsk(null); if (!trapArmed.current) { trapArmed.current = true; try { history.pushState({ starfall: true }, ''); } catch { /* ignore */ } } } }, [mode]);
   useEffect(() => { if (mode !== 'play') setSettingsOpen(false); }, [mode]);
 
-  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || film || mode !== 'play';
+  const isGamePaused = paused || !!dialogue || mapOpen || !!panel || !!miniGame || film || (mode !== 'play' && mode !== 'practice');
   // Floating joystick: it appears where the thumb lands anywhere in the left touch zone.
   const STICK_R = 70;
   const stickStart = (el: HTMLDivElement, clientX: number, clientY: number) => {
@@ -406,16 +413,17 @@ function App() {
   const flushSave = () => { const e = engineRef.current; if (e && mode === 'play') { saveSession(hero, e.exportSave()); saveProfile(e.profile); } };
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
-    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onStartOver={startOver} onDeleteAll={deleteAll} />}
+    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onTutorial={() => { sfx.play('ui'); setMode('tutorial'); }} onStartOver={startOver} onDeleteAll={deleteAll} />}
     {mode === 'title' && exitAsk && <div className="overlay exit-overlay" onClick={() => setExitAsk(null)}><div className="panel pause-panel exit-panel" onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true">
       <small className="eyebrow">Leave Starfall Grove</small><h2>Do you really want to leave the game?</h2><p>Your adventure is saved. The valley will wait for you.</p>
       <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); }} autoFocus>Stay</button><button className="btn primary" onClick={leaveGame}>Leave game</button></div>
     </div></div>}
     {mode === 'select' && <CharacterSelect hero={hero} summary={heroSummary} touch={touch} onHero={chooseHero} onEnter={() => startGame()} onBack={() => setMode('title')} />}
+    {mode === 'tutorial' && <CharacterSelect hero={hero} summary={practiceSummary} touch={touch} practice onHero={chooseHero} onEnter={() => startPractice()} onBack={() => setMode('title')} />}
 
-    {mode === 'play' && <main className={`play-page theme-${region} hero-${hero} ${cine || film ? 'cine-on' : ''}`}>
+    {(mode === 'play' || mode === 'practice') && <main className={`play-page theme-${region} hero-${hero} ${cine || film ? 'cine-on' : ''}`}>
       <section className="game-stage">
-        <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
+        <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} practice={mode === 'practice'} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
 
         <div className="hud-top">
           <Vitals snapshot={snapshot} onProfile={() => openSheet('stats')} />
@@ -432,6 +440,8 @@ function App() {
             <button className="icon-button" onClick={() => { engineRef.current?.setMovement(0, 0); setPaused(true); }} aria-label="Pause" title="Pause (Esc)">❚❚</button>
           </div>
         </div>
+        {mode === 'practice' && <button className={`practice-guide-toggle ${practiceGuideOpen ? 'guide-button-on' : ''}`} onClick={() => setPracticeGuideOpen(open => !open)} aria-pressed={practiceGuideOpen} aria-label={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'} title={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'}><span>Spell guide</span><i className="guide-toggle-track"><b /></i></button>}
+        {mode === 'practice' && practiceGuideOpen && <PracticeSpellGuide hero={hero} />}
         {snapshot && !journal && !panel && <QuestTracker snapshot={snapshot} onOpen={() => { setJournal(true); setJournalTab('quests'); sfx.play('page'); }} />}
 
         {snapshot && snapshot.combo >= 3 && <div className="combo" key={`combo-${snapshot.combo}`}><b>{snapshot.combo}</b><small>COMBO</small></div>}
@@ -560,7 +570,7 @@ function App() {
 }
 
 /** Title: the logo and one big Play button, centred on screen. Choosing a hero happens on the next screen. */
-function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
+function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onTutorial, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onTutorial: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
   const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || LEVEL_ORDER[LEVEL_ORDER.length - 1], last = heroStarted(hero) ? heroSummary(hero) : null;
   const kl = useKeys();
   const [update, setUpdate] = useState(false);
@@ -579,7 +589,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
       <p className="title-tag">Four lands · four heroes · one fallen star</p>
       <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods, the silver summit and the burning Ember Wastes. Help the valley folk, gather loot, earn achievements — and learn what hides inside the Hollow Star.</p>
-      <button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button>
+      <div className="menu-actions title-actions"><button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button><button className="btn ghost big" onClick={onTutorial}>Tutorial <b>✦</b></button></div>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
     {!touch && <footer className="title-foot"><span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> move</span><span><kbd>{kl('spell1')}</kbd> attack</span><span><kbd>{kl('spell2')}</kbd> dash</span><span><kbd>{kl('spell3')} {kl('spell4')} {kl('spell5')}</kbd> abilities</span><span><kbd>{kl('interact')}</kbd> interact</span><span><kbd>{kl('ride')}</kbd> ride</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>{kl('bag')}</kbd> bag</span><span><kbd>{kl('map')}</kbd> map</span></footer>}
@@ -732,12 +742,19 @@ function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id:
   const ready = spell.unlocked && spell.cooldown <= 0 && spell.affordable;
   const style = { '--cd': `${spell.cooldown * 360}deg`, '--spell': SPELLS[spell.id].color } as CSSProperties;
   return <button className={`spell spell-${spell.id} slot-${SPELLS[spell.id].slot} ${ready ? 'ready' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
-    style={style} onPointerDown={e => { e.preventDefault(); onCast(spell.id); }} aria-label={spell.name} title={spell.unlocked ? `${spell.name} (${spell.key})${spell.cost ? ` · ${spell.cost} mana` : ''}` : `${spell.name} · learned at level ${spell.level}`}>
+    style={style} onPointerDown={e => { e.preventDefault(); onCast(spell.id); }} aria-label={spell.name} title={spell.unlocked ? `${spell.name} (${spell.key})${spell.cost ? ` · ${spell.cost} mana` : ''} · ${SPELLS[spell.id].description}` : `${spell.name} · learned at level ${spell.level} · ${SPELLS[spell.id].description}`}>
     <span className="spell-icon-wrap"><b>{spell.unlocked ? spell.icon : '🔒'}</b>{spell.cooldown > 0 && <i className="cd" />}</span>
     {!touch && spell.unlocked && <kbd>{spell.key}</kbd>}
     {spell.cost > 0 && spell.unlocked && <small>{spell.cost}</small>}
     {!spell.unlocked && <small className="lvl">Lv {spell.level}</small>}
   </button>;
+}
+
+function PracticeSpellGuide({ hero }: { hero: HeroId }) {
+  return <aside className="practice-guide" aria-label="Spell guide">
+    <header><span><small>Dummy world</small><strong>Spell guide</strong></span><em>All unlocked</em></header>
+    {HEROES[hero].spells.map(id => { const s = SPELLS[id]; return <article key={id} style={{ '--spell': s.color } as CSSProperties}><span className="guide-icon">{s.icon}</span><div><b>{s.name} <kbd>{s.key}</kbd></b><p>{s.description}</p></div></article>; })}
+  </aside>;
 }
 
 function PotionButton({ id, count, onUse, touch, quick }: { id: ItemId; count: number; onUse: (id: ItemId) => void; touch?: boolean; quick?: boolean }) {

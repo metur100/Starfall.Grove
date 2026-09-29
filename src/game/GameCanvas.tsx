@@ -15,8 +15,8 @@ const TIERS = [
   { budget: 2_300_000, dpr: 2, quality: 1 },
 ];
 
-type Props = { hero: HeroId; runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
-export default function GameCanvas({ hero, runKey, paused, graphics, touch, onReady, onSnapshot, onEvent }: Props) {
+type Props = { hero: HeroId; runKey: number; paused: boolean; graphics: GraphicsSettings; touch: boolean; practice?: boolean; onReady: (engine: GameEngine | null) => void; onSnapshot: (snapshot: GameSnapshot) => void; onEvent: (event: EngineEvent) => void };
+export default function GameCanvas({ hero, runKey, paused, graphics, touch, practice = false, onReady, onSnapshot, onEvent }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fpsRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(paused); pausedRef.current = paused;
@@ -25,7 +25,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, onRe
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false }); if (!ctx) return;
-    const engine = new GameEngine(hero, event => callbacks.current.onEvent(event), loadSession(hero));
+    const engine = new GameEngine(hero, event => callbacks.current.onEvent(event), practice ? null : loadSession(hero), practice);
     const renderer = new Renderer();
     callbacks.current.onReady(engine);
     if (import.meta.env.DEV) Object.assign(window, { __engine: engine, __renderer: renderer, __ctx: ctx });
@@ -82,11 +82,11 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, onRe
       }
       if (now - lastUi > 100) { callbacks.current.onSnapshot(engine.snapshot()); lastUi = now; }
       if (now - lastMusic > 250) { lastMusic = now; music.play(engine.musicTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
-      if (!pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
+      if (!practice && !pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null); };
-  }, [hero, runKey]);
+  }, [hero, runKey, practice]);
   return <>
     <canvas ref={canvasRef} className="world-canvas" aria-label="Starfall Grove game world" />
     <div ref={fpsRef} className="fps-meter" hidden />
