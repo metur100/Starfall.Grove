@@ -1,6 +1,6 @@
 import { ITEM_ORDER } from './items';
 import { SLOT_ORDER, sumGear, validGear } from './gear';
-import { HEROES, MAX_STARS } from './spells';
+import { HEROES, MAX_STARS, RENAMED_SPELLS } from './spells';
 import { MOUNT_ORDER } from './mounts';
 import { TRAIL_ORDER } from './trails';
 import type { GearItem, GearSlot, HeroId, ItemId, MountId, SpellId, TrailId, UpgradeId } from './types';
@@ -81,8 +81,9 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     const equipped: Profile['equipped'] = {};
     for (const slot of SLOT_ORDER) { const g = raw.equipped?.[slot]; if (validGear(g) && g.slot === slot) equipped[slot] = g; }
     p.equipped = equipped;
-    const stars: Profile['stars'] = {};
-    for (const id of HEROES[hero].spells) { const n = Math.floor(Number(raw.stars?.[id]) || 0); if (n > 0) stars[id] = Math.min(MAX_STARS, n); }
+    const stars: Profile['stars'] = {}, old: Record<string, unknown> = { ...raw.stars };
+    for (const [from, to] of Object.entries(RENAMED_SPELLS)) if (old[from] !== undefined && old[to] === undefined) old[to] = old[from];
+    for (const id of HEROES[hero].spells) { const n = Math.floor(Number(old[id]) || 0); if (n > 0) stars[id] = Math.min(MAX_STARS, n); }
     p.stars = stars;
     p.bought = Array.isArray(raw.bought) ? raw.bought.filter(x => typeof x === 'string').slice(-60) : [];
     const num = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, Number(v)]));

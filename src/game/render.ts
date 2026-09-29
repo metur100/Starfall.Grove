@@ -1,4 +1,4 @@
-import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap } from './engine';
+import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap, type Well } from './engine';
 import { MOUNTS } from './mounts';
 import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
@@ -196,6 +196,7 @@ export class Renderer {
     this.drawPlaceNames(ctx, e, view);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
     for (const tr of e.traps) this.drawTrap(ctx, tr);
+    for (const w of e.wells) this.drawWell(ctx, w);
     this.drawChargeLines(ctx, e);
 
     const draws = this.draws; draws.length = 0;
@@ -1470,12 +1471,24 @@ export class Renderer {
   private gearGlow(ctx: CanvasRenderingContext2D, L: Look, spots: Partial<Record<keyof Look, [number, number]>>) {
     for (const [slot, [x, y]] of Object.entries(spots) as Array<[keyof Look, [number, number]]>) { const l = L[slot]; if (l?.glow) glow(ctx, x, y, 16 + Math.sin(this.time * 4 + x) * 3, l.color, .45); }
   }
-  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb or Smoke Veil leaves them half see-through. */
+  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb leaves them half see-through, and Stealth turns Riven
+   *  into a faint shimmer in the air. Lyra's Ice Block closes over her. */
   private drawHeroScaled(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    const s = e.heroScale, h = e.hero, hidden = e.buffs.smokeBomb !== undefined || e.stealthT > 0, riding = e.riding && !!e.mountId;
+    const stealth = e.stealthT > 0;
+    if (stealth) {
+      // Barely there: two ghost copies that waver apart like heat haze, over a faint violet shadow.
+      const h = e.hero, t = this.time, w = Math.sin(t * 5) * 1.8;
+      glow(ctx, h.x, h.y - 6, 46, '#6a4bd6', .22);
+      ctx.save(); ctx.globalAlpha = .2; ctx.translate(w, 0); this.drawHeroBody(ctx, e, false); ctx.restore();
+      ctx.save(); ctx.globalAlpha = .16; ctx.translate(-w, Math.cos(t * 4) * .8); this.drawHeroBody(ctx, e, false); ctx.restore();
+    } else this.drawHeroBody(ctx, e, e.buffs.smokeBomb !== undefined);
+    if (e.hero.iceT > 0) this.drawIceBlock(ctx, e);
+  }
+  private drawHeroBody(ctx: CanvasRenderingContext2D, e: GameEngine, hidden: boolean) {
+    const s = e.heroScale, h = e.hero, riding = e.riding && !!e.mountId;
     if (s === 1 && !hidden && !riding) return this.drawHero(ctx, e);
     ctx.save();
-    if (hidden) ctx.globalAlpha = .45 + Math.sin(this.time * 6) * .1;
+    if (hidden) ctx.globalAlpha *= .45 + Math.sin(this.time * 6) * .1;
     ctx.translate(h.x, h.y + 20); ctx.scale(s, s); ctx.translate(-h.x, -h.y - 20);
     if (s > 1.05) glow(ctx, h.x, h.y - 10, 60 * s, '#c98aff', .35);
     if (riding) {
@@ -1489,24 +1502,40 @@ export class Renderer {
     } else this.drawHero(ctx, e);
     ctx.restore();
   }
+  /** Lyra frozen solid: a clear block of ice with frosted edges and glints, standing over her. */
+  private drawIceBlock(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const h = e.hero, t = this.time, s = e.heroScale, fade = Math.min(1, h.iceT * 3), W = 30 * s, top = h.y - 62 * s, bottom = h.y + 26;
+    ctx.save(); ctx.globalAlpha = fade;
+    glow(ctx, h.x, h.y - 16, 80 * s, '#9fe4ff', .45);
+    // The front face, the top face and the right side of the block.
+    const face = ctx.createLinearGradient(h.x - W, top, h.x + W, bottom);
+    face.addColorStop(0, 'rgba(235,250,255,.55)'); face.addColorStop(.45, 'rgba(170,225,255,.32)'); face.addColorStop(1, 'rgba(120,190,240,.5)');
+    ctx.fillStyle = face; ctx.beginPath(); ctx.roundRect(h.x - W, top, W * 2, bottom - top, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(240,252,255,.55)'; ctx.beginPath(); ctx.moveTo(h.x - W, top + 4); ctx.lineTo(h.x - W + 10, top - 9); ctx.lineTo(h.x + W + 10, top - 9); ctx.lineTo(h.x + W, top + 4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(110,180,230,.45)'; ctx.beginPath(); ctx.moveTo(h.x + W, top + 4); ctx.lineTo(h.x + W + 10, top - 9); ctx.lineTo(h.x + W + 10, bottom - 12); ctx.lineTo(h.x + W, bottom); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(245,253,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(h.x - W, top, W * 2, bottom - top, 7); ctx.stroke();
+    // Cracks and bright streaks catching the light.
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.moveTo(h.x - W + 6, top + 14); ctx.lineTo(h.x - W + 14, top + 30); ctx.lineTo(h.x - W + 9, top + 44);
+    ctx.moveTo(h.x + W - 8, bottom - 10); ctx.lineTo(h.x + W - 16, bottom - 26); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(h.x - W + 5, top + 6, 4, (bottom - top) * .55);
+    const g = (t * .6) % 1; ctx.fillStyle = `rgba(255,255,255,${.5 * (1 - g)})`; ctx.fillRect(h.x - W + 4 + g * W * 2 * .8, top + 4, 3, bottom - top - 8);
+    star(ctx, h.x + W - 6, top + 8, 4 + Math.sin(t * 6) * 1.5, 4, .3, t); ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.restore();
+    this.lights.push({ x: h.x, y: h.y - 16, r: 170, color: '#9fe4ff', a: .7 * fade });
+  }
   private drawHero(ctx: CanvasRenderingContext2D, e: GameEngine) {
     if (e.heroId === 'kael') return this.drawWarrior(ctx, e);
     if (e.heroId === 'lyra') return this.drawFrostMage(ctx, e);
     if (e.heroId === 'riven') return this.drawAssassin(ctx, e);
     if (e.heroId === 'wren') return this.drawHunter(ctx, e);
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
-    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfe8ff'); circle(ctx, a.x, a.y - 18, 12, '#e6f7ff'); }
-    ctx.globalAlpha = 1;
+    const A = ctx.globalAlpha;
+    for (const a of e.afterimages) { ctx.globalAlpha = A * a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfe8ff'); circle(ctx, a.x, a.y - 18, 12, '#e6f7ff'); }
+    ctx.globalAlpha = A;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 4 : Math.sin(t * 2.2) * 1.2;
     const stretch = moving ? 1 + Math.abs(Math.sin(h.walkTime)) * .05 : 1 + Math.sin(t * 2.2) * .015;
     shadow(ctx, h.x, h.y + 20, 20, 7, .3);
-    if (h.shieldTime > 0) {
-      const a = Math.min(1, h.shieldTime * 2);
-      glow(ctx, h.x, h.y - 8, 70, '#9fe8b0', .5 * a);
-      ctx.strokeStyle = `rgba(190,255,200,${.75 * a})`; ctx.lineWidth = 3;
-      for (let i = 0; i < 8; i++) { const ang = t * 1.6 + i * TAU / 8; ellipse(ctx, h.x + Math.cos(ang) * 40, h.y - 8 + Math.sin(ang) * 40, 9, 5, `rgba(159,232,176,${.8 * a})`, ang + Math.PI / 2); }
-      ctx.beginPath(); ctx.arc(h.x, h.y - 8, 44 + Math.sin(t * 10) * 2, 0, TAU); ctx.stroke();
-    }
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
     ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, stretch);
     const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 270), wave = Math.sin(t * 8) * (2 + speed * 4);
@@ -1546,8 +1575,9 @@ export class Renderer {
   /** Kael: plate armour, a plumed helm, a kite shield on one arm and a sword that swings with each Slash. */
   private drawWarrior(ctx: CanvasRenderingContext2D, e: GameEngine) {
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, storm = h.stormT > 0, L = this.heroLook(e);
-    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 18, 24, '#ffd0a0'); circle(ctx, a.x, a.y - 18, 12, '#fff0e0'); }
-    ctx.globalAlpha = 1;
+    const A = ctx.globalAlpha;
+    for (const a of e.afterimages) { ctx.globalAlpha = A * a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 18, 24, '#ffd0a0'); circle(ctx, a.x, a.y - 18, 12, '#fff0e0'); }
+    ctx.globalAlpha = A;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3.5 : Math.sin(t * 2.2) * 1;
     shadow(ctx, h.x, h.y + 20, 22, 7, .32);
     if (h.shieldTime > 0) {
@@ -1616,19 +1646,11 @@ export class Renderer {
   /** Lyra: long pale hair, a crystal circlet, a blue over-robe on white, and a staff crowned with a floating ice shard. */
   private drawFrostMage(ctx: CanvasRenderingContext2D, e: GameEngine) {
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
-    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfeaff'); circle(ctx, a.x, a.y - 18, 12, '#eaf8ff'); }
-    ctx.globalAlpha = 1;
+    const A = ctx.globalAlpha;
+    for (const a of e.afterimages) { ctx.globalAlpha = A * a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 16, 24, '#bfeaff'); circle(ctx, a.x, a.y - 18, 12, '#eaf8ff'); }
+    ctx.globalAlpha = A;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 4 : Math.sin(t * 2.2) * 1.2;
     shadow(ctx, h.x, h.y + 20, 20, 7, .3);
-    if (h.shieldTime > 0) {
-      // Ice Barrier: a faceted shell of ice.
-      const a = Math.min(1, h.shieldTime * 2);
-      glow(ctx, h.x, h.y - 8, 72, '#9fe4ff', .5 * a);
-      ctx.save(); ctx.translate(h.x, h.y - 8); ctx.rotate(t * .4);
-      ctx.fillStyle = `rgba(200,240,255,${.18 * a})`; ctx.strokeStyle = `rgba(230,250,255,${.85 * a})`; ctx.lineWidth = 2.5;
-      ctx.beginPath(); for (let i = 0; i < 6; i++) { const q = i * TAU / 6, r = 46 + Math.sin(t * 8 + i) * 1.5; i ? ctx.lineTo(Math.cos(q) * r, Math.sin(q) * r) : ctx.moveTo(Math.cos(q) * r, Math.sin(q) * r); } ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.restore();
-    }
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
     ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
     const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 265), wave = Math.sin(t * 7) * (2 + speed * 4);
@@ -1675,8 +1697,9 @@ export class Renderer {
   /** Riven: a slim hooded figure with a mask, glowing violet eyes, a short scarf-cape and a dagger in each hand. */
   private drawAssassin(ctx: CanvasRenderingContext2D, e: GameEngine) {
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
-    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 14, 22, '#6a5a9a'); circle(ctx, a.x, a.y - 18, 11, '#8a7ab8'); }
-    ctx.globalAlpha = 1;
+    const A = ctx.globalAlpha;
+    for (const a of e.afterimages) { ctx.globalAlpha = A * a.life / .28 * .5; ellipse(ctx, a.x, a.y + 4, 14, 22, '#6a5a9a'); circle(ctx, a.x, a.y - 18, 11, '#8a7ab8'); }
+    ctx.globalAlpha = A;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3 : Math.sin(t * 2.6) * 1;
     shadow(ctx, h.x, h.y + 20, 18, 6, .32);
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
@@ -1723,14 +1746,13 @@ export class Renderer {
   /** Wren: a green hooded cloak over leather, an auburn braid, a quiver on her back and a longbow she draws to shoot. */
   private drawHunter(ctx: CanvasRenderingContext2D, e: GameEngine) {
     const t = this.time, h = e.hero, moving = Math.hypot(h.vx, h.vy) > 30, flip = h.faceX < -.05 ? -1 : 1, L = this.heroLook(e);
-    for (const a of e.afterimages) { ctx.globalAlpha = a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 22, '#c8e6a0'); circle(ctx, a.x, a.y - 18, 11, '#e6f4d0'); }
-    ctx.globalAlpha = 1;
-    const rolling = h.dashTime > 0;
+    const A = ctx.globalAlpha;
+    for (const a of e.afterimages) { ctx.globalAlpha = A * a.life / .28 * .45; ellipse(ctx, a.x, a.y + 4, 16, 22, '#c8e6a0'); circle(ctx, a.x, a.y - 18, 11, '#e6f4d0'); }
+    ctx.globalAlpha = A;
     const bob = moving ? -Math.abs(Math.sin(h.walkTime)) * 3.5 : Math.sin(t * 2.2) * 1.1;
     shadow(ctx, h.x, h.y + 20, 19, 6.5, .3);
     const hurtFlash = h.hurtTime > 0 && Math.floor(t * 16) % 2 === 0;
     ctx.save(); ctx.translate(h.x, h.y + bob); ctx.scale(flip, 1);
-    if (rolling) { ctx.translate(0, 6); ctx.rotate((1 - h.dashTime / .2) * TAU * .9); ctx.translate(0, -6); }
     const speed = Math.min(1, Math.hypot(h.vx, h.vy) / 275), wave = Math.sin(t * 7) * (2 + speed * 4);
     // Hooded cloak behind, with the quiver poking over the shoulder.
     ctx.fillStyle = L.back?.color ?? '#3f6a3a'; ctx.beginPath(); ctx.moveTo(-10, -10); ctx.quadraticCurveTo(-21 - speed * 10, 4 + wave, -20 - speed * 14, 21 + wave * .6); ctx.lineTo(-2, 20); ctx.closePath(); ctx.fill();
@@ -2776,9 +2798,43 @@ export class Renderer {
       this.lights.push({ x: sl.x + Math.cos(sl.angle) * 60, y: sl.y + Math.sin(sl.angle) * 50, r: 140, color: '#ffd0a0', a: k });
     }
   }
-  /** Riven's Death Marks counting down over their targets, and Lyra's Blizzards swirling over the ground. */
+  /** Mira's Gravity Well: a black star with a glowing rim, and arms of starlight spiralling into it. */
+  private drawWell(ctx: CanvasRenderingContext2D, w: Well) {
+    const t = this.time, k = Math.min(1, w.t * 3, (w.max - w.t) * 5), R = 160;
+    ctx.save(); ctx.translate(w.x, w.y); ctx.scale(1, .62); ctx.globalAlpha = k;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+    g.addColorStop(0, 'rgba(10,4,24,.85)'); g.addColorStop(.18, 'rgba(40,20,90,.6)'); g.addColorStop(.6, 'rgba(106,75,214,.18)'); g.addColorStop(1, 'rgba(179,156,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(200,180,255,.55)'; ctx.lineWidth = 2; ctx.setLineDash([10, 12]); ctx.lineDashOffset = t * 50;
+    ctx.beginPath(); ctx.arc(0, 0, R - 6, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      ctx.strokeStyle = i % 2 ? 'rgba(255,241,184,.5)' : 'rgba(179,156,255,.7)'; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let s = 0; s <= 24; s++) { const f = s / 24, r = R * (1 - f) * .95, a = -t * 3 + i * TAU / 4 + f * 4.2; s ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+      ctx.stroke();
+    }
+    circle(ctx, 0, 0, 16 + Math.sin(t * 9) * 2, '#08030f');
+    ctx.strokeStyle = 'rgba(255,241,184,.9)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, 18 + Math.sin(t * 9) * 2, 0, TAU); ctx.stroke();
+    ctx.restore();
+    glow(ctx, w.x, w.y, 70, '#b39cff', .5 * k);
+    this.lights.push({ x: w.x, y: w.y, r: 220, color: '#b39cff', a: .7 * k });
+  }
+  /** Riven's Death Marks counting down over their targets, Lyra's Blizzards swirling over the ground, and Mira's
+   *  Guardian Stars circling her. */
   private drawSpellMarks(ctx: CanvasRenderingContext2D, e: GameEngine) {
-    const t = this.time;
+    const t = this.time, h = e.hero;
+    if (h.orbitN > 0 && h.orbitT > 0) {
+      const fade = Math.min(1, h.orbitT * 2);
+      for (let i = 0; i < h.orbitN; i++) {
+        const p = e.starPos(i);
+        for (let j = 1; j <= 5; j++) { const q = e.starPos(i - j * .06); circle(ctx, q.x, q.y, 5.5 - j * .8, `rgba(255,227,138,${(.6 - j * .1) * fade})`); }
+        glow(ctx, p.x, p.y, 34, '#ffe38a', fade);
+        ctx.fillStyle = `rgba(255,214,92,${fade})`; star(ctx, p.x, p.y, 11 + Math.sin(t * 8 + i) * 1.5, 5, .45, t * 3 + i); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${fade})`; star(ctx, p.x, p.y, 6, 5, .45, t * 3 + i); ctx.fill();
+        this.lights.push({ x: p.x, y: p.y, r: 80, color: '#ffe38a', a: .7 * fade });
+      }
+    }
     for (const s of e.storms) {
       const k = Math.min(1, s.t * 2, (4 - s.t) * 3);
       ctx.save(); ctx.translate(s.x, s.y); ctx.scale(1, .62);

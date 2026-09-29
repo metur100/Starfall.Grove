@@ -88,7 +88,7 @@ const meadow: RegionSpec = {
     q({ id: 'finn', title: 'Tilly’s Brother', giver: 'tilly', kind: 'rescue', count: 1, place: 'faerie', guards: 4, summary: 'Free Finn from the gloomlings at the Faerie Ring.', captive: person('Finn', '👦', { robe: '#6f8fb8', small: true, hair: '#b8743c' }), reward: { xp: 150, hearts: 1 },
       text: { offer: ['My big brother Finn went to the Faerie Ring to find faeries…', 'The gloomlings put him in a cage! Please help him!'], progress: ['Finn is caged at the Faerie Ring, far to the south-west.'], deliver: ['You beat them all?! That was AMAZING.', 'I’m going straight home. Tilly’s going to be so mad at me.'], complete: ['FINN! You’re home!', 'Mira, you’re the best hero ever. That’s official.'], after: ['Finn says faeries are real. He’s wrong. Probably.'] } }),
     q({ id: 'thorns', title: 'Thorns on the Trail', giver: 'garrick', kind: 'slay', count: 6, enemy: 'thornling', summary: 'Defeat thornlings.', reward: { xp: 150, hearts: 1 },
-      text: { offer: ['Thornlings are shooting at travellers on the roads.', 'Take down six and the roads will be safe again.'], progress: ['Thornlings stay put and spit thorns. Dash through the gaps.'], complete: ['Six! You hunt like a fox.', 'Wear my old leather vest — it’s turned more thorns than I can count.'], after: ['The trail is quiet.'] } }),
+      text: { offer: ['Thornlings are shooting at travellers on the roads.', 'Take down six and the roads will be safe again.'], progress: ['Thornlings stay put and spit thorns. Slip through the gaps.'], complete: ['Six! You hunt like a fox.', 'Wear my old leather vest — it’s turned more thorns than I can count.'], after: ['The trail is quiet.'] } }),
     q({ id: 'view', title: 'Light on the Hill', giver: 'odo', kind: 'visit', count: 1, place: 'shrine', summary: 'Visit the Sun Shrine.', reward: { xp: 100 },
       text: { offer: ['On a clear night I used to see the Sun Shrine glowing from here.', 'Will you walk there and see if it still stands? It’s south, past Willowmere.'], progress: ['The Sun Shrine is south of the hill.'], complete: ['It still stands? Then there is hope for the Beacon too.'], after: ['I can almost see its glow again.'] } }),
     q({ id: 'bait', title: 'Bait for the Big One', giver: 'lou', kind: 'collect', count: 4, near: 'faerie', item: 'Fat mushroom', icon: 'mushroom', summary: 'Pick fat mushrooms around the Faerie Ring.', reward: { xp: 100, mana: 10 },
@@ -114,7 +114,7 @@ const meadow: RegionSpec = {
     shrine: { bless: ['Warm light pours from the shrine and fills you.', 'The Sun blesses you. (+Experience, full health and magic)'], again: ['The shrine glows warmly. Rest here a while.'] },
     finale: { locked: ['The Beacon is dim. Three sun-crystals are needed before its guardian stirs.'], guarded: ['Mossback is here. Defeat the guardian to restore the Beacon.'], done: ['The crystals blaze in the Beacon and gold light sweeps across the valley.', 'Far to the east, above the dark trees of Whisperroot, an answering light flickers… and dies.', 'On the Rise, a black feather drifts down. Sable was here.'] },
     pickupKey: 'Sun-crystal found! {n}/3',
-    sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! Dash makes you untouchable for a heartbeat. Spend gold at the smith in Goldenhearth to grow stronger.',
+    sealed: 'Mossback is sealed in stone. Find the three sun-crystals first.', tip: 'If the ground glows, move! A Gravity Well holds a whole pack in place while you blast it. Spend gold at the smith in Goldenhearth to grow stronger.',
     victory: { title: 'The Beacon shines again.', text: 'The meadow is safe, but Orrin’s trail leads east. In Whisperroot Woods the Ancient Bell has gone silent — and Sable is already there.' },
   },
 };
@@ -214,7 +214,7 @@ const woods: RegionSpec = {
     shrine: { bless: ['Moss curls around your arms, cool and bright.', 'The woods bless you. (+Experience, full health and magic)'], again: ['The shrine hums softly.'] },
     finale: { locked: ['Three root runes are needed to wake the guardian.'], guarded: ['The Bramble Warden blocks the Bell.'], done: ['You ring the Ancient Bell. Its voice rolls through every root, and the shadows drift away like petals.', 'At the edge of the clearing stands Sable. “You don’t understand,” she whispers. “Only Umbra can stop the pain.”', 'Then she is gone — east, toward the Summit.'] },
     pickupKey: 'Root rune awakened. {n}/3',
-    sealed: 'The Warden is wrapped in sleeping roots. Wake the three runes first.', tip: 'Moss Shield (learned at level 7) reflects thorns. Raise it just as a ring of thorns flies at you!',
+    sealed: 'The Warden is wrapped in sleeping roots. Wake the three runes first.', tip: 'Guardian Stars (learned at level 6) catch the thorns meant for you. Call them just before a ring of thorns flies at you!',
     victory: { title: 'The Bell rings through the valley.', text: 'Whisperroot breathes again. But Sable has fled to Starfall Summit, where the hollow star waits — and something inside it is waking.' },
   },
 };
@@ -319,7 +319,7 @@ const summit: RegionSpec = {
     shrine: { bless: ['The altar opens to the sky. A star answers your call.', 'The stars bless you. (+Experience, full health and magic)'], again: ['The altar glitters like a tiny night sky.'] },
     finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['A shadow circles the Cradle. Defeat it!'], done: ['You lay the three shards into the Cradle. The star remembers its light and rises, whole, into the sky.', 'Beside you, Sable’s shadow is gone — or maybe it was never the enemy. Orrin holds her like he is afraid to let go.', 'But as the star climbs, a thread of black smoke tears loose from the broken shell and streaks east, over the last ridge, toward the Ember Wastes. Umbra is not finished.'] },
     pickupKey: 'Star shard gathered. {n}/3',
-    sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, dash out of their circles. Starfall turns the sky on your enemies.',
+    sealed: 'The Hollow Star hides behind a void shell. Gather three star shards first.', tip: 'When stars fall on you, step out of their circles. Starfall turns the sky on your enemies.',
     victory: { title: 'The star rises home.', text: 'The star is whole again. Sable is free and Orrin is forgiven — but Umbra slipped out of the broken shell and fled east, into the Ember Wastes.' },
   },
 };

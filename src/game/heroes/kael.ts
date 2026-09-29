@@ -395,7 +395,7 @@ export const KAEL: HeroStory = {
     summit: {
       sealed: 'The Frost Marshal waits behind a wall of black ice. Gather the three star shards first.',
       pickupKey: 'Star shard gathered. {n}/3',
-      tip: 'The Marshal’s blizzards slow you: dash out of the frost circles. Raise Shield Wall when it throws a volley, and the ice flies back at it.',
+      tip: 'The Marshal’s blizzards slow you: step out of the frost circles. Raise Shield Wall when it throws a volley, and the ice flies back at it.',
       finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['The Frost Marshal holds the Cradle, in a Warden captain’s helm. Defeat it!'],
         done: ['You lay the three shards in the Cradle. The star remembers its light and rises, whole, into the sky.', 'In the snow lies an old Warden captain’s helm, cracked through. Briarthorn’s. You tie it to your belt. Tobb will want to see it.', 'But a thread of black smoke tears loose from the star and streaks east, toward the Ember Wastes. Umbra is running.'] },
       victory: { title: 'The Wardens hold the pass.', text: 'The star is home, the Wardens have a banner again, and Kael is a Warden in his own right. But Umbra fled east into the Ember Wastes, and so did the black knight.' },
@@ -404,7 +404,7 @@ export const KAEL: HeroStory = {
     ember: {
       sealed: 'The Iron Colossus sleeps in a shell of cooling iron. Recover the three ember cores first.',
       pickupKey: 'Ember core recovered. {n}/3',
-      tip: 'The Colossus slams the earth: dash out of the glowing circles. When it charges, step aside and let it hit the rocks. Bladestorm halves the harm you take.',
+      tip: 'The Colossus slams the earth: step out of the glowing circles. When it charges, step aside and let it hit the rocks. Bladestorm halves the harm you take.',
       finale: { locked: ['The Dawn Forge is cold. Three ember cores are needed to wake it.'], guarded: ['Umbra stands before the Forge in the shape of a black knight. Hold the line!'],
         done: ['You set the three ember cores into the Dawn Forge. Its fire roars up, white and gold, and a new dawn spills across the wastes.', 'Umbra’s last shadow burns away like morning mist. It asked you to step aside. You didn’t.', 'Beside you, Ser Aldric takes off his helm and laughs. Far to the west, the Star, the Bell and the Beacon shine back.'] },
       victory: { title: 'The line held.', text: 'Umbra is gone for good. The Dawn Forge burns again, Ser Aldric is home, and the Wardens of the valley stand once more, led by the squire who kept his oath.' },

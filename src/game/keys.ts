@@ -7,7 +7,7 @@ export type ActionInfo = { id: Action; name: string; group: 'Move' | 'Fight' | '
 export const ACTIONS: ActionInfo[] = [
   { id: 'up', name: 'Move up', group: 'Move' }, { id: 'down', name: 'Move down', group: 'Move' }, { id: 'left', name: 'Move left', group: 'Move' }, { id: 'right', name: 'Move right', group: 'Move' },
   { id: 'interact', name: 'Talk / use', group: 'Move' }, { id: 'ride', name: 'Ride mount', group: 'Move' },
-  { id: 'spell1', name: 'Attack', group: 'Fight' }, { id: 'spell2', name: 'Dash ability', group: 'Fight' }, { id: 'spell3', name: 'Ability (level 3)', group: 'Fight' }, { id: 'spell4', name: 'Ability (level 6)', group: 'Fight' }, { id: 'spell5', name: 'Ability (level 10)', group: 'Fight' },
+  { id: 'spell1', name: 'Attack', group: 'Fight' }, { id: 'spell2', name: 'Ability (level 1)', group: 'Fight' }, { id: 'spell3', name: 'Ability (level 3)', group: 'Fight' }, { id: 'spell4', name: 'Ability (level 6)', group: 'Fight' }, { id: 'spell5', name: 'Ability (level 10)', group: 'Fight' },
   { id: 'bag', name: 'Bag', group: 'Menus' }, { id: 'character', name: 'Character', group: 'Menus' }, { id: 'quests', name: 'Quest log', group: 'Menus' }, { id: 'spellbook', name: 'Spellbook', group: 'Menus' },
   { id: 'achievements', name: 'Achievements', group: 'Menus' }, { id: 'map', name: 'World map', group: 'Menus' }, { id: 'mute', name: 'Sound on / off', group: 'Menus' },
 ];

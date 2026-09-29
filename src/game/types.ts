@@ -5,9 +5,9 @@ export type LevelId = RegionId;
 export type HeroId = 'mira' | 'kael' | 'lyra' | 'riven' | 'wren';
 /** Mounts are earned through achievements; riding one makes crossing the valley much faster. */
 export type MountId = 'pony' | 'boar' | 'stag' | 'frostwolf' | 'drake' | 'unicorn';
-export type SpellId = 'spark' | 'dash' | 'sunfire' | 'shield' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm'
-  | 'frostbolt' | 'blink' | 'frostnova' | 'iceBarrier' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'veil' | 'deathmark'
-  | 'arrow' | 'tumble' | 'volley' | 'snare' | 'wildcall';
+export type SpellId = 'spark' | 'gravity' | 'sunfire' | 'starguard' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm'
+  | 'frostbolt' | 'blink' | 'frostnova' | 'iceBlock' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'stealth' | 'deathmark'
+  | 'arrow' | 'command' | 'volley' | 'snare' | 'wildcall';
 export type ItemId =
   | 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin'
   | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
@@ -161,7 +161,9 @@ export type MainQuest = { keys: string[]; bosses: string[]; finales: RegionId[] 
 
 /** A spell's upgrade stars: `bonus` is what the stars give now, `next` what the next star adds. */
 export type SpellRank = { rank: number; max: number; bonus: string; next: string | null; cost: number; needLevel: number; canBuy: boolean };
-export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number; rank: SpellRank; cd: number };
+export type SpellState = { id: SpellId; name: string; key: string; icon: string; unlocked: boolean;
+  /** A toggle that is switched on right now: Ice Block, Stealth, or Fenn sent to attack. */
+  active?: boolean; level: number; cooldown: number; cost: number; affordable: boolean; damage: number; rank: SpellRank; cd: number };
 export type BossState = { name: string; title: string; hp: number; maxHp: number; phase: number; level: number };
 export type QuestRow = { id: string; title: string; giver: string; status: QuestStatus; detail: string; goal: string; progress: number; count: number; xp: number; reward: string; tracked: boolean; chapter: number;
   /** One of the hero's own quests. */

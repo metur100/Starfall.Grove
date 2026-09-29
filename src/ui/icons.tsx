@@ -5,7 +5,7 @@ import type { GearItem, GearSlot, HeroId, ItemId } from '../game/types';
 
 // Small drawn icons: hero faces, consumables and equipment slots. All inline SVG, so they stay sharp at any size.
 
-/** Mira keeps her warlock emoji; the others get drawn faces: Kael in a plumed helm, Lyra under a frost circlet, Riven hooded. */
+/** Mira keeps her astralmancer emoji; the others get drawn faces: Kael in a plumed helm, Lyra under a frost circlet, Riven hooded. */
 export function HeroFace({ hero }: { hero: HeroId }) {
   if (hero === 'mira') return <span className="hero-face emoji" aria-hidden="true">🧙‍♀️</span>;
   if (hero === 'lyra') return <svg className="hero-face" viewBox="0 0 64 64" aria-hidden="true">

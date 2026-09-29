@@ -12,11 +12,11 @@ import { HeroFace } from './icons';
 
 export type HeroSummary = { started: boolean; level: number; gold: number; where: string; stars: number; equipped: Partial<Record<GearSlot, GearItem>>; points: number };
 const TRAITS: Record<HeroId, Array<[string, number]>> = {
-  mira: [['Range', 5], ['Toughness', 2], ['Magic', 5], ['Speed', 4]],
+  mira: [['Range', 5], ['Toughness', 1], ['Magic', 5], ['Speed', 3]],
   kael: [['Range', 1], ['Toughness', 5], ['Might', 5], ['Speed', 3]],
   lyra: [['Range', 5], ['Toughness', 2], ['Control', 5], ['Speed', 3]],
-  riven: [['Range', 2], ['Toughness', 3], ['Burst', 5], ['Speed', 5]],
-  wren: [['Range', 5], ['Toughness', 3], ['Companion', 5], ['Speed', 4]],
+  riven: [['Range', 2], ['Toughness', 3], ['Burst', 5], ['Speed', 4]],
+  wren: [['Range', 5], ['Toughness', 3], ['Companion', 5], ['Speed', 5]],
 };
 const BACKDROP: Record<HeroId, LevelId> = { mira: 'summit', kael: 'meadow', lyra: 'woods', riven: 'ember', wren: 'meadow' };
 

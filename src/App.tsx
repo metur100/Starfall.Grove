@@ -592,7 +592,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <div className="menu-actions title-actions"><button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button><button className="btn ghost big" onClick={onTutorial}>Tutorial <b>✦</b></button></div>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}
     </section>
-    {!touch && <footer className="title-foot"><span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> move</span><span><kbd>{kl('spell1')}</kbd> attack</span><span><kbd>{kl('spell2')}</kbd> dash</span><span><kbd>{kl('spell3')} {kl('spell4')} {kl('spell5')}</kbd> abilities</span><span><kbd>{kl('interact')}</kbd> interact</span><span><kbd>{kl('ride')}</kbd> ride</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>{kl('bag')}</kbd> bag</span><span><kbd>{kl('map')}</kbd> map</span></footer>}
+    {!touch && <footer className="title-foot"><span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> move</span><span><kbd>{kl('spell1')}</kbd> attack</span><span><kbd>{kl('spell2')} {kl('spell3')} {kl('spell4')} {kl('spell5')}</kbd> abilities</span><span><kbd>{kl('interact')}</kbd> interact</span><span><kbd>{kl('ride')}</kbd> ride</span><span><kbd>1–0</kbd> potions &amp; bombs</span><span><kbd>{kl('bag')}</kbd> bag</span><span><kbd>{kl('map')}</kbd> map</span></footer>}
     {settings && <div className="overlay" onClick={() => onSettings(false)}><div onClick={e => e.stopPropagation()} className="panel pause-panel settings-panel">
       <button className="icon-button settings-close" onClick={() => { onSettings(false); sfx.play('page'); }} aria-label="Close settings" title="Close">✕</button>
       <SettingsBody graphics={graphics} onGraphics={onGraphics} touch={touch} />
@@ -741,7 +741,7 @@ function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
 function SpellButton({ spell, onCast, touch }: { spell: SpellState; onCast: (id: SpellId) => void; touch?: boolean }) {
   const ready = spell.unlocked && spell.cooldown <= 0 && spell.affordable;
   const style = { '--cd': `${spell.cooldown * 360}deg`, '--spell': SPELLS[spell.id].color } as CSSProperties;
-  return <button className={`spell spell-${spell.id} slot-${SPELLS[spell.id].slot} ${ready ? 'ready' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
+  return <button className={`spell spell-${spell.id} slot-${SPELLS[spell.id].slot} ${ready ? 'ready' : ''} ${spell.active ? 'active' : ''} ${spell.unlocked ? '' : 'locked'} ${!spell.affordable ? 'poor' : ''} ${touch ? 'touch' : ''}`}
     style={style} onPointerDown={e => { e.preventDefault(); onCast(spell.id); }} aria-label={spell.name} title={spell.unlocked ? `${spell.name} (${spell.key})${spell.cost ? ` · ${spell.cost} mana` : ''} · ${SPELLS[spell.id].description}` : `${spell.name} · learned at level ${spell.level} · ${SPELLS[spell.id].description}`}>
     <span className="spell-icon-wrap"><b>{spell.unlocked ? spell.icon : '🔒'}</b>{spell.cooldown > 0 && <i className="cd" />}</span>
     {!touch && spell.unlocked && <kbd>{spell.key}</kbd>}

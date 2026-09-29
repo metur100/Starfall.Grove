@@ -383,7 +383,7 @@ export const WREN: HeroStory = {
     },
     woods: {
       sealed: 'Shadowmane lies curled round the Bell inside a knot of sleeping roots. Wake the three root runes first.',
-      tip: 'Shadowmane howls up shadewolves: thin them out, then turn your arrows on the alpha. Tumble through its charges.',
+      tip: 'Shadowmane howls up shadewolves: thin them out, then turn your arrows on the alpha. Your quick feet can outrun its charges.',
       finale: { locked: ['Three root runes are needed to wake the Bell, and whatever sleeps beside it.'], guarded: ['Shadowmane stands over the Bell, the pack’s howl in its throat. Break it!'],
         done: ['You ring the Ancient Bell. Its voice rolls through every root, and the shadow that wore a wolf’s shape tears apart like mist.', 'All over Whisperroot, wolves shake themselves as if they had come up out of cold water.', 'But the biggest pawprints of all lead out of the woods, east, toward the Summit.'] },
       victory: { title: 'The Bell rings through the valley.', text: 'Shadowmane is broken and the pack is free. But Moonfang was never with them: she carried the worst of the shadow away on her own back, east into the snows of Starfall Summit.' },
@@ -391,7 +391,7 @@ export const WREN: HeroStory = {
     },
     summit: {
       sealed: 'Skyhorn is wrapped in a shell of black starlight. Gather the three star shards first.',
-      tip: 'Skyhorn blinks across the snow and calls down falling stars: dash out of the circles, and shoot while he lands.',
+      tip: 'Skyhorn blinks across the snow and calls down falling stars: run out of the circles, and shoot while he lands.',
       finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['Skyhorn stands over the Cradle, black light twisting in his antlers. Free him!'],
         done: ['You lay the three shards in the Cradle. The star remembers its light and rises, whole, into the sky.', 'Skyhorn stands, shakes the snow off his back, and bows his great head to you, just once.', 'But a thread of black smoke has torn loose from the star and fled east, toward the Ember Wastes. Moonfang went that way too.'] },
       victory: { title: 'The star rises home.', text: 'Skyhorn is free, and the Summit’s wolves and goatherds share the heights. But the shadow fled east into the Ember Wastes, and so did Moonfang.' },

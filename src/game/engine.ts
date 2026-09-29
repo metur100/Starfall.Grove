@@ -28,6 +28,10 @@ export type Hero = {
   stormT: number; stormTick: number; charging: boolean;
   /** Seconds the hero cannot be hurt after a Blink or a Shadowstep (no hurt flicker, unlike `hurtTime`). */
   ghostT: number;
+  /** Lyra: seconds left inside her Ice Block (she can't move or act, and nothing can hurt her). */
+  iceT: number;
+  /** Mira: seconds left of Guardian Stars, how many stars still circle her, and the timer of their burn. */
+  orbitT: number; orbitN: number; orbitTick: number;
 };
 export type Enemy = EnemySeed & {
   hp: number; maxHp: number; r: number; dead: boolean; deadT: number; cd: number; windup: number; hitFlash: number;
@@ -67,6 +71,10 @@ export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay:
 /** Riven's Death Mark on a creature, and Lyra's Blizzard over a patch of ground. */
 export type Mark = { e: Enemy; t: number; max: number; mul: number };
 export type Storm = { x: number; y: number; t: number; tick: number };
+/** Mira's Gravity Well: a small black star that drags creatures into its heart. */
+export type Well = { x: number; y: number; t: number; max: number; tick: number };
+/** Wren's order to Fenn: fight beside her, or stay at her heel and attack nothing. */
+export type PetMode = 'attack' | 'passive';
 /** One achievement as the journal shows it. */
 export type AchRow = AchDef & { goal: number; progress: number; got: number };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 'dot' | 'leaf' | 'ember' | 'star' | 'smoke' | 'ring' | 'shard'; rot: number; vr: number; grav: number; drag: number; glow: boolean };
@@ -200,6 +208,8 @@ function startFor(w: WorldDefinition, hero: HeroId): Point {
 }
 /** Creatures this close to a hero's own start are no stronger than those around the Rest, so no hero starts among harder foes. */
 const START_SAFE = 2800;
+/** No creature lives this close to where a hero wakes, so every adventure begins in peace. */
+const START_CALM = 1050;
 /** Extra animals in every herd beyond the number the quest asks for. */
 const HERD_SPARE = 2;
 /** Consumables a quest can pay out (the rare feather is left to luck and merchants). */
@@ -225,12 +235,17 @@ export class GameEngine {
   readonly slashes: Slash[] = [];
   readonly marks: Mark[] = [];
   readonly storms: Storm[] = [];
-  /** Riven: seconds left of Smoke Veil, and whether the next stab is a sure critical hit (after a Shadowstep). */
+  readonly wells: Well[] = [];
+  /** Riven: seconds left of Stealth, and whether the next stab is a sure critical hit (after a Shadowstep). */
   stealthT = 0; nextCrit = false;
-  /** Wren: Fenn and any spirit wolves, her traps, and seconds left of Call of the Wild. */
+  /** Wren: Fenn and any spirit wolves, her traps, seconds left of Call of the Wild, and what Fenn has been told to do. */
   readonly pets: Pet[] = [];
   readonly traps: Trap[] = [];
-  wildT = 0;
+  wildT = 0; petMode: PetMode = 'attack';
+  /** Seconds until Fenn can pounce again when he is sent in. */
+  private pounceCd = 0;
+  /** When the hero last struck or was struck: no mount can be called for a few seconds after. */
+  private fightT = -99;
   /** The creature Wren last shot at: Fenn goes for it. */
   private petFocus: Enemy | null = null;
   /** True while riding; `mountFx` fades the mount in (0 → 1). */
@@ -329,12 +344,13 @@ export class GameEngine {
     this.profile = practice ? practiceProfile(heroId) : loadProfile(heroId);
     const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
-    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false, ghostT: 0 };
+    this.hero = { x: this.world.spawn.x, y: this.world.spawn.y, vx: 0, vy: 0, hp: healthAt(p), maxHp: healthAt(p), mana: manaAt(p), maxMana: manaAt(p), manaRegen: regenAt(p), faceX: 1, faceY: 0, cds, shieldTime: 0, hurtTime: 0, walkTime: 0, dashTime: 0, dashX: 0, dashY: 0, castTime: 0, slowT: 0, stormT: 0, stormTick: 0, charging: false, ghostT: 0, iceT: 0, orbitT: 0, orbitN: 0, orbitTick: 0 };
     if (practice) { this.hero.maxMana = 240; this.hero.mana = 240; this.hero.manaRegen = 240; }
     this.obstacleGrid = new Grid(256, this.world.obstacles);
     this.collide(this.world.spawn, 34); this.hero.x = this.world.spawn.x; this.hero.y = this.world.spawn.y; this.checkpoint = { ...this.world.spawn };
     this.roads = new RoadIndex(this.world.roads);
     this.enemies = this.world.enemies.map(seed => this.makeEnemy(this.nearStart(seed, base.spawn)));
+    if (!practice) this.calmStart();
     this.pods = this.world.pods.map((pt, id) => ({ id, x: pt.x, y: pt.y, dead: false, hitT: 0 }));
     this.npcs = this.world.npcs.map(n => ({ ...n, homeX: n.x, homeY: n.y, tx: n.x, ty: n.y, moving: false, faceX: 1, waitT: rand(0, 3), routeI: 0, routeDir: 1, workT: rand(0, 2), bark: '', barkT: 0, barkCd: rand(2, 8), walkT: 0, poiName: this.poiAt(n)?.name || this.regionAt(n.x).name }));
     this.critters = this.world.critters.map(c => ({ ...c, homeX: c.x, homeY: c.y, tx: c.x, ty: c.y, state: 'idle', t: rand(0, 3), face: 1, alt: 0, hop: 0, seed: Math.random() }));
@@ -361,6 +377,25 @@ export class GameEngine {
     const d = dist(s, this.world.spawn); if (d > START_SAFE) return s;
     const [lo, hi] = r.levels, cap = Math.max(lo, lo + Math.round((hi - lo) * Math.max(d, dist(s, rest) * .35) / 9000) + (s.elite ? 1 : 0));
     return s.level > cap ? { ...s, level: cap } : s;
+  }
+  /** Creatures that would wander around the hero's own start move out past `START_CALM`, away from it. */
+  private calmStart() {
+    const s = this.world.spawn;
+    for (const e of this.enemies) {
+      if (e.boss || Math.abs(e.x - s.x) > START_CALM || Math.abs(e.y - s.y) > START_CALM) continue;
+      const d = dist(e, s); if (d >= START_CALM) continue;
+      let a = d > 1 ? Math.atan2(e.y - s.y, e.x - s.x) : rand(0, 6.28);
+      const p = { x: 0, y: 0 };
+      // Try the straight way out first, then turn a little at a time until the spot is dry and open.
+      for (let i = 0; i < 24; i++) {
+        const r = START_CALM + 60 + (i % 3) * 70;
+        p.x = clamp(s.x + Math.cos(a) * r, 80, this.world.width - 80); p.y = clamp(s.y + Math.sin(a) * r, 80, this.world.height - 80);
+        this.collide(p, e.r);
+        if (!inPond(this.world.ponds, p.x, p.y, e.r) && dist(p, s) >= START_CALM) break;
+        a += (i % 2 ? 1 : -1) * (.35 + i * .1);
+      }
+      e.x = e.homeX = e.wanderX = p.x; e.y = e.homeY = e.wanderY = p.y;
+    }
   }
   private makeEnemy(seed: EnemySeed, summoned = false): Enemy {
     const s = ENEMY_STATS[seed.kind];
@@ -604,7 +639,7 @@ export class GameEngine {
   setMovement(x: number, y: number) {
     const mag = Math.hypot(x, y); if (mag > 1) { x /= mag; y /= mag; }
     this.moveX = x; this.moveY = y;
-    if (mag > .08) { this.hero.faceX = x; this.hero.faceY = y; }
+    if (mag > .08 && this.hero.iceT <= 0) { this.hero.faceX = x; this.hero.faceY = y; }
   }
   cast(id: SpellId) {
     sfx.unlock();
@@ -612,8 +647,10 @@ export class GameEngine {
     const info = SPELLS[id], h = this.hero;
     if (this.riding && this.spellUnlocked(id)) this.dismount();
     if (!this.practice && !this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
+    // Inside the Ice Block nothing else can be done: the button breaks Lyra free.
+    if (h.iceT > 0) { if (id === 'iceBlock') this.endIceBlock(); else this.frozenNotice(); return; }
+    if (id === 'stealth' && this.stealthT > 0) { this.endStealth(); return; }
     if (id === 'spark') return this.attack();
-    if (id === 'dash') return this.dash();
     if (id === 'slash') return this.swordSlash();
     if (id === 'charge') return this.charge();
     if (id === 'frostbolt') return this.frostbolt();
@@ -621,25 +658,32 @@ export class GameEngine {
     if (id === 'stab') return this.stab();
     if (id === 'shadowstep') return this.shadowstep();
     if (id === 'arrow') return this.quickShot();
-    if (id === 'tumble') return this.tumble();
+    if (id === 'command') return this.petCommand();
     if (h.cds[id] > 0) { this.play('nope'); return; }
     if (h.mana < info.cost) { this.play('nope'); this.notice('Not enough magic! Break glow pods and defeat creatures for mana.', 'warn', 'No magic'); return; }
     h.mana -= info.cost; h.cds[id] = this.cooldownOf(id); h.castTime = .3;
     if (id === 'sunfire') this.sunfire();
-    else if (id === 'shield' || id === 'guard') this.mossShield(id);
+    else if (id === 'gravity') this.gravityWell();
+    else if (id === 'starguard') this.guardianStars();
+    else if (id === 'guard') this.shieldWall();
     else if (id === 'starfall') this.starfall();
     else if (id === 'slam') this.earthsplitter();
     else if (id === 'bladestorm') this.bladestorm();
     else if (id === 'frostnova') this.frostnova();
-    else if (id === 'iceBarrier') this.mossShield(id);
+    else if (id === 'iceBlock') this.iceBlock();
     else if (id === 'blizzard') this.blizzard();
     else if (id === 'knives') this.fanOfKnives();
-    else if (id === 'veil') this.smokeVeil();
+    else if (id === 'stealth') this.enterStealth();
     else if (id === 'deathmark' && !this.deathmark()) { h.mana += info.cost; h.cds[id] = 0; }
     else if (id === 'volley') this.volley();
     else if (id === 'snare') this.snare();
     else if (id === 'wildcall') this.wildcall();
   }
+  /** A spell that needs a foe was pressed with none in reach: nothing happens and nothing is spent. */
+  private noTarget(what: string) { this.play('nope'); this.notice(`No foe in reach to ${what}.`, 'warn', 'No target'); }
+  private frozenNotice() { this.play('nope'); this.notice('You are frozen in your Ice Block. Press Ice Block again to break free.', 'warn', 'Frozen in ice'); }
+  /** A toggle that is on: Lyra in her Ice Block, Riven in stealth, Fenn held back at Wren's heel. */
+  spellActive(id: SpellId) { return id === 'iceBlock' ? this.hero.iceT > 0 : id === 'stealth' ? this.stealthT > 0 : id === 'command' ? this.petMode === 'passive' : false; }
   private attack() {
     const h = this.hero; if (h.cds.spark > 0) return;
     h.cds.spark = this.cooldownOf('spark'); h.castTime = .18;
@@ -652,14 +696,34 @@ export class GameEngine {
     this.emit(h.x + dx * 26, h.y - 14 + dy * 26, 6, ['#fff6c4', '#ffe38a'], { speed: 120, life: .3, size: 3, glow: true, angle: Math.atan2(dy, dx), spread: 1.2 });
     this.play('spark');
   }
-  private dash() {
-    const h = this.hero; if (h.cds.dash > 0 || h.dashTime > 0) return;
-    let dx = this.moveX, dy = this.moveY;
-    if (Math.hypot(dx, dy) < .1) { dx = h.faceX; dy = h.faceY; }
-    const len = Math.hypot(dx, dy) || 1;
-    h.dashX = dx / len; h.dashY = dy / len; h.dashTime = .18; h.cds.dash = this.cooldownOf('dash'); h.slowT = 0;
-    this.emit(h.x, h.y + 14, 14, ['#e9f7ff', '#bfe8ff', '#ffffff'], { speed: 140, life: .45, kind: 'smoke', size: 7, angle: Math.atan2(-dy, -dx), spread: 1.6 });
-    this.play('dash');
+  // ───────────────────────────── Mira's abilities
+  /** A black star on the nearest foe (or just ahead) that drags creatures into its heart for a few seconds. */
+  private gravityWell() {
+    const h = this.hero, t = this.nearestTarget(560, true);
+    const c = t ? { x: t.x, y: t.y } : { x: h.x + h.faceX * 200, y: h.y + h.faceY * 200 };
+    if (t) { const d = Math.max(1, dist(h, t)); h.faceX = (t.x - h.x) / d; h.faceY = (t.y - h.y) / d; }
+    this.wells.push({ x: c.x, y: c.y, t: 2, max: 2, tick: .1 });
+    this.ring(c.x, c.y, 170, '#b39cff', .5);
+    this.emit(c.x, c.y, 26, ['#1a1030', '#6a4bd6', '#b39cff', '#ffffff'], { speed: 220, life: .6, kind: 'star', glow: true, size: 4 });
+    this.addShake(3); this.play('voidShot', c);
+  }
+  /** Three stars that circle Mira: each one catches a blow for her. */
+  private guardianStars() {
+    const h = this.hero; h.orbitT = 8; h.orbitN = 3; h.orbitTick = .3;
+    this.ring(h.x, h.y, 90, '#fff1b8', .5);
+    this.emit(h.x, h.y - 10, 30, ['#fff1b8', '#ffe38a', '#ffffff', '#c9b6ff'], { speed: 200, life: .7, kind: 'star', glow: true, size: 5 });
+    this.play('shield');
+  }
+  /** Where Guardian Star `i` circles right now. */
+  starPos(i: number): Point { const h = this.hero, a = this.elapsed * 3.2 + i * Math.PI * 2 / 3; return { x: h.x + Math.cos(a) * 52, y: h.y - 10 + Math.sin(a) * 36 }; }
+  /** A star leaves the ring and flies at a foe: the attacker, or the nearest one. */
+  private loseStar(at: Enemy | null) {
+    const h = this.hero, s = this.starPos(h.orbitN - 1); h.orbitN--;
+    const t = at && !at.dead ? at : this.nearestTarget(560, true) as Enemy | null;
+    this.emit(s.x, s.y, 16, ['#fff1b8', '#ffffff', '#ffe38a'], { speed: 200, life: .5, kind: 'star', glow: true, size: 4 });
+    if (!t) { this.ring(s.x, s.y, 60, '#fff1b8', .4); return; }
+    const d = Math.max(1, dist(s, t)), dx = (t.x - s.x) / d, dy = (t.y - s.y) / d;
+    this.projectiles.push({ x: s.x, y: s.y, vx: dx * 700, vy: dy * 700, life: 1.2, r: 10, damage: this.dmg('starguard'), level: 0, owner: 'hero', kind: 'spark', targetId: t.id, spin: 0 });
   }
   // ───────────────────────────── Kael's abilities
   /** A wide sword arc in front of Kael; it turns toward the nearest foe in reach. */
@@ -681,14 +745,15 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
     this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(2 + Math.min(4, hits));
   }
-  /** Rushes at the nearest foe (or straight ahead); everything in the way is hurt, knocked aside and stunned.
-   *  A short rush: about 230 px at most, and it stops at the foe it aims for instead of carrying on past it. */
+  /** Rushes at the nearest foe; everything in the way is hurt, knocked aside and stunned. It needs a foe to aim at,
+   *  and it stops at that foe instead of carrying on past it. */
   private charge() {
     const h = this.hero; if (h.cds.charge > 0 || h.dashTime > 0) return;
-    const t = this.nearestTarget(300, true), moving = Math.hypot(this.moveX, this.moveY) > .1;
-    let dx = t ? t.x - h.x : moving ? this.moveX : h.faceX, dy = t ? t.y - h.y : moving ? this.moveY : h.faceY;
+    const t = this.nearestTarget(340, true) as Enemy | null;
+    if (!t) return this.noTarget('charge');
+    let dx = t.x - h.x, dy = t.y - h.y;
     const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-    const reach = t ? clamp((len - ('r' in t ? t.r : 20) - 10) / 1050, .08, .22) : .2;
+    const reach = clamp((len - t.r - 10) / 1050, .06, .32);
     h.dashX = dx; h.dashY = dy; h.faceX = dx; h.faceY = dy; h.dashTime = reach; h.charging = true; h.cds.charge = this.cooldownOf('charge'); h.slowT = 0;
     this.chargeHit.clear();
     this.emit(h.x, h.y + 14, 18, ['#ffd0a0', '#ffb35c', '#ffffff'], { speed: 160, life: .45, kind: 'smoke', size: 8, angle: Math.atan2(-dy, -dx), spread: 1.4 });
@@ -755,6 +820,23 @@ export class GameEngine {
     this.hazards.push({ x: h.x, y: h.y, r: 175, delay: .08, maxDelay: .08, damage: this.dmg('frostnova'), level: 0, owner: 'hero', kind: 'frostnova', fromX: h.x, fromY: h.y });
     h.castTime = .3; this.addShake(3); this.play('reflect');
   }
+  /** Lyra freezes herself solid: no harm gets in, and she can't move or act until she breaks out (or it melts). */
+  private iceBlock() {
+    const h = this.hero; this.dismount();
+    h.iceT = 6; h.cds.iceBlock = 0; h.vx = h.vy = 0; h.dashTime = 0; h.slowT = 0; this.work = null;
+    this.setMovement(0, 0);
+    this.ring(h.x, h.y, 80, '#bfeaff', .5); this.flash = Math.max(this.flash, .12);
+    this.emit(h.x, h.y - 10, 30, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 200, life: .6, kind: 'shard', glow: true, size: 5 });
+    this.play('reflect'); this.play('shield');
+  }
+  /** The ice shatters and Lyra is free; the cooldown starts now. */
+  endIceBlock() {
+    const h = this.hero; if (h.iceT <= 0) return;
+    h.iceT = 0; h.cds.iceBlock = this.cooldownOf('iceBlock');
+    this.ring(h.x, h.y, 90, '#dff6ff', .4);
+    this.emit(h.x, h.y - 20, 34, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 280, life: .7, kind: 'shard', glow: true, size: 5, grav: 400 });
+    this.addShake(3); this.play('reflect');
+  }
   /** A blizzard over the nearest pack (or just ahead) that rains ice for four seconds. */
   private blizzard() {
     const h = this.hero, t = this.nearestTarget(620, true);
@@ -762,8 +844,8 @@ export class GameEngine {
     this.storms.push({ x: c.x, y: c.y, t: 4, tick: 0 }); this.flash = Math.max(this.flash, .15); this.play('starfall');
   }
   // ───────────────────────────── Riven's abilities
-  /** Out of Smoke Veil, the first strike is an ambush for triple damage. */
-  private ambush() { if (this.stealthT <= 0) return 1; this.stealthT = 0; this.text(this.hero.x, this.hero.y - 70, 'Ambush!', '#e0c8ff', 18); return 3; }
+  /** Out of Stealth, the first strike is an ambush for triple damage (and brings Riven out of the shadows). */
+  private ambush() { if (this.stealthT <= 0) return 1; this.endStealth(); this.text(this.hero.x, this.hero.y - 70, 'Ambush!', '#e0c8ff', 18); return 3; }
   /** Two quick dagger thrusts at up to two foes in front. Critical hits deal triple damage. */
   private stab() {
     const h = this.hero; if (h.cds.stab > 0) return;
@@ -787,17 +869,14 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && dist(h, p) < reach) this.breakPod(p);
     this.play(hits ? 'hit' : 'dash'); if (hits) this.addShake(1.5 + hits);
   }
-  /** Steps through the shadows to right behind the nearest foe; the next stab is a sure critical hit. */
+  /** Steps through the shadows to right behind the nearest foe; the next stab is a sure critical hit. It needs a foe:
+   *  with none in reach nothing happens and the cooldown is not spent. Stepping keeps Riven in stealth. */
   private shadowstep() {
     const h = this.hero; if (h.cds.shadowstep > 0) return;
-    const t = this.nearestTarget(380, true), from = { x: h.x, y: h.y };
-    if (t) {
-      const d = Math.max(1, dist(h, t)), ux = (t.x - h.x) / d, uy = (t.y - h.y) / d, r = ('r' in t ? t.r : 20) + 30;
-      h.x = t.x + ux * r; h.y = t.y + uy * r; h.faceX = -ux; h.faceY = -uy;
-    } else {
-      let dx = this.moveX, dy = this.moveY; if (Math.hypot(dx, dy) < .1) { dx = h.faceX; dy = h.faceY; }
-      const l = Math.hypot(dx, dy) || 1; h.x += dx / l * 200; h.y += dy / l * 200;
-    }
+    const t = this.nearestTarget(380, true) as Enemy | null, from = { x: h.x, y: h.y };
+    if (!t) return this.noTarget('step to');
+    const d = Math.max(1, dist(h, t)), ux = (t.x - h.x) / d, uy = (t.y - h.y) / d, r = t.r + 30;
+    h.x = t.x + ux * r; h.y = t.y + uy * r; h.faceX = -ux; h.faceY = -uy;
     h.x = clamp(h.x, 40, this.world.width - 40); h.y = clamp(h.y, 40, this.world.height - 40); this.collide(h, 15);
     h.vx = h.vy = 0; h.ghostT = .3; h.slowT = 0; h.cds.shadowstep = this.cooldownOf('shadowstep'); this.nextCrit = true;
     this.afterimages.push({ x: from.x, y: from.y, life: .28, faceX: h.faceX });
@@ -809,11 +888,27 @@ export class GameEngine {
     for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + rand(-.05, .05); this.projectiles.push({ x: h.x, y: h.y - 12, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, life: .55, r: 7, damage: this.dmg('knives') * amb, level: 0, owner: 'hero', kind: 'knife', spin: a }); }
     h.castTime = .25; this.addShake(2); this.play('thornShot');
   }
-  private smokeVeil() {
-    const h = this.hero; this.stealthT = this.durationOf('veil', 4);
-    for (const e of this.enemies) if (!e.boss && e.aggro) { e.aggro = false; e.windup = 0; e.lunge = 0; e.cd = Math.max(e.cd, 1); }
+  /** Riven fades from sight: every creature, guardians too, loses him and none can find him until he strikes,
+   *  is hurt, steps out or it runs out. The cooldown starts when he comes out. */
+  private enterStealth() {
+    const h = this.hero; this.stealthT = 15; h.cds.stealth = 0;
+    this.loseHero();
     this.emit(h.x, h.y, 34, ['rgba(60,50,80,.7)', 'rgba(150,140,180,.6)', 'rgba(220,210,240,.5)'], { speed: 200, life: 1.3, kind: 'smoke', size: 22, drag: 2 });
-    this.play('dash');
+    this.text(h.x, h.y - 70, 'Stealth', '#c9b6ff', 16); this.play('dash');
+  }
+  endStealth() {
+    if (this.stealthT <= 0) return;
+    const h = this.hero; this.stealthT = 0; h.cds.stealth = this.cooldownOf('stealth');
+    this.emit(h.x, h.y, 16, ['rgba(60,50,80,.6)', 'rgba(150,140,180,.5)'], { speed: 120, life: .7, kind: 'smoke', size: 14 });
+  }
+  /** Every creature fighting the hero loses them: guardians stop their attack, the rest go back to wandering. */
+  private loseHero() {
+    for (const e of this.enemies) {
+      if (e.dead || !e.aggro) continue;
+      e.aggro = false; e.windup = 0; e.lunge = 0; e.cd = Math.max(e.cd, 1);
+      if (e.boss) { e.action = null; e.cd = Math.max(e.cd, 1.4); }
+      if (Math.abs(e.x - this.hero.x) < 900 && Math.abs(e.y - this.hero.y) < 900) this.text(e.x, e.y - e.r - 26, '?', '#c9b6ff', 20);
+    }
   }
   /** Marks the toughest foe in reach; the mark bursts two seconds later. Returns false when nothing is in reach. */
   private deathmark() {
@@ -845,17 +940,30 @@ export class GameEngine {
     this.arrowShot(dx / len, dy / len, this.dmg('arrow') * (crit ? 2 : 1), crit, 1);
     this.play('thornShot');
   }
-  /** A roll that can't be hit; Fenn pounces on the nearest foe. */
-  private tumble() {
-    const h = this.hero; if (h.cds.tumble > 0 || h.dashTime > 0) return;
-    let dx = this.moveX, dy = this.moveY;
-    if (Math.hypot(dx, dy) < .1) { dx = -h.faceX; dy = -h.faceY; }
-    const len = Math.hypot(dx, dy) || 1;
-    h.dashX = dx / len; h.dashY = dy / len; h.dashTime = .2; h.cds.tumble = this.cooldownOf('tumble'); h.slowT = 0;
-    this.emit(h.x, h.y + 14, 14, ['#e0d4b0', '#c8e6a0', '#ffffff'], { speed: 140, life: .45, kind: 'smoke', size: 7, angle: Math.atan2(-dy, -dx), spread: 1.6 });
-    const fenn = this.pets.find(p => !p.spirit), t = this.nearestTarget(460, true);
-    if (fenn && t && 'kind' in t) { fenn.target = t; fenn.leapT = .32; this.petFocus = t; this.play('squeak', fenn); }
-    this.play('dash');
+  /**
+   * Wren's order to Fenn. On attack, it calls him to heel: passive, he follows her and attacks nothing. On passive it
+   * sends him in at her foe (out of combat, the nearest creature, so he starts the fight), with a stunning pounce when
+   * he has one ready.
+   */
+  private petCommand() {
+    const h = this.hero; if (h.cds.command > 0) return;
+    h.cds.command = this.cooldownOf('command'); h.castTime = .2;
+    const fenn = this.pets.find(p => !p.spirit) || null;
+    if (this.petMode === 'attack') {
+      this.petMode = 'passive'; this.petFocus = null;
+      for (const p of this.pets) { p.target = null; p.leapT = 0; }
+      this.text(h.x, h.y - 70, 'Fenn: heel!', '#c8e6a0', 16);
+      if (fenn) this.ring(fenn.x, fenn.y, 50, '#c8e6a0', .4);
+      this.play('ui');
+      return;
+    }
+    this.petMode = 'attack';
+    const t = this.nearestTarget(520, true) as Enemy | null;
+    this.text(h.x, h.y - 70, t ? 'Fenn: attack!' : 'Fenn: ready', '#ffd35c', 16);
+    if (!fenn || !t) { this.play('ui'); return; }
+    this.petFocus = t; fenn.target = t;
+    if (this.pounceCd <= 0) { fenn.leapT = .32; this.pounceCd = 5; }
+    this.ring(t.x, t.y, 60, '#ffd35c', .45); this.play('squeak', fenn); this.play('roar');
   }
   private volley() {
     const h = this.hero, t = this.nearestTarget(620, true);
@@ -873,17 +981,19 @@ export class GameEngine {
   }
   private wildcall() {
     const h = this.hero, t = this.durationOf('wildcall', 8);
-    this.wildT = t;
+    this.wildT = t; this.petMode = 'attack';
     for (let i = 0; i < this.pets.length; i++) if (this.pets[i].spirit) { swapRemove(this.pets, i); i--; }
     for (let i = 0; i < 2; i++) this.pets.push(this.makePet(true, t));
     this.ring(h.x, h.y, 140, '#9fe8b0', .6); this.emit(h.x, h.y, 30, ['#9fe8b0', '#e6ffe9', '#ffffff'], { speed: 220, life: .8, kind: 'star', glow: true });
     this.flash = Math.max(this.flash, .15); this.play('roar');
   }
-  /** Fenn follows Wren, runs at whatever she shoots (or anything attacking her) and bites; traps wait for a foot. */
+  /** Fenn follows Wren, runs at whatever she shoots (or anything attacking her) and bites; traps wait for a foot.
+   *  Told to stay passive, he and the spirit wolves keep to her heel and attack nothing. */
   private updatePets(dt: number) {
-    const h = this.hero;
+    const h = this.hero, passive = this.petMode === 'passive';
     if (this.wildT > 0) this.wildT = Math.max(0, this.wildT - dt);
-    const valid = (e: Enemy | null): e is Enemy => !!e && !e.dead && e.spawnT <= 0 && e.burrowT <= 0 && this.canHurt(e) && dist(e, h) < 620;
+    this.pounceCd = Math.max(0, this.pounceCd - dt);
+    const valid = (e: Enemy | null): e is Enemy => !passive && !!e && !e.dead && e.spawnT <= 0 && e.burrowT <= 0 && this.canHurt(e) && dist(e, h) < 620;
     if (!valid(this.petFocus)) this.petFocus = null;
     for (let i = this.pets.length - 1; i >= 0; i--) {
       const p = this.pets[i];
@@ -891,7 +1001,7 @@ export class GameEngine {
       p.cd -= dt; p.bite = Math.max(0, p.bite - dt);
       if (Math.abs(p.x - h.x) > 900 || Math.abs(p.y - h.y) > 900) { p.x = h.x - 40; p.y = h.y + 16; p.target = null; p.leapT = 0; }
       if (!valid(p.target)) p.target = null;
-      if (!p.target) {
+      if (!p.target && !passive) {
         // Anything already fighting Wren, near her.
         let best: Enemy | null = this.petFocus, bd = 460;
         if (!best) for (const e of this.enemies) { if (!e.aggro || !valid(e) || Math.abs(e.x - h.x) > bd || Math.abs(e.y - h.y) > bd) continue; const d = dist(e, h); if (d < bd) { bd = d; best = e; } }
@@ -909,7 +1019,7 @@ export class GameEngine {
         p.leapT -= dt;
         if (p.target && d < reach + 14) {
           p.leapT = 0; p.cd = .6; p.bite = .25;
-          this.damageEnemy(p.target, this.dmg('tumble')); if (!p.target.boss) { p.target.stunT = Math.max(p.target.stunT, .8); p.target.windup = 0; p.target.lunge = 0; }
+          this.damageEnemy(p.target, this.dmg('command')); if (!p.target.boss) { p.target.stunT = Math.max(p.target.stunT, .8); p.target.windup = 0; p.target.lunge = 0; }
           this.emit(p.target.x, p.target.y, 10, ['#ffffff', '#e0d4b0'], { speed: 160, life: .35, glow: true, size: 3 });
         }
       } else if (p.target && d < reach + 10 && p.cd <= 0) {
@@ -971,15 +1081,21 @@ export class GameEngine {
     return null;
   }
   setMount(id: MountId) { if (!this.mountUnlocked(id)) return; this.profile.mount = id; this.persistProfile(this.profile); this.play('ui'); }
-  private inCombat() { const h = this.hero; return this.bossFight || this.enemies.some(e => !e.dead && e.aggro && this.canHurt(e) && Math.abs(e.x - h.x) < 600 && Math.abs(e.y - h.y) < 600); }
+  /** In combat: a guardian fight, a creature hunting the hero, a siege, or a blow struck either way a moment ago. */
+  inCombat() {
+    const h = this.hero;
+    if (this.bossFight || this.siege?.spawned || this.elapsed - this.fightT < 5) return true;
+    return this.enemies.some(e => !e.dead && e.aggro && this.canHurt(e) && Math.abs(e.x - h.x) < 900 && Math.abs(e.y - h.y) < 900);
+  }
   /** R: call the mount (not while creatures are after you), or step off it. */
   toggleMount() {
     sfx.unlock();
     if (this.completeTimer > 0 || this.cine) return;
     if (this.riding) return this.dismount();
     const id = this.mountId, h = this.hero;
+    if (h.iceT > 0) return this.frozenNotice();
     if (!id) { this.play('nope'); this.notice('You have no mount yet. The first one is earned by discovering 10 places (the Wanderer achievement).', 'warn', 'No mount yet'); return; }
-    if (this.inCombat()) { this.play('nope'); this.notice('You can’t call your mount while creatures are after you.', 'warn', 'In combat'); return; }
+    if (this.inCombat()) { this.play('nope'); this.notice('You can’t call your mount in combat. Win the fight or get away first.', 'warn', 'In combat'); return; }
     this.riding = true; this.mountFx = 0;
     this.emit(h.x, h.y + 10, 24, [MOUNTS[id].mane, MOUNTS[id].body, '#ffffff'], { speed: 180, life: .6, kind: 'smoke', size: 10 });
     if (MOUNTS[id].glow) this.ring(h.x, h.y, 80, MOUNTS[id].glow!, .5);
@@ -991,13 +1107,52 @@ export class GameEngine {
     this.emit(h.x, h.y + 12, 16, ['rgba(220,200,150,.6)', 'rgba(255,255,255,.5)'], { speed: 140, life: .5, kind: 'smoke', size: 9 });
     this.play('dash');
   }
-  /** Death Marks count down and burst; Blizzards rain ice; Smoke Veil and the blink grace fade. */
+  /** Death Marks count down and burst; Blizzards rain ice; Gravity Wells pull; Guardian Stars circle; Stealth, the Ice
+   *  Block and the blink grace fade. */
   private updateSpells(dt: number) {
     const h = this.hero;
     h.ghostT = Math.max(0, h.ghostT - dt);
     if (this.pets.length || this.traps.length) this.updatePets(dt);
     if (this.riding) this.mountFx = Math.min(1, this.mountFx + dt * 4);
-    if (this.stealthT > 0) { this.stealthT = Math.max(0, this.stealthT - dt); if (Math.random() < dt * 10) this.emit(h.x + rand(-16, 16), h.y + rand(-24, 14), 1, 'rgba(150,130,200,.5)', { speed: 20, life: .6, kind: 'smoke', size: 7, grav: -20 }); }
+    if (this.stealthT > 0) {
+      if (this.stealthT <= dt) { this.endStealth(); this.notice('You step out of the shadows.', 'info', 'Stealth ended'); }
+      else { this.stealthT -= dt; if (Math.random() < dt * 10) this.emit(h.x + rand(-16, 16), h.y + rand(-24, 14), 1, 'rgba(150,130,200,.5)', { speed: 20, life: .6, kind: 'smoke', size: 7, grav: -20 }); }
+    }
+    if (h.iceT > 0) {
+      if (h.iceT <= dt) this.endIceBlock();
+      else { h.iceT -= dt; if (Math.random() < dt * 8) this.emit(h.x + rand(-26, 26), h.y + rand(-44, 18), 1, ['#ffffff', '#dff6ff'], { speed: 15, life: .6, glow: true, size: 2.5, grav: -20 }); }
+    }
+    if (h.orbitT > 0) {
+      h.orbitT -= dt; h.orbitTick -= dt;
+      if (h.orbitN <= 0) h.orbitT = 0;
+      else if (h.orbitT <= 0) { while (h.orbitN > 0) this.loseStar(null); }
+      else if (h.orbitTick <= 0) {
+        // The stars burn whatever they brush past.
+        h.orbitTick = .45;
+        for (let i = 0; i < h.orbitN; i++) {
+          const s = this.starPos(i);
+          for (const e of this.enemies) if (!e.dead && e.spawnT <= 0 && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - s.x) < 90 && Math.abs(e.y - s.y) < 90 && dist(e, s) < e.r + 18) this.damageEnemy(e, this.dmg('starguard') * .3);
+        }
+      }
+    }
+    for (let i = this.wells.length - 1; i >= 0; i--) {
+      const w = this.wells[i]; w.t -= dt; w.tick -= dt;
+      if (w.t <= 0) { swapRemove(this.wells, i); this.ring(w.x, w.y, 120, '#b39cff', .35); this.emit(w.x, w.y, 20, ['#6a4bd6', '#b39cff', '#ffffff'], { speed: 240, life: .5, kind: 'star', glow: true, size: 4 }); continue; }
+      const R = 160, tick = w.tick <= 0;
+      if (tick) w.tick = .4;
+      for (const e of this.enemies) {
+        if (e.dead || e.spawnT > 0 || e.burrowT > 0 || !this.canHurt(e) || Math.abs(e.x - w.x) > R + 60 || Math.abs(e.y - w.y) > R + 60) continue;
+        const d = dist(e, w); if (d > R + e.r) continue;
+        if (!e.boss) {
+          // Dragged in: the closer to the heart, the harder to pull free. Heavy creatures and heroic ones resist.
+          const heavy = e.heroic || e.kind === 'cragGolem' || e.kind === 'magmaHulk' ? .45 : 1, pull = Math.min(d * 2.5, 190) * heavy;
+          if (d > 8) { e.x += (w.x - e.x) / d * pull * dt; e.y += (w.y - e.y) / d * pull * dt; }
+          e.kx *= .5; e.ky *= .5; e.lunge = 0;
+        }
+        if (tick) this.damageEnemy(e, this.dmg('gravity'));
+      }
+      if (Math.random() < dt * 30 * this.fx) { const a = rand(0, 6.28), r = rand(60, R); this.particles.push({ x: w.x + Math.cos(a) * r, y: w.y + Math.sin(a) * r * .62, vx: -Math.cos(a) * r * 2.2 - Math.sin(a) * 90, vy: -Math.sin(a) * r * 1.4 + Math.cos(a) * 60, life: .45, max: .45, size: rand(2, 4), color: pick(['#b39cff', '#ffffff', '#6a4bd6', '#fff1b8']), kind: 'star', rot: 0, vr: 4, grav: 0, drag: 0, glow: true }); }
+    }
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const m = this.marks[i]; m.t -= dt;
       if (m.e.dead) { swapRemove(this.marks, i); continue; }
@@ -1039,13 +1194,12 @@ export class GameEngine {
     for (const p of this.pods) if (!p.dead && dist({ x, y }, p) < 100) this.breakPod(p);
     this.addShake(9); this.hitStop = .05; this.play('boom', { x, y });
   }
-  /** Moss Shield, Shield Wall and Ice Barrier: a ward that blocks everything, bounces projectiles and shoves foes back. */
-  private mossShield(id: SpellId) {
-    const h = this.hero, ice = id === 'iceBarrier'; h.shieldTime = this.durationOf(id, 3); h.slowT = 0;
-    this.ring(h.x, h.y, 70, ice ? '#bfeaff' : '#9fe8b0', .4);
-    if (ice) this.emit(h.x, h.y, 30, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 220, life: .6, kind: 'shard', glow: true, size: 5 });
-    else this.emit(h.x, h.y, 30, ['#9fe8b0', '#d6ffd9', '#5fae4f'], { speed: 200, life: .6, kind: 'leaf', size: 6 });
-    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 110 + e.r) { e.windup = 0; e.cd = Math.max(e.cd, 1.3); this.damageEnemy(e, 10 * this.power); this.knock(e, h, e.boss ? 10 : 220); if (ice) e.chillT = Math.max(e.chillT, 3); }
+  /** Kael's Shield Wall: a ward that blocks everything, bounces projectiles and shoves foes back. */
+  private shieldWall() {
+    const h = this.hero; h.shieldTime = this.durationOf('guard', 3); h.slowT = 0;
+    this.ring(h.x, h.y, 70, '#b8c8e0', .4);
+    this.emit(h.x, h.y, 30, ['#dfe8f5', '#b8c8e0', '#ffffff'], { speed: 200, life: .6, kind: 'shard', size: 5 });
+    for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist(h, e) < 110 + e.r) { e.windup = 0; e.cd = Math.max(e.cd, 1.3); this.damageEnemy(e, this.dmg('guard')); this.knock(e, h, e.boss ? 10 : 220); }
     this.play('shield');
   }
   private starfall() {
@@ -1725,7 +1879,7 @@ export class GameEngine {
       this.refreshStats(false);
     }
     this.complete(q, n, [], true);
-    const next = n && this.offerFrom(n);
+    const next = n && this.offerFrom(n, true);
     if (n && next) this.offerQuest(next, n, opt.lines); else if (n) this.say(n.name, n.portrait, opt.lines); else { const v = this.guideVoice; this.say(v.name, v.portrait, opt.lines); }
   }
   choiceOf(id: string) { return this.choices[id] || null; }
@@ -1789,6 +1943,7 @@ export class GameEngine {
   }
   useItem(id: ItemId) {
     if (this.completeTimer > 0 || this.cine) return;
+    if (this.hero.iceT > 0) return this.frozenNotice();
     const bag = this.profile.items, have = bag[id] || 0, h = this.hero, info = ITEMS[id];
     if (have <= 0) { this.play('nope'); this.notice(`You have no ${info.name} left. Buy more from a city merchant.`, 'warn', `No ${info.name}`); return; }
     if (id === 'healthPotion' && h.hp >= h.maxHp) { this.play('nope'); this.notice('Your health is already full.', 'warn', 'Health full'); return; }
@@ -1980,6 +2135,7 @@ export class GameEngine {
   interact() {
     sfx.unlock();
     if (this.completeTimer > 0 || this.cine) return;
+    if (this.hero.iceT > 0) return this.frozenNotice();
     const near = this.nearest(); if (!near) return;
     if (near.kind === 'npc') return this.talk(near.n);
     const o = near.o, reg = this.region(o.region), s = reg.script, h = this.hero, m = this.main, acc = reg.palette.accent;
@@ -2099,13 +2255,14 @@ export class GameEngine {
     const done = mine.find(q => this.qs(q.id).status === 'done');
     this.say(n.name, n.portrait, done && Math.random() < .5 ? this.tx(done).after : [pick(n.lines.length ? n.lines : ['Hello there!'])]);
   }
-  /** Main story offers come before side quests. */
-  private offerFrom(n: Npc) { const open = this.questsFor(n.id).filter(q => this.qs(q.id).status === 'available'); return open.find(q => q.main) || open[0] || null; }
-  /** Hands a quest in; if the same person has the next step, it is offered right after their thanks. */
+  /** One quest per conversation, main story first: a side quest from the same person waits until you speak again.
+   *  `mainOnly` is for the offer that follows a hand-in, so a side quest never rides along with the story. */
+  private offerFrom(n: Npc, mainOnly = false) { const open = this.questsFor(n.id).filter(q => this.qs(q.id).status === 'available'); return open.find(q => q.main) || (mainOnly ? null : open[0]) || null; }
+  /** Hands a quest in; if the same person has the next step of the story, it is offered right after their thanks. */
   private finish(q: QuestDef, n: Npc, lines: string[]) {
     if (q.choice) { sfx.play('talk'); this.eventHandler({ type: 'choice', speaker: n.name, portrait: n.portrait, lines: this.personal(lines), quest: q.id, title: q.title, a: q.choice.a.label, b: q.choice.b.label }); return; }
     this.complete(q, n, lines, true);
-    const next = this.offerFrom(n);
+    const next = this.offerFrom(n, true);
     if (next) this.offerQuest(next, n, lines); else this.say(n.name, n.portrait, lines);
   }
   /** Called by the UI once the finale dialogue closes: fireworks, then the chapter is complete and the story walks on. */
@@ -2135,6 +2292,7 @@ export class GameEngine {
     if (e.dead || e.burrowT > 0) return;
     if (!this.canHurt(e)) { this.notice(this.region(e.region).script.sealed, 'warn', 'Sealed'); this.emit(e.x, e.y, 8, '#c9b6ff', { speed: 120, glow: true }); return; }
     amount = Math.max(1, Math.round(amount * this.dealMul(e.level)));
+    this.fightT = this.elapsed;
     if (this.practice) {
       e.hitFlash = .14;
       this.combo++; this.comboTime = 2.4;
@@ -2214,14 +2372,20 @@ export class GameEngine {
   private hurt(amount: number, from: Point, level: number) {
     const h = this.hero;
     if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0 || this.cine) return;
-    if (h.shieldTime > 0) {
-      this.ring(h.x, h.y, 50, this.heroId === 'lyra' ? '#bfeaff' : '#9fe8b0', .25); this.play('reflect');
-      // Ice Barrier chills whatever strikes it.
-      if (this.heroId === 'lyra' && 'chillT' in from) (from as Enemy).chillT = Math.max((from as Enemy).chillT, 3);
+    this.fightT = this.elapsed;
+    // The Ice Block turns everything aside, however many blows land (a moment's grace keeps the clinks from piling up).
+    if (h.iceT > 0) { h.ghostT = .25; this.ring(h.x, h.y - 8, 56, '#dff6ff', .25); this.emit(from.x + (h.x - from.x) * .8, from.y + (h.y - from.y) * .8 - 10, 5, ['#ffffff', '#bfeaff'], { speed: 140, life: .3, kind: 'shard', size: 3 }); this.play('reflect'); return; }
+    if (h.shieldTime > 0) { this.ring(h.x, h.y, 50, '#b8c8e0', .25); this.play('reflect'); return; }
+    if (h.orbitN > 0) {
+      // A Guardian Star takes the blow and bursts on whoever struck it.
+      this.loseStar('hp' in from && 'kind' in from ? from as Enemy : null);
+      // A moment's grace, so one volley can't strip every star at once.
+      this.ring(h.x, h.y - 8, 60, '#fff1b8', .3); h.ghostT = Math.max(h.ghostT, .3); this.play('reflect');
       return;
     }
     const dmg = Math.max(1, Math.round(amount * this.takeMul(level) * armorAt(this.profile) * (this.buffs.barkskin ? .5 : 1) * (this.buffs.giantBrew ? .7 : 1) * (h.stormT > 0 ? .5 : 1)));
     h.hp -= dmg; h.hurtTime = .9; this.damageFlash = .35; this.combo = 0;
+    if (this.stealthT > 0) { this.endStealth(); this.notice('You were struck and fell out of the shadows!', 'warn', 'Seen!'); }
     if (this.riding) { this.dismount(); this.notice('You were knocked off your mount!', 'warn', 'Dismounted'); }
     const dx = h.x - from.x, dy = h.y - from.y, d = Math.max(1, Math.hypot(dx, dy));
     h.vx += dx / d * 520; h.vy += dy / d * 520;
@@ -2246,7 +2410,8 @@ export class GameEngine {
     h.hp = h.maxHp; h.mana = Math.max(40, h.mana); h.x = this.checkpoint.x; h.y = this.checkpoint.y; h.vx = h.vy = 0; h.hurtTime = 2; h.slowT = 0;
     const lost = Math.floor(this.profile.gold * .1); this.profile.gold -= lost; this.profileDirty = true;
     this.respawnFade = 1; this.clearThreats = true; this.cleanFight = false; this.bump('deaths');
-    this.marks.length = 0; this.storms.length = 0; this.stealthT = 0; this.riding = false;
+    this.marks.length = 0; this.storms.length = 0; this.wells.length = 0; this.stealthT = 0; this.riding = false;
+    h.iceT = 0; h.orbitT = 0; h.orbitN = 0;
     this.traps.length = 0; this.wildT = 0; this.petFocus = null; this.work = null;
     if (this.siege) this.failSiege('You fell, and the attackers overran the defence.');
     for (const n of this.npcs) if (n.role === 'follower') { n.x = h.x + 50; n.y = h.y + 24; }
@@ -2348,7 +2513,8 @@ export class GameEngine {
   private updateHero(dt: number) {
     const h = this.hero, ride = this.riding ? MOUNTS[this.mountId || 'pony'].speed : 1;
     const speed = HEROES[this.heroId].speed * this.moveSpeed * ride * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
-    if (h.dashTime > 0) {
+    if (h.iceT > 0) h.vx = h.vy = 0;
+    else if (h.dashTime > 0) {
       h.dashTime -= dt; const ds = h.charging ? 1050 : 900; h.vx = h.dashX * ds; h.vy = h.dashY * ds;
       if (Math.random() < .9) this.afterimages.push({ x: h.x, y: h.y, life: .28, faceX: h.faceX });
     } else {
@@ -2371,7 +2537,7 @@ export class GameEngine {
     for (let i = this.slashes.length - 1; i >= 0; i--) { this.slashes[i].life -= dt; if (this.slashes[i].life <= 0) swapRemove(this.slashes, i); }
     this.updateWarrior(dt);
     this.updateSpells(dt);
-    if (h.shieldTime > 0 && Math.random() < dt * 12) this.emit(h.x + rand(-30, 30), h.y + rand(-30, 20), 1, '#9fe8b0', { speed: 30, life: .7, kind: 'leaf', size: 5, grav: -20 });
+    if (h.shieldTime > 0 && Math.random() < dt * 12) this.emit(h.x + rand(-30, 30), h.y + rand(-30, 20), 1, '#dfe8f5', { speed: 30, life: .7, kind: 'shard', size: 4, grav: -20 });
     sfx.setListener(h.x, h.y);
   }
   groundAt(x: number, y: number) {
@@ -2711,7 +2877,8 @@ export class GameEngine {
     if (!e.aggro) {
       const home = Math.hypot(e.homeX - e.x, e.homeY - e.y);
       if (home > 20) { e.x += (e.homeX - e.x) / home * 90 * dt; e.y += (e.homeY - e.y) / home * 90 * dt; }
-      if (d > 540) return;
+      // A guardian can't find a hero hidden in stealth.
+      if (d > 540 || this.stealthT > 0) return;
       e.aggro = true; e.cd = 1.4;
       if (!this.bossIntroShown.has(e.id)) { this.bossIntroShown.add(e.id); this.cleanFight = true; this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.play('roar'); this.addShake(12); this.ring(e.x, e.y, 260, '#ff8f7a', .8); }
     }
@@ -2933,11 +3100,11 @@ export class GameEngine {
       } else {
         const d = dist(p, { x: h.x, y: h.y - 10 });
         if (h.shieldTime > 0 && d < 46) {
-          p.owner = 'hero'; p.vx *= -1.35; p.vy *= -1.35; p.life = 1.4; p.damage = 20 * this.power; if (p.kind === 'web' || p.kind === 'ice' || p.kind === 'fire') p.kind = this.heroId === 'lyra' ? 'frost' : 'thorn';
-          this.emit(p.x, p.y, 8, this.heroId === 'lyra' ? '#bfeaff' : '#9fe8b0', { speed: 150, life: .3, glow: true }); this.play('reflect'); continue;
+          p.owner = 'hero'; p.vx *= -1.35; p.vy *= -1.35; p.life = 1.4; p.damage = 20 * this.power; if (p.kind === 'web' || p.kind === 'ice' || p.kind === 'fire') p.kind = 'thorn';
+          this.emit(p.x, p.y, 8, '#dfe8f5', { speed: 150, life: .3, glow: true }); this.play('reflect'); continue;
         }
         if (d < p.r + 14) {
-          if (p.kind === 'web' && h.dashTime <= 0 && h.shieldTime <= 0) { h.slowT = 2.2; this.notice('Webbed! Dash to break free.', 'warn', 'Webbed!'); }
+          if (p.kind === 'web' && h.dashTime <= 0 && h.shieldTime <= 0 && h.iceT <= 0 && h.orbitN <= 0 && h.ghostT <= 0) { h.slowT = 2.2; this.notice('Webbed! You are slowed for a moment.', 'warn', 'Webbed!'); }
           this.hurt(p.damage, p, p.level); hit = true;
         }
       }
@@ -2952,7 +3119,7 @@ export class GameEngine {
       if (z.delay > 0) continue;
       swapRemove(this.hazards, i);
       if (z.owner === 'enemy') {
-        if (dist(h, z) < z.r + 8) { this.hurt(z.damage, z, z.level); if ((z.kind === 'blizzard' || z.kind === 'frostnova') && h.dashTime <= 0) h.slowT = Math.max(h.slowT, 1.2); }
+        if (dist(h, z) < z.r + 8) { this.hurt(z.damage, z, z.level); if ((z.kind === 'blizzard' || z.kind === 'frostnova') && h.dashTime <= 0 && h.iceT <= 0) h.slowT = Math.max(h.slowT, 1.2); }
       } else {
         for (const e of this.enemies) if (!e.dead && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) {
           const frost = z.kind === 'frostbomb' || z.kind === 'frostnova';
@@ -3220,7 +3387,10 @@ export class GameEngine {
     return {
       hero: this.heroId, region: this.heroRegion.id, chapter: this.chapter, hp: h.hp, maxHp: h.maxHp, mana: Math.round(h.mana), maxMana: h.maxMana, shield: h.shieldTime > 0,
       level: p.level, xp: p.xp, xpNext: xpToNext(p.level), gold: p.gold, upgrades: { ...p.upgrades },
-      spells: this.spellIds.map((id, i) => { const cd = this.cooldownOf(id); return { id, name: SPELLS[id].name, key: keyLabel(spellKey(i)), icon: SPELLS[id].icon, unlocked: this.spellUnlocked(id), level: SPELLS[id].level, cooldown: cd ? Math.min(1, h.cds[id] / cd) : 0, cost: SPELLS[id].cost, affordable: h.mana >= SPELLS[id].cost, damage: Math.round((SPELLS[id].dmg || 0) * this.sp(id)), rank: this.spellRank(id), cd }; }),
+      spells: this.spellIds.map((id, i) => {
+        const cd = this.cooldownOf(id), active = this.spellActive(id), passive = id === 'command' && this.petMode === 'passive';
+        return { id, name: id === 'command' ? (passive ? 'Fenn: passive' : 'Fenn: attack') : SPELLS[id].name, key: keyLabel(spellKey(i)), icon: passive ? '💤' : SPELLS[id].icon, unlocked: this.spellUnlocked(id), active, level: SPELLS[id].level, cooldown: cd ? Math.min(1, h.cds[id] / cd) : 0, cost: SPELLS[id].cost, affordable: active || h.mana >= SPELLS[id].cost, damage: Math.round((SPELLS[id].dmg || 0) * this.sp(id)), rank: this.spellRank(id), cd };
+      }),
       nearName, nearAction,
       mount: this.mountId ? { id: this.mountId, name: MOUNTS[this.mountId].name, riding: this.riding } : null,
       main: this.mainRow(), mainQuests: this.questRows(true), quests: this.questRows(false), defeated: this.defeated, combo: this.combo,

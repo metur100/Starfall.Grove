@@ -434,7 +434,7 @@ export const RIVEN: HeroStory = {
     woods: {
       sealed: 'Silkmother Vesh sleeps in a cocoon of rune-silk. Wake the three root runes to cut its knots.',
       pickupKey: 'Knot-rune cut. {n}/3',
-      tip: 'Silkmother Vesh spits webs that slow you and sends roots through the ground. Shadowstep out of the silk, and never fight her from inside it.',
+      tip: 'Silkmother Vesh spits webs that slow you and sends roots through the ground. Shadowstep behind her to slip out of the silk, and never fight her from inside it.',
       guide: { done: ['The woods breathe easy, and there’s a lamp in the Lantern House window.'] },
       finale: { locked: ['The Bell hangs silent in its web. Three root runes still hold the knots.'], guarded: ['Silkmother Vesh crouches over the Bell. Cut her down to free it.'],
         done: ['You ring the Ancient Bell. Its voice rolls through every root, and the rune-web falls away like frost.', 'In the falling silk you see Sable’s runes: moon, eye, door… and one more you know. Your own name.', 'She wrote you into the web. She knew you would be the one to cut it.'] },
@@ -443,7 +443,7 @@ export const RIVEN: HeroStory = {
     summit: {
       sealed: 'Nullface hides behind the hollow star’s void shell. Gather the three star shards first.',
       pickupKey: 'Star shard found. {n}/3',
-      tip: 'Nullface blinks and strikes from behind, just like you. Watch where its shadow lands, and use Smoke Veil to make it lose you.',
+      tip: 'Nullface blinks and strikes from behind, just like you. Watch where its shadow lands, and use Stealth to make it lose you.',
       guide: { done: ['The star is home. Mind your face on the high roads, all the same.'] },
       finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['Nullface drifts over the Cradle, wearing your face. Break the mask!'],
         done: ['You lay the three shards into the Cradle. The star remembers its light and rises, whole, into the sky.', 'Nullface tries on your face one last time, then Sable’s. Neither fits. The mask splits down the middle.', 'But a thread of black smoke tears loose from the empty shell and streaks east, toward the Ember Wastes. Umbra is not finished.'] },
@@ -452,7 +452,7 @@ export const RIVEN: HeroStory = {
     ember: {
       sealed: 'The Ashen Broker hides in a shell of cooling ash. Recover the three ember cores first.',
       pickupKey: 'Ember core recovered. {n}/3',
-      tip: 'The Broker strikes out of the shadows and rains fire. Keep moving, and use Smoke Veil to make it lose you. Ash scorpions burrow: watch for moving sand.',
+      tip: 'The Broker strikes out of the shadows and rains fire. Keep moving, and use Stealth to make it lose you. Ash scorpions burrow: watch for moving sand.',
       guide: { done: ['The wastes are cooling, thief. Er, hero. Which is it?'] },
       finale: { locked: ['The Dawn Forge is cold. Three ember cores are needed to wake it.'], guarded: ['A shadow broods over the forge. Defeat it!'],
         done: ['You set the three ember cores into the Dawn Forge. Its fire roars up, white and gold, and a new dawn spills across the wastes.', 'Umbra’s last shadow does not burn away. It shrinks, and settles at your feet and at Sable’s: just a shadow, the shape of a person, doing nothing at all.', 'Every land, every light. And nobody owns any of them.'] },

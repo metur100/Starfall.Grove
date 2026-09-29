@@ -277,6 +277,8 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .spell { position: relative; width: 60px; height: 60px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, .18); background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--spell) 30%, #1a2240), #0d1224); cursor: pointer; display: grid; place-items: center; transition: transform .12s, box-shadow .2s, border-color .2s; touch-action: manipulation; }
 .spell:active { transform: scale(.92); }
 .spell.ready { border-color: color-mix(in srgb, var(--spell) 80%, white); box-shadow: 0 0 16px color-mix(in srgb, var(--spell) 50%, transparent), inset 0 0 12px color-mix(in srgb, var(--spell) 30%, transparent); }
+.spell.active { border-color: #fff; box-shadow: 0 0 0 2px var(--spell), 0 0 26px var(--spell), inset 0 0 18px color-mix(in srgb, var(--spell) 55%, transparent); animation: spell-on 1.4s ease-in-out infinite; }
+@keyframes spell-on { 50% { box-shadow: 0 0 0 2px var(--spell), 0 0 12px var(--spell), inset 0 0 10px color-mix(in srgb, var(--spell) 35%, transparent); } }
 .spell.locked { opacity: .45; filter: grayscale(1); }
 .spell.poor:not(.locked) .spell-icon-wrap b { opacity: .45; }
 .spell-icon-wrap { position: absolute; inset: 0; border-radius: inherit; display: grid; place-items: center; overflow: hidden; }
