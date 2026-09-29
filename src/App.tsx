@@ -839,7 +839,7 @@ function QuestActions({ q, engine, onChange }: { q: QuestRow; engine: GameEngine
     : <button className="btn ghost small" onClick={() => { setSure(true); sfx.play('ui'); }}>Abandon quest</button>}</div>;
 }
 function Journal({ snapshot, engine, achievements, touch, initial, onClose, onTrack, onUpgrade }: { snapshot: GameSnapshot | null; engine: GameEngine | null; achievements: AchRow[]; touch: boolean; initial: JournalTab; onClose: () => void; onTrack: (id: string) => void; onUpgrade: (id: SpellId) => void }) {
-  const w = WORLDS[snapshot?.region ?? 'meadow'];
+  const w = engine?.region(snapshot?.region ?? 'meadow') ?? WORLDS[snapshot?.region ?? 'meadow'];
   const [tab, setTab] = useState<JournalTab>(initial);
   const [, bump] = useState(0), changed = () => bump(n => n + 1);
   const cur = snapshot?.mainQuests.find(q => q.canAbandon || q.abandoned);

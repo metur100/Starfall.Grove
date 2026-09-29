@@ -10,7 +10,9 @@ import { keyLabel, keyOf, spellKey } from './keys';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond } from './worldgen';
 import { getWorld } from './worlds';
+import { questsForHero, worldForHero } from './heroWorld';
 import { cineFor, type CineFx, type Shot } from './cutscenes';
+import { bossVariant, type BossAction, type BossShot, type BossVariant } from './bosses';
 import type {
   CineState, CritterKind, EngineEvent, NpcLook, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MiniGame, MountId, NoticeTone, TrailId, NpcDef, Obstacle, Point, Poi,
   QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
@@ -58,7 +60,6 @@ export type Meteor = { x0: number; y0: number; x1: number; y1: number; t: number
 export type Fire = { x: number; y: number; t: number; s: number };
 type Cine = { id: string; shots: Shot[]; i: number; t: number; dur: number; cutT: number; pending: Point | null; ctx: Record<string, Point>; then?: () => void; timers: Array<{ t: number; fx: CineFx }> };
 type Siege = { q: QuestDef; ward: WorldObject; wave: number; waveT: number; hp: number; spawned: boolean; raiders: Enemy[] };
-type BossAction = 'slam' | 'boulders' | 'nova' | 'roots' | 'charge' | 'spiral' | 'meteors' | 'blink';
 export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice' | 'frost' | 'knife' | 'fire' | 'arrow'; targetId?: string; crit?: boolean; spin: number;
   /** Arrows pass through this many more creatures; `passed` are the ones already hit. */
   pierce?: number; passed?: Enemy[] };
@@ -201,20 +202,6 @@ function startFor(w: WorldDefinition, hero: HeroId): Point {
 const START_SAFE = 2800;
 /** Extra animals in every herd beyond the number the quest asks for. */
 const HERD_SPARE = 2;
-/**
- * Each hero plays the shared story plus their own: a hero's quests slot into the main chain right after the quest they
- * name in `after`, and whatever came next now waits for them.
- */
-function questsForHero(all: QuestDef[], hero: HeroId): QuestDef[] {
-  const out = all.filter(q => !q.hero).map(q => ({ ...q, ...q.forHero?.[hero] })), last = new Map<string, string>();
-  for (const hq of all.filter(q => q.hero === hero).map(q => ({ ...q }))) {
-    const anchor = hq.after, prev = anchor ? last.get(anchor) || anchor : null, i = prev ? out.findIndex(q => q.id === prev) : -1;
-    if (!anchor || !prev || i < 0) { out.push(hq); continue; }
-    for (const q of out) if (q.main && q.requires === prev) q.requires = hq.id;
-    hq.requires = prev; out.splice(i + 1, 0, hq); last.set(anchor, hq.id);
-  }
-  return out;
-}
 /** Consumables a quest can pay out (the rare feather is left to luck and merchants). */
 const QUEST_ITEMS = ITEM_ORDER.filter(id => id !== 'phoenixFeather');
 
@@ -325,7 +312,8 @@ export class GameEngine {
 
   constructor(heroId: HeroId, onEvent: (event: EngineEvent) => void, saved?: EngineSave | null) {
     this.heroId = heroId; this.spellIds = HEROES[heroId].spells;
-    const base = getWorld(); this.world = { ...base, spawn: startFor(base, heroId), quests: questsForHero(base.quests, heroId) }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
+    const base = getWorld(), quests = questsForHero(base.quests, heroId);
+    this.world = { ...base, ...worldForHero(base, heroId, quests), spawn: startFor(base, heroId), quests }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
     this.profile = loadProfile(heroId);
     const cds = Object.fromEntries(Object.keys(SPELLS).map(s => [s, 0])) as Record<SpellId, number>;
     const p = this.profile;
@@ -463,8 +451,19 @@ export class GameEngine {
   get heroRegion() { return this.regionAt(this.hero.x); }
   /** The story chapter being played: the first region whose light is not yet restored. */
   get chapter() { const q = this.currentMain(); return q ? this.region(q.region).chapter : this.world.regions.length; }
-  private bossName(e: Enemy) { const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.name || 'Umbra' : s.bossName; }
-  private bossTitle(e: Enemy) { const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.title || '' : s.bossTitle; }
+  /** This hero's own version of a guardian (its name, looks and attacks), when they meet a different one from Mira. */
+  bossVariant(e: Enemy): BossVariant | null { return e.boss ? bossVariant(this.heroId, e.kind) : null; }
+  private bossName(e: Enemy) { const v = this.bossVariant(e); if (v) return v.name; const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.name || 'Umbra' : s.bossName; }
+  private bossTitle(e: Enemy) { const v = this.bossVariant(e); if (v) return v.title; const s = this.region(e.region).script; return e.kind === 'eclipse' ? s.final?.title || '' : s.bossTitle; }
+  private bossPatterns(e: Enemy) { return this.bossVariant(e)?.patterns || BOSS_PATTERNS[e.kind]; }
+  private bossShot(e: Enemy): BossShot { const v = this.bossVariant(e); return v ? v.shot : e.kind === 'hollowStar' ? 'void' : e.kind === 'cinderTyrant' ? 'fire' : 'thorn'; }
+  /** The colours of a guardian's sparks and rings. */
+  private bossColors(e: Enemy) {
+    const v = this.bossVariant(e); if (v) return [v.look.glow, v.look.trim, v.look.eye];
+    return e.kind === 'eclipse' ? ['#1a1030', '#c9b6ff', '#ff6b9a'] : e.kind === 'hollowStar' ? ['#c9b6ff', '#6a4bd6'] : e.kind === 'cinderTyrant' ? ['#ff9a3d', '#ff5f3d', '#ffd27a'] : e.kind === 'brambleWarden' ? ['#b6df91', '#ff8f7a'] : ['#a3c46a', '#e8ffb0'];
+  }
+  /** Guardians that float instead of walking. */
+  private bossFloats(e: Enemy) { const f = this.bossVariant(e)?.look.form; return f ? f === 'wraith' || f === 'mask' || f === 'eclipse' : e.kind === 'hollowStar' || e.kind === 'eclipse'; }
   private bossQuest(e: Enemy) { return this.world.quests.find(q => q.kind === 'boss' && q.boss === e.id) || null; }
   /** A guardian can be fought once its quest has been accepted. */
   bossUnlocked(e: Enemy) { const q = this.bossQuest(e); if (!q) return true; const st = this.qs(q.id).status; return st === 'active' || st === 'done'; }
@@ -2565,7 +2564,7 @@ export class GameEngine {
     if (d > 6) { e.x += dx / d * 40 * dt; e.y += dy / d * 40 * dt; }
     if (e.kind === 'wisp' || e.kind === 'frostwraith' || e.kind === 'emberImp') e.angle += dt * 2;
   }
-  private enemyShot(e: Enemy, angle: number, speed: number, kind: 'thorn' | 'void' | 'web' | 'ice' | 'fire', damage: number) {
+  private enemyShot(e: Enemy, angle: number, speed: number, kind: BossShot, damage: number) {
     this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 2.6, r: kind === 'void' || kind === 'web' || kind === 'fire' ? 9 : 7, damage, level: e.level, owner: 'enemy', kind, spin: angle });
   }
 
@@ -2684,33 +2683,37 @@ export class GameEngine {
       if (!this.bossIntroShown.has(e.id)) { this.bossIntroShown.add(e.id); this.cleanFight = true; this.eventHandler({ type: 'bossIntro', name: this.bossName(e), title: this.bossTitle(e) }); this.play('roar'); this.addShake(12); this.ring(e.x, e.y, 260, '#ff8f7a', .8); }
     }
     if (d > 1200) { e.aggro = false; e.action = null; return; }
-    const phases = BOSS_PATTERNS[e.kind].length, frac = e.hp / e.maxHp;
+    const patterns = this.bossPatterns(e), phases = patterns.length, frac = e.hp / e.maxHp;
     const phase = phases === 3 ? (frac <= .33 ? 3 : frac <= .66 ? 2 : 1) : frac <= .5 ? 2 : 1;
     if (phase > e.phase) { e.phase = phase; this.play('roar'); this.addShake(14); this.flash = .4; this.ring(e.x, e.y, 300, '#ff6b5b', .8); this.notice(`${this.bossName(e)} is enraged!`, 'epic', 'Enraged!'); e.action = null; e.cd = .6; }
     const thresholds = e.kind === 'eclipse' ? [.85, .6, .35, .15] : [.7, .35];
     if (e.summons < thresholds.length && e.hp <= e.maxHp * thresholds[e.summons]) { e.summons++; this.summonMinions(e); }
-    if (Math.random() < dt * 8) this.emit(e.x + rand(-e.r, e.r), e.y + rand(-e.r, e.r * .5), 1, e.kind === 'eclipse' ? ['#1a1030', '#c9b6ff', '#ff6b9a'] : e.kind === 'hollowStar' ? ['#c9b6ff', '#6a4bd6'] : e.kind === 'cinderTyrant' ? ['#ff9a3d', '#ff5f3d', '#ffd27a'] : e.kind === 'brambleWarden' ? ['#b6df91', '#ff8f7a'] : ['#a3c46a', '#e8ffb0'], { speed: 20, life: 1, glow: e.kind !== 'mossback' && e.kind !== 'brambleWarden', size: 4, grav: -40, kind: e.kind === 'hollowStar' || e.kind === 'eclipse' ? 'star' : e.kind === 'cinderTyrant' ? 'ember' : 'leaf' });
-    if (d < e.r + 18 && e.action !== 'blink') this.hurt(this.bossHit(e) * .7, e, e.level);
+    if (Math.random() < dt * 8) {
+      const v = this.bossVariant(e), shot = this.bossShot(e);
+      this.emit(e.x + rand(-e.r, e.r), e.y + rand(-e.r, e.r * .5), 1, this.bossColors(e), { speed: 20, life: 1, glow: v ? true : e.kind !== 'mossback' && e.kind !== 'brambleWarden', size: 4, grav: -40,
+        kind: v ? (shot === 'fire' ? 'ember' : shot === 'thorn' || shot === 'web' ? 'leaf' : 'star') : e.kind === 'hollowStar' || e.kind === 'eclipse' ? 'star' : e.kind === 'cinderTyrant' ? 'ember' : 'leaf' });
+    }
+    if (d < e.r + 18 && e.action !== 'blink' && e.action !== 'shadowstrike') this.hurt(this.bossHit(e) * .7, e, e.level);
     if (e.action) { this.runBossAction(e, dt); return; }
     const sp = ENEMY_STATS[e.kind].speed * (1 + (e.phase - 1) * .25);
     if (d > 150) { e.x += (h.x - e.x) / d * sp * dt; e.y += (h.y - e.y) / d * sp * dt; }
-    if (e.kind === 'hollowStar' || e.kind === 'eclipse') { e.angle += dt; e.y += Math.sin(this.elapsed * 2) * 10 * dt; }
+    if (this.bossFloats(e)) { e.angle += dt; e.y += Math.sin(this.elapsed * 2) * 10 * dt; }
     e.cd -= dt;
     if (e.cd <= 0) {
-      const list = BOSS_PATTERNS[e.kind][e.phase - 1];
+      const list = patterns[e.phase - 1];
       this.startBossAction(e, list[e.pattern++ % list.length]);
     }
   }
-  private summonMinions(e: Enemy) {
-    const kinds = SUMMONS[e.kind] || ['gloomling'];
-    const n = e.kind === 'eclipse' ? 4 : e.kind === 'mossback' ? 3 : 3;
+  private summonMinions(e: Enemy, count = 0, quiet = false) {
+    const kinds = this.bossVariant(e)?.summons || SUMMONS[e.kind] || ['gloomling'];
+    const n = count || (e.kind === 'eclipse' ? 4 : 3);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rand(0, 1), m = this.makeEnemy({ id: `summon-${this.summonCount++}`, kind: pick(kinds), x: e.x + Math.cos(a) * 130, y: e.y + Math.sin(a) * 130, level: Math.max(1, e.level - 2), region: e.region }, true);
       m.hp = m.maxHp = Math.round(m.maxHp * .7);
       this.enemies.push(m);
       this.emit(m.x, m.y, 20, ['#c9b6ff', '#ffffff', '#8fd46b'], { speed: 160, glow: true, kind: 'star' }); this.ring(m.x, m.y, 50, '#c9b6ff', .5);
     }
-    this.notice(`${this.bossName(e)} calls for help!`, 'warn', 'Minions!'); this.play('roar');
+    if (!quiet) { this.notice(`${this.bossName(e)} calls for help!`, 'warn', 'Minions!'); this.play('roar'); }
   }
   private startBossAction(e: Enemy, a: BossAction) {
     const h = this.hero, p = e.phase - 1, big = e.kind === 'eclipse' ? 1.2 : 1;
@@ -2731,11 +2734,20 @@ export class GameEngine {
       case 'charge': { e.actionT = 1.3; const dx = h.x - e.x, dy = h.y - e.y, d = Math.max(1, Math.hypot(dx, dy)); e.chargeX = dx / d; e.chargeY = dy / d; break; }
       case 'spiral': e.actionT = p ? 2.6 : 2.1; e.angle = rand(0, 6.28); break;
       case 'meteors': {
-        e.actionT = 1.8; const n = 8 + p * 4 + (e.kind === 'eclipse' ? 3 : 0);
-        for (let i = 0; i < n; i++) { const a2 = rand(0, 6.28), r = i < 2 ? rand(0, 30) : rand(50, 280); const x = h.x + Math.cos(a2) * r, y = h.y + Math.sin(a2) * r; this.addHazard(x, y, 64, .9 + i * .1, e.kind === 'cinderTyrant' ? 'lava' : 'meteor', { x: x - 220, y: y - 600, level: e.level }); }
+        e.actionT = 1.8; const n = 8 + p * 4 + (e.kind === 'eclipse' ? 3 : 0), rain = this.bossVariant(e)?.rain || (e.kind === 'cinderTyrant' ? 'lava' : 'meteor');
+        for (let i = 0; i < n; i++) { const a2 = rand(0, 6.28), r = i < 2 ? rand(0, 30) : rand(50, 280); const x = h.x + Math.cos(a2) * r, y = h.y + Math.sin(a2) * r; this.addHazard(x, y, 64, .9 + i * .1, rain, { x: x - 220, y: y - 600, level: e.level }); }
         break;
       }
       case 'blink': e.actionT = 1.4; break;
+      case 'volley': e.actionT = p ? 1.9 : 1.5; break;
+      case 'shadowstrike': e.actionT = p ? 2.3 : 1.8; break;
+      case 'howl': e.actionT = 1.3; this.play('roar'); this.ring(e.x, e.y, 160, this.bossColors(e)[0], .6); break;
+      case 'geysers': {
+        // The ground bursts open under and around the hero: spikes, lava or frost, one after another.
+        e.actionT = 1.6; const n = 5 + p * 3 + (e.kind === 'eclipse' ? 2 : 0), ground = this.bossVariant(e)?.ground || 'slam';
+        for (let i = 0; i < n; i++) { const a2 = rand(0, 6.28), r = i === 0 ? 0 : rand(60, 240); this.addHazard(h.x + Math.cos(a2) * r + h.vx * .3, h.y + Math.sin(a2) * r + h.vy * .3, 72, .75 + i * .12, ground, e); }
+        this.addShake(4); break;
+      }
     }
   }
   private runBossAction(e: Enemy, dt: number) {
@@ -2744,7 +2756,8 @@ export class GameEngine {
     const passed = (t: number) => before > t && e.actionT <= t;
     switch (e.action) {
       case 'nova': {
-        const kind = e.kind === 'hollowStar' ? 'void' : e.kind === 'cinderTyrant' ? 'fire' : e.kind === 'eclipse' ? (e.pattern % 3 === 2 ? 'fire' : e.pattern % 2 ? 'void' : 'thorn') : 'thorn';
+        const own = this.bossShot(e), mine = !!this.bossVariant(e);
+        const kind: BossShot = e.kind === 'eclipse' ? (e.pattern % 3 === 2 ? (mine ? own : 'fire') : e.pattern % 2 ? 'void' : mine ? own : 'thorn') : own;
         const count = (p2 ? 18 : 14) + (e.kind === 'eclipse' ? 6 : 0);
         if (passed(p2 ? .75 : .4)) this.novaRing(e, count, 0, kind, hit * .7);
         if (p2 && passed(.35)) this.novaRing(e, count, Math.PI / count, kind, hit * .7);
@@ -2755,7 +2768,8 @@ export class GameEngine {
           e.x += e.chargeX * 820 * dt; e.y += e.chargeY * 820 * dt;
           e.x = clamp(e.x, 60, this.world.width - 60); e.y = clamp(e.y, 60, this.world.height - 60);
           if (Math.random() < .6) this.emit(e.x, e.y + e.r * .6, 2, ['#8a6a4a', '#b6df91'], { speed: 80, life: .6, kind: 'smoke', size: 10 });
-          if ((e.kind === 'brambleWarden' || e.kind === 'eclipse' || e.kind === 'cinderTyrant') && Math.random() < dt * 14) this.enemyShot(e, Math.atan2(e.chargeY, e.chargeX) + Math.PI + rand(-.9, .9), 170, e.kind === 'cinderTyrant' ? 'fire' : 'thorn', hit * .6);
+          const v = this.bossVariant(e), trail = v ? !!v.trail : e.kind === 'brambleWarden' || e.kind === 'eclipse' || e.kind === 'cinderTyrant';
+          if (trail && Math.random() < dt * 14) this.enemyShot(e, Math.atan2(e.chargeY, e.chargeX) + Math.PI + rand(-.9, .9), 170, v ? v.shot : e.kind === 'cinderTyrant' ? 'fire' : 'thorn', hit * .6);
           if (dist(e, h) < e.r + 24) this.hurt(hit, e, e.level);
         }
         if (passed(.75)) { this.addShake(6); this.play('roar'); }
@@ -2767,26 +2781,52 @@ export class GameEngine {
           while (e.actionStep > .075) {
             e.actionStep -= .075; e.angle += p2 ? .42 : .34;
             const arms = (p2 ? 4 : 3) + (e.kind === 'eclipse' && e.phase === 3 ? 1 : 0);
-            for (let i = 0; i < arms; i++) this.enemyShot(e, e.angle + (i / arms) * Math.PI * 2, 215, 'void', hit * .6);
+            const shot = this.bossVariant(e) ? this.bossShot(e) : 'void';
+            for (let i = 0; i < arms; i++) this.enemyShot(e, e.angle + (i / arms) * Math.PI * 2, 215, shot, hit * .6);
           }
         }
         break;
       }
       case 'blink': {
-        if (passed(1.1)) {
-          this.emit(e.x, e.y, 40, ['#c9b6ff', '#6a4bd6', '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.ring(e.x, e.y, 90, '#c9b6ff', .4);
-          const a = rand(0, 6.28); e.x = clamp(h.x + Math.cos(a) * 190, 80, this.world.width - 80); e.y = clamp(h.y + Math.sin(a) * 190, 80, this.world.height - 80);
-          this.emit(e.x, e.y, 40, ['#c9b6ff', '#6a4bd6', '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.play('dash');
-          this.addHazard(e.x, e.y, p2 ? 180 : 150, .75, 'slam', e);
+        if (passed(1.1)) this.bossBlink(e, 190, p2 ? 180 : 150, .75);
+        break;
+      }
+      case 'shadowstrike': {
+        // A string of blinks around the hero, each ending in a quick slam where it lands.
+        for (const at of p2 ? [1.95, 1.35, .75, .2] : [1.45, .85, .25]) if (passed(at)) this.bossBlink(e, 150, p2 ? 140 : 120, .5);
+        break;
+      }
+      case 'volley': {
+        const shot = this.bossShot(e), n = p2 ? 7 : 5;
+        for (const at of p2 ? [1.45, 1, .55] : [1.05, .6]) if (passed(at)) {
+          const base = Math.atan2(h.y - e.y, h.x - e.x);
+          for (let i = 0; i < n; i++) this.enemyShot(e, base + (i - (n - 1) / 2) * .17, 300, shot, hit * .65);
+          this.play(shot === 'fire' ? 'sunfire' : shot === 'thorn' || shot === 'web' ? 'thornShot' : 'voidShot', e);
+        }
+        break;
+      }
+      case 'howl': {
+        if (passed(.8)) {
+          this.addShake(8); this.novaRing(e, p2 ? 16 : 12, rand(0, 1), this.bossShot(e), hit * .6);
+          const helpers = this.enemies.filter(x => x.summoned && !x.dead && dist(x, e) < 900).length;
+          if (helpers < 5) this.summonMinions(e, 2, true);
         }
         break;
       }
     }
     if (e.actionT <= 0) { e.action = null; e.cd = e.phase === 3 ? .7 : p2 ? .9 : 1.4; }
   }
-  private novaRing(e: Enemy, count: number, offset: number, kind: 'thorn' | 'void' | 'fire', damage: number) {
+  private novaRing(e: Enemy, count: number, offset: number, kind: BossShot, damage: number) {
     for (let i = 0; i < count; i++) this.enemyShot(e, offset + (i / count) * Math.PI * 2, 250, kind, damage);
-    this.ring(e.x, e.y, 80, kind === 'void' ? '#c9b6ff' : kind === 'fire' ? '#ff9a3d' : '#b6df91', .3); this.addShake(4); this.play(kind === 'thorn' ? 'thornShot' : 'voidShot', e);
+    this.ring(e.x, e.y, 80, kind === 'void' ? '#c9b6ff' : kind === 'fire' ? '#ff9a3d' : kind === 'ice' ? '#bfe8ff' : kind === 'web' || kind === 'knife' ? '#e8e0f0' : '#b6df91', .3); this.addShake(4); this.play(kind === 'thorn' || kind === 'web' ? 'thornShot' : 'voidShot', e);
+  }
+  /** A guardian vanishes in a puff and reappears next to the hero, and the ground where it lands bursts. */
+  private bossBlink(e: Enemy, away: number, r: number, delay: number) {
+    const h = this.hero, c = this.bossVariant(e) ? this.bossColors(e) : ['#c9b6ff', '#6a4bd6'];
+    this.emit(e.x, e.y, 40, [...c, '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.ring(e.x, e.y, 90, c[0], .4);
+    const a = rand(0, 6.28); e.x = clamp(h.x + Math.cos(a) * away, 80, this.world.width - 80); e.y = clamp(h.y + Math.sin(a) * away, 80, this.world.height - 80);
+    this.emit(e.x, e.y, 40, [...c, '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.play('dash');
+    this.addHazard(e.x, e.y, r, delay, 'slam', e);
   }
   private addHazard(x: number, y: number, r: number, delay: number, kind: Hazard['kind'], from: Point & { level?: number; boss?: boolean }, damage?: number, level?: number) {
     const lv = level ?? from.level ?? 1;
@@ -2879,7 +2919,7 @@ export class GameEngine {
       if (z.delay > 0) continue;
       swapRemove(this.hazards, i);
       if (z.owner === 'enemy') {
-        if (dist(h, z) < z.r + 8) this.hurt(z.damage, z, z.level);
+        if (dist(h, z) < z.r + 8) { this.hurt(z.damage, z, z.level); if ((z.kind === 'blizzard' || z.kind === 'frostnova') && h.dashTime <= 0) h.slowT = Math.max(h.slowT, 1.2); }
       } else {
         for (const e of this.enemies) if (!e.dead && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - z.x) < z.r + 80 && dist(e, z) < z.r + e.r) {
           const frost = z.kind === 'frostbomb' || z.kind === 'frostnova';

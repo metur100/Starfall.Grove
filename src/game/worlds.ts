@@ -1,6 +1,7 @@
 import { buildValley, inPond, type RegionSpec } from './worldgen';
 import { STORY, type StoryQuest } from './story';
-import { HERO_NPCS, HERO_QUESTS } from './heroStory';
+import { HERO_QUESTS } from './heroStory';
+import { HERO_STORIES } from './heroes';
 import type { Captive, NpcLook, Region, RegionId, WorldDefinition } from './types';
 
 export const LEVEL_ORDER: RegionId[] = ['meadow', 'woods', 'summit', 'ember'];
@@ -412,8 +413,12 @@ const ember: RegionSpec = {
   },
 };
 
-// The heroes' own stories, and the crossings the story has to open.
-for (const spec of [meadow, woods, summit, ember]) { spec.quests.push(...HERO_QUESTS[spec.id]); spec.npcs.push(...HERO_NPCS[spec.id]); }
+// The heroes' own stories (their quests and people are laid out in the world for everyone, and only shown to them),
+// and the crossings the story has to open.
+for (const spec of [meadow, woods, summit, ember]) {
+  spec.quests.push(...HERO_QUESTS[spec.id]);
+  for (const s of Object.values(HERO_STORIES)) if (s) { spec.quests.push(...s.quests[spec.id]); spec.npcs.push(...(s.npcs[spec.id] || []).map(n => ({ ...n, hero: s.hero }))); }
+}
 meadow.barrier = { kind: 'bridge', quest: 'm12', name: 'Gloomwater Bridge' };
 woods.barrier = { kind: 'thorns', quest: 'm17', name: 'Thorn wall' };
 summit.barrier = { kind: 'ice', quest: 'm20', name: 'Black ice seal' };

@@ -23,7 +23,7 @@ The valley is **one continuous world** (38,912 × 6,720 px) made of four lands l
 
 | Chapter | Land | Creature levels | Guardian |
 | --- | --- | --- | --- |
-| I · The Broken Beacon | Sunpetal Meadow | 1–6 | Mossback (Lv 7) |
+| I · The Broken Beacon | Sunpetal Meadow | 1–6 | Mossback (Lv 7) — each hero meets their own, see Story |
 | II · The Bell Beneath the Roots | Whisperroot Woods | 7–12 | Bramble Warden (Lv 13) |
 | III · The Hollow Star | Starfall Summit | 13–18 | The Hollow Star (Lv 19) |
 | IV · The Dawn Forge | The Ember Wastes | 19–24 | Pyrrhus, the Cinder Tyrant (Lv 25), then **Umbra** (Lv 26), the final boss of all bosses |
@@ -40,14 +40,24 @@ Things to find: chests (potions, bombs, gear, gold, XP), runestones with lore, w
 
 Master Orrin vanished the night the star fell. Mira and her fox Tuft follow his trail across the valley and learn that the Beacon, the Bell and the Star were lit to seal away **Umbra, the Eclipse**. Orrin's lost pupil **Sable** is putting the lights out because Umbra promised to end her pain. On the Summit, Mira frees Orrin, learns that he pulled the star down trying to heal Sable, and wins Sable back. When the Hollow Star breaks and returns to its Cradle, Umbra slips out of the shell and flees east into the Ember Wastes. There Pyrrhus, the Cinder Tyrant, guards the cold Dawn Forge; once he falls, Umbra rises from all four lands at once. It uses every guardian's attacks. Lighting the Dawn Forge ends the story.
 
-The shared main story (in `story.ts`) has **12 quests in Chapter I, 17 in Chapter II, 20 in Chapter III and 15 in Chapter IV**.
+That is Mira's story (`story.ts`, 12 / 17 / 20 / 15 quests per chapter, plus her own quests in `heroStory.ts`): Tuft follows Orrin's scent, she passes the Apprentice's Test at the Moss Shrine, tells Orrin whether she forgives him and builds a star lantern of her own.
 
-**Every hero has a story of their own** (`heroStory.ts`), woven into the main one: their quests slot into the main chain and are marked *<Hero>'s story* in the journal.
-- **Mira, the Apprentice:** Tuft follows Orrin's scent to the Old Stone Garden. She passes the Apprentice's Test at the Moss Shrine, tells Orrin whether she forgives him, and finally builds a star lantern of her own at the Phoenix Spring. Also her own: relighting the three lanterns Orrin left burning in Sunpetal (a memory of him walking away plays), gathering starmoss at the Faerie Ring for Healer Maren, and defending the Moss Shrine from a swarm of wisps.
-- **Kael, the Oathsworn:** a squire of the Wardens. He follows the tracks of Ser Aldric's warhorse, has Aldric's split shield mended, chases a black knight who knows his name, and lights the Warden fires at Silver Pass. At Ashfall Watch he chooses how to free Aldric from the shadow. Also his own: building Farmer Bram a barricade at Millbrook (the gloomlings come to the fence that night, and turn back), freeing Warden Brin from a thorn cage at the Faerie Ring and walking her to Captain Brannoc, and escorting Old Tobb, the last Warden of the woods, whose story of the young Aldric plays as a memory.
-- **Lyra, Winter's Daughter:** follows her sister Nessa's scattered letters and catches the boy selling them. She learns from Courier Nutkin where the frost wraiths took Nessa, frees her at the Old Observatory and walks her to Frostpine Hamlet. Later she freezes Brasshaven's overheating forge vents. Also her own: waking frost runes on Mirror Lake, which show Nessa running the shore that night; gathering the rest of Nessa's letters from Gloom Hollow for Postmistress Wynne; and chasing the Pale Rider, a frost-wraith scout that flees north toward the Summit.
-- **Riven, the Foundling:** raised by the Hushed, a thieves' guild paid in black feathers. Riven confronts their guildmistress Magpie and runs down the runner carrying the buyer's letter. Riven wakes Sable's shadow-runes in their old childhood order, answers Sable's question, and unmasks the Ashen Broker. Also Riven's own: returning the purses the Hushed stole in Sunpetal, following a trail of black feathers to Willowmere (a cloaked girl appears in the memory), and rescuing Tib, a foundling with a shadow like Riven's, from the Nest, which brings back a memory of the foundling house.
-- **Wren, the Pack:** hears Moonfang's howl and wakes the hunter's totems. She tracks Moonfang to a den and walks Moonfang's moon-white pup, Snowpaw, to safety, herds Kiri's goats, and at last finds Moonfang at The Last Green. Also her own: pulling up a poacher's wolf snares at the Old Stone Garden, running the poacher down, and holding the Hunter's Camp when her own shadow-bound pack attacks it.
+**Every other hero plays a main questline of their own** (`src/game/heroes/<hero>.ts`). The lands, side quests and gates are the same for everyone, but each hero's chapters are their own chain of 14–18 main quests: at least six quests only that hero has, plus some of the shared quests told again in their own words, with new titles, new people and a different order. Umbra's shadow takes the shape of what each hero fears most, so **every hero meets different guardians** (`bosses.ts`), with their own look, name and attacks (aimed volleys, strings of shadow strikes, the ground erupting in spikes, lava or frost, howls that call the pack):
+
+| Hero | Meadow | Woods | Summit | Ember | Umbra |
+| --- | --- | --- | --- | --- | --- |
+| Mira | Mossback | Bramble Warden | The Hollow Star | Pyrrhus | The Eclipse Sovereign |
+| Kael | The Hollow Bulwark | Ser Briarthorn | The Frost Marshal | The Iron Colossus | The Black Oath |
+| Lyra | Gloamgill | The Pale Huntress | Queen Hoarfrost | Cinderwyrm | The Endless Winter Night |
+| Riven | Corvane | Silkmother Vesh | Nullface | The Ashen Broker | The Shadow That Chose |
+| Wren | Gorehide | Shadowmane | Skyhorn | The Duneworm | The Moon-Eater |
+
+- **Kael, the Oathsworn:** musters the farms and the city guard, finds the Wardens' lost hall and the oath-stones, holds Silver Pass again and is knighted by Warden Brin, then finds Ser Aldric in the Ember Wastes and walks him to the Phoenix Spring.
+- **Lyra, Winter's Daughter:** follows the lost post and Nessa's letters, learns her family are Rimewards (frost-singers), frees Nessa early on the Summit and sings the two-voiced Rime Song with her against Queen Hoarfrost.
+- **Riven, the Foundling:** steals the Beacon's crystals back from the Hushed, finds the foundling house he grew up in, faces a double wearing his face, reaches Sable himself and breaks the ice seal with her, then takes the Ashen Broker's network apart.
+- **Wren, the Pack:** proves it was the Boar King, not wolves, learns Shadowmane is the shadow wearing a wolf's shape, frees Skyhorn's fawn, and heals Moonfang at the Phoenix Spring; Burr the poacher is slowly redeemed.
+
+Each hero also has their own chapter endings and cutscenes. `npm run check:stories` checks every hero's chain (people present when needed, places, keys before each guardian, gates last, no lines left over from Mira's story).
 
 Each hero also has their own intro and their own lines at key moments, and their own thoughts voice the story's nudges between quests (Tuft does it for Mira).
 

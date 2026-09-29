@@ -15,12 +15,13 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Story', 'ch-woods', 'The Bell Rings Again', 'Ring the Ancient Root Bell and finish Chapter II.', '🔔', 10, 'chapter:woods'),
   a('Story', 'ch-summit', 'Heart of the Fallen Light', 'Return the star to its Cradle and finish Chapter III.', '✦', 10, 'chapter:summit'),
   a('Story', 'ch-ember', 'The Dawn Forge', 'Light the Dawn Forge and finish Chapter IV.', '🔥', 25, 'chapter:ember'),
-  a('Story', 'eclipse', 'The Eclipse Ends', 'Defeat Umbra, the Eclipse Sovereign.', '🌑', 50, 'boss:eclipse'),
+  a('Story', 'eclipse', 'The Eclipse Ends', 'Defeat Umbra, the Eclipse.', '🌑', 50, 'boss:eclipse'),
 
-  a('Guardians', 'b-mossback', 'Mossback Toppled', 'Defeat Mossback, guardian of the Beacon Rise.', '🪨', 10, 'boss:mossback'),
-  a('Guardians', 'b-warden', 'Thorns Unbound', 'Defeat the Bramble Warden.', '🌿', 10, 'boss:brambleWarden'),
-  a('Guardians', 'b-star', 'Starbreaker', 'Break the Hollow Star.', '☄', 10, 'boss:hollowStar'),
-  a('Guardians', 'b-tyrant', 'Cinderfall', 'Defeat Pyrrhus, the Cinder Tyrant.', '🌋', 25, 'boss:cinderTyrant'),
+  // Every hero meets their own guardians (bosses.ts), so these name the place, not the creature.
+  a('Guardians', 'b-mossback', 'Guardian of the Rise', 'Defeat the guardian of the Beacon Rise.', '🪨', 10, 'boss:mossback'),
+  a('Guardians', 'b-warden', 'Thorns Unbound', 'Defeat the guardian of the Old Bell.', '🌿', 10, 'boss:brambleWarden'),
+  a('Guardians', 'b-star', 'Starbreaker', 'Defeat the guardian of the Star Cradle.', '☄', 10, 'boss:hollowStar'),
+  a('Guardians', 'b-tyrant', 'Cinderfall', 'Defeat the guardian of the Dawn Forge.', '🌋', 25, 'boss:cinderTyrant'),
   a('Guardians', 'flawless', 'Untouchable', 'Defeat a guardian without falling during the fight.', '🛡', 25, 'flawless'),
 
   a('Combat', 'k1', 'First Blood', 'Defeat your first creature.', '⚔', 5, 'kills', 1),

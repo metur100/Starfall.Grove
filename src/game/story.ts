@@ -1,7 +1,8 @@
 import type { Captive, NpcLook, QuestDef, RegionId } from './types';
 
-// The main story: one tale told across the valley's four regions. Each hero also has a story of their own (heroStory.ts)
-// woven into it, and a chapter ends with its last main quest, which is not always a guardian.
+// The main story: one tale told across the valley's four regions, as Mira lives it (her own quests are in heroStory.ts).
+// The other heroes play stories of their own (heroes/), reusing some of these quests in their own words. A chapter ends
+// with its last main quest, which is not always a guardian.
 //
 // The night the star fell, Master Orrin vanished. Mira, his apprentice, follows his trail with her fox Tuft and learns
 // that the Beacon, the Bell and the Star were lit long ago to seal away Umbra, the Eclipse. Orrin's lost pupil Sable,
@@ -21,25 +22,6 @@ const person = (name: string, portrait: string, look: Partial<NpcLook>): Captive
 // ═════════════════════════════ Chapter I · The Broken Beacon (10)
 const meadow: StoryQuest[] = [
   m({ id: 'm1', title: 'Where the Star Fell', giver: 'guide', kind: 'talk', count: 1, to: 'rowan', summary: 'Find Elder Rowan in Sunpetal Village.', reward: { xp: 60 },
-    // The heroes wake in different corners of the meadow, so the first quest starts with someone near each of them.
-    forHero: {
-      kael: { giver: 'bram', to: 'brannoc', summary: 'Warn Captain Brannoc in Goldenhearth about the Rise.' },
-      lyra: { giver: 'lou', to: 'wren', summary: 'Ask Postmistress Wynne in Sunpetal about Nessa.' },
-      riven: { giver: 'tom', summary: 'Find Elder Rowan in Sunpetal Village.' },
-      wren: { giver: 'fox', summary: 'Follow the pack’s tracks to Sunpetal and find Elder Rowan.' },
-    },
-    textFor: {
-      kael: { offer: ['Easy, lad, easy. I found you face-down in my hay at first light, still in your armour, shouting about the Rise.', 'The Beacon died last night. Half the valley saw it. If a Warden fell up there, the city guard must hear it.', 'Captain Brannoc keeps the guard in Goldenhearth, east along the river road. Go warn him.'],
-        progress: ['Goldenhearth is the big city east of the farm.'], after: ['The captain will know what to do.'],
-        deliver: ['A Warden’s squire? Stand up straight, lad. Now tell me.', '…Aldric. Gone into the shadow. Stars keep him.', 'My riders are spread thin. Elder Rowan in Sunpetal is gathering everyone who can hold a sword. Gloomlings hit his village every dusk. Go to him. Take the road north-west.'] },
-      lyra: { offer: ['You came down the lake road in the night, trailing frost. The reeds are still white where you walked.', 'A courier girl? Aye… a little one ran past my boat after midnight. Something was chasing her.', 'Postmistress Wynne in Sunpetal counts every courier in and out. Ask her. The village is north of here.'],
-        progress: ['Sunpetal Village is north of Mirror Lake.'], after: ['Frost on the water, in summer. Hmph.'],
-        deliver: ['Nessa? My Nessa? She never came in last night. Her whole satchel of post, gone with her.', 'I told Elder Rowan. He has had riders out all morning. He is just over there. He will want to hear what you know.'] },
-      riven: { offer: ['You look like someone who slept on a roof. Here, a honey bun. No charge.', 'Everyone is talking about the Beacon. Elder Rowan up in Sunpetal is asking for anyone who can fight.', 'Sunpetal is up the road, north-west of the city. Go on. Nobody here will miss you. Er, no offence.'],
-        progress: ['Sunpetal Village is north-west of Goldenhearth.'], after: ['Honey buns! Still warm!'] },
-      wren: { offer: ['(The pack’s tracks cross the Stone Garden and run west, toward the smoke of a village.)', '(Sunpetal. Garrick always said Elder Rowan keeps his eyes on everything in the meadow.)', '(Fenn whines. Stay close, little one.)'],
-        progress: ['The tracks lead west to Sunpetal Village.'] },
-    },
     text: { offer: ['Mira! You’re awake. The whole valley felt it when the star came down.', 'Your teacher, Master Orrin, rode toward Sunpetal that same night. Nobody has seen him since.', 'Elder Rowan will know where he went. Follow the road south-east — and keep Tuft close.'], progress: ['Sunpetal Village is down the road to the south-east.'], complete: [], after: ['Rowan knows more than he says.'],
       deliver: ['Orrin’s apprentice. He said you would come looking.', 'He stood right where you are, pale as milk, and said: “The Beacon must not go dark.” An hour later, it did.'] } }),
   m({ id: 'm2', title: 'Gloom at the Gates', giver: 'rowan', kind: 'defend', count: 3, place: 'sunpetal', waves: [3, 4, 5], foes: ['gloomling', 'gloomling', 'sporecap'], ward: 'Sunpetal’s barricade', cine: { start: 'sunpetal-attack' }, requires: 'm1', summary: 'Hold Sunpetal’s barricade against three waves of gloomlings.', reward: { xp: 110 },

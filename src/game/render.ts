@@ -4,6 +4,7 @@ import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
 import { REGION_W, fbm } from './worldgen';
+import type { BossLook, BossVariant } from './bosses';
 import type { Captive, Decor, ItemIcon, NpcLook, Obstacle, Palette, Point, Poi, Region, WorldDefinition, WorldObject } from './types';
 
 type AmbientKind = 'petal' | 'leaf' | 'firefly' | 'mote' | 'snow' | 'butterfly' | 'smoke' | 'ash';
@@ -11,6 +12,7 @@ type Ambient = { x: number; y: number; vx: number; vy: number; life: number; max
 type Light = { x: number; y: number; r: number; color?: string; a: number };
 type View = { x: number; y: number; w: number; h: number };
 type Sprite = { c: HTMLCanvasElement; l: number; t: number; w: number; h: number };
+type BossColors = { body: string; dark: string; light: string; trim: string; glow: string; eye: string };
 
 const TAU = Math.PI * 2;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -1868,14 +1870,16 @@ export class Renderer {
     }
     ctx.save(); ctx.translate(en.x, en.y); ctx.scale(spawn, spawn);
     if (sc !== 1) ctx.scale(sc, sc);
-    if (en.rage > .15) glow(ctx, 0, en.kind === 'wisp' || en.kind === 'frostwraith' ? -10 : -en.r * .15, en.r * (en.boss ? 2 : 2.5), '#ff3b2e', .5 * en.rage * (.85 + Math.sin(t * 9) * .15));
+    const bv = en.boss ? e.bossVariant(en) : null;
+    if (en.rage > .15) glow(ctx, 0, en.kind === 'wisp' || en.kind === 'frostwraith' ? -10 : -en.r * .15, en.r * (en.boss ? 2 : 2.5), '#ff3b2e', (bv ? .18 : .5) * en.rage * (.85 + Math.sin(t * 9) * .15));
     if (en.windup > 0 && !en.boss && (en.kind === 'gloomling' || en.kind === 'shadewolf')) {
       const r = en.kind === 'shadewolf' ? 115 : 80; ctx.fillStyle = 'rgba(255,90,70,.12)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(255,140,110,.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]);
     }
     const trem = en.windup > 0 ? Math.sin(t * 60) * 1.5 : 0;
     const base = sc !== 1 ? { ...en, r: en.r / sc } : en;
     if (en.stunT > 0) ctx.globalAlpha = .85;
-    switch (en.kind) {
+    if (bv) this.drawBossForm(ctx, en, t, look, flash, bv, e);
+    else switch (en.kind) {
       case 'gloomling': this.drawGloomling(ctx, base, t, look, flash, trem); break;
       case 'thornling': this.drawThornling(ctx, base, t, look, flash, trem); break;
       case 'wisp': this.drawWisp(ctx, base, t, look, flash); break;
@@ -1917,9 +1921,10 @@ export class Renderer {
       ctx.fillStyle = en.heroic ? (en.enraged ? '#ff6b6b' : '#c98aff') : en.elite ? '#ffb347' : '#ff8f7a'; ctx.beginPath(); ctx.roundRect(en.x - bw / 2, by + 1, bw * Math.max(0, en.hp / en.maxHp), en.heroic ? 6 : 4, 2); ctx.fill();
     }
     if (en.boss && !e.bossUnlocked(en)) this.drawSeal(ctx, en, t, e);
-    if (en.kind === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: '#a78bfa', a: .8 });
-    if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
-    if (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant') this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
+    if (bv) this.lights.push({ x: en.x, y: en.y - en.r * .4, r: 300, color: bv.look.glow, a: .75 });
+    else if (en.kind === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: '#a78bfa', a: .8 });
+    if (bv) { /* lit above */ } else if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
+    if (!bv && (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant')) this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
   }
   /** "Lv 9" over creatures near Mira, coloured by how dangerous they are compared to her. */
@@ -2260,6 +2265,293 @@ export class Renderer {
     if (en.phase === 2) { ctx.strokeStyle = '#ff9a6b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * .5, -r * .6); ctx.lineTo(-r * .2, -r * .3); ctx.lineTo(-r * .35, 0); ctx.moveTo(r * .6, r * .2); ctx.lineTo(r * .3, r * .15); ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
+  // ───────────────────────────── the heroes' own guardians
+  /** A guardian as one hero meets it: the shape, colours and detail come from its variant (see bosses.ts). */
+  private drawBossForm(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, v: BossVariant, e: GameEngine) {
+    const L = v.look, awake = e.bossUnlocked(en);
+    const blinkFade = en.action === 'blink' && en.actionT > 1.1 ? (en.actionT - 1.1) / .3 : en.action === 'blink' && en.actionT > .9 ? 1 - (en.actionT - .9) / .2 : 1;
+    const fade = en.action === 'shadowstrike' ? .45 + .55 * Math.abs(Math.sin(en.actionT * 7)) : blinkFade;
+    ctx.globalAlpha = clamp(fade, .1, 1);
+    // Only a hint of the angry red that ordinary creatures get: a guardian keeps its own colours.
+    const c = {
+      body: flash ? '#ffffff' : enrage(L.body, en.rage * .25), dark: flash ? '#ffffff' : shade(L.body, -.35), light: flash ? '#ffffff' : shade(L.body, .25),
+      trim: flash ? '#ffffff' : L.trim, glow: en.phase > 1 ? shade(L.glow, .2) : L.glow, eye: awake ? (en.phase > 1 ? '#ff5a4a' : L.eye) : '#2a2430',
+    };
+    switch (L.form) {
+      case 'knight': this.bossKnight(ctx, en, t, look, L, c, awake); break;
+      case 'beast': this.bossBeast(ctx, en, t, look, L, c, awake); break;
+      case 'wraith': this.bossWraith(ctx, en, t, look, L, c, awake); break;
+      case 'serpent': this.bossSerpent(ctx, en, t, look, L, c, awake); break;
+      case 'spider': this.bossSpider(ctx, en, t, look, L, c, awake); break;
+      case 'colossus': this.bossColossus(ctx, en, t, look, L, c, awake); break;
+      case 'mask': this.bossMask(ctx, en, t, look, L, c, awake); break;
+      case 'eclipse': this.bossEclipse(ctx, en, t, L, c); break;
+    }
+    ctx.globalAlpha = 1;
+    if (en.phase > 1 && Math.random() < .25) this.pushAmbient({ x: en.x + rand(-en.r, en.r), y: en.y - en.r, vx: 0, vy: -40, life: 1, max: 1, size: 5, rot: 0, vr: 0, kind: 'mote', color: alpha(L.glow, .6), phase: 0 });
+  }
+  /** A giant knight in plate: a greatsword raised for the slam, and a tower shield or a crown of thorns. */
+  private bossKnight(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r, walk = en.aggro && !en.action ? Math.sin(t * 5) : 0, slam = en.action === 'slam' ? 1 - en.actionT / 1.25 : 0, charging = en.action === 'charge' && en.actionT < .75;
+    const dir = look.x >= 0 ? 1 : -1;
+    shadow(ctx, 0, r * .95, r * 1.35, r * .45, .4);
+    glow(ctx, 0, -r * .6, r * 2.8, c.glow, awake ? .45 : .15);
+    if (charging) ctx.rotate(dir * .12);
+    for (const s of [-1, 1]) { ctx.fillStyle = c.dark; ctx.beginPath(); ctx.roundRect(s * r * .3 - r * .19, r * .2 + walk * s * 4, r * .38, r * .72, 7); ctx.fill(); ctx.fillStyle = c.trim; ctx.fillRect(s * r * .3 - r * .19, r * .5 + walk * s * 4, r * .38, 3); }
+    // Tabard and breastplate.
+    ctx.fillStyle = c.trim; ctx.beginPath(); ctx.moveTo(-r * .45, -r * .2); ctx.lineTo(r * .45, -r * .2); ctx.lineTo(r * .32, r * .5); ctx.lineTo(-r * .32, r * .5); ctx.closePath(); ctx.fill();
+    const g = ctx.createLinearGradient(-r * .8, 0, r * .8, 0); g.addColorStop(0, c.dark); g.addColorStop(.5, c.light); g.addColorStop(1, c.dark);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-r * .72, r * .1); ctx.lineTo(-r * .88, -r * .75); ctx.lineTo(-r * .4, -r * 1.1); ctx.lineTo(r * .4, -r * 1.1); ctx.lineTo(r * .88, -r * .75); ctx.lineTo(r * .72, r * .1); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = alpha(L.trim, .9); ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = c.glow; star(ctx, 0, -r * .6, r * .2, 4, .4); ctx.fill(); glow(ctx, 0, -r * .6, r * .5, c.glow, awake ? .7 : .2);
+    for (const s of [-1, 1]) { ellipse(ctx, s * r * .85, -r * .9, r * .34, r * .24, c.body, s * .3); ctx.strokeStyle = c.trim; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(s * r * .85, -r * .9, r * .34, r * .24, s * .3, Math.PI, TAU); ctx.stroke(); }
+    // Helm with a glowing visor slit.
+    ctx.fillStyle = c.body; ctx.beginPath(); ctx.roundRect(-r * .34, -r * 1.62, r * .68, r * .62, [r * .3, r * .3, r * .1, r * .1]); ctx.fill();
+    ctx.fillStyle = '#0a0810'; ctx.fillRect(-r * .26, -r * 1.36, r * .52, r * .1);
+    for (const s of [-1, 1]) { circle(ctx, look.x * 3 + s * r * .12, -r * 1.31, 3, c.eye); if (awake) glow(ctx, look.x * 3 + s * r * .12, -r * 1.31, 14, c.eye, .9); }
+    if (L.style === 'thorns') {
+      ctx.fillStyle = c.trim; for (let i = 0; i < 6; i++) { const x = -r * .32 + i * r * .128; ctx.beginPath(); ctx.moveTo(x - 4, -r * 1.58); ctx.lineTo(x, -r * 1.86 - (i % 2) * 6); ctx.lineTo(x + 4, -r * 1.58); ctx.fill(); }
+      ctx.strokeStyle = '#4a5a2e'; ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-r * .8, -r * (.8 - i * .3)); ctx.bezierCurveTo(-r * .3, -r * (1 - i * .3) + Math.sin(t * 2 + i) * 4, r * .3, -r * (.6 - i * .3), r * .8, -r * (.85 - i * .3)); ctx.stroke(); }
+    } else {
+      // A plume streaming back from the crest.
+      ctx.fillStyle = c.trim; ctx.beginPath(); ctx.moveTo(0, -r * 1.6); ctx.quadraticCurveTo(-dir * r * .6, -r * 2 + Math.sin(t * 4) * 4, -dir * r * 1, -r * 1.55); ctx.quadraticCurveTo(-dir * r * .5, -r * 1.7, 0, -r * 1.5); ctx.fill();
+    }
+    // Greatsword in the sword hand: high overhead, then down in the slam.
+    const ang = en.action === 'slam' ? -2.3 + Math.min(1, slam * 1.6) * 2.7 : charging ? 1.3 : -.55 + Math.sin(t * 1.5) * .08;
+    ctx.save(); ctx.translate(dir * r * .95, -r * .6); ctx.rotate(dir * ang);
+    ctx.fillStyle = '#3a2a26'; ctx.fillRect(-3, -6, 6, r * .3); rect(ctx, -r * .22, -8, r * .44, 5, c.trim);
+    const bg = ctx.createLinearGradient(-5, 0, 5, 0); bg.addColorStop(0, '#9aa0b0'); bg.addColorStop(.5, '#f2f4ff'); bg.addColorStop(1, '#9aa0b0');
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(-5, -r * 1.7); ctx.lineTo(0, -r * 1.9); ctx.lineTo(5, -r * 1.7); ctx.lineTo(6, -8); ctx.closePath(); ctx.fill();
+    glow(ctx, 0, -r * 1.2, r * .5, c.glow, .5);
+    ctx.restore();
+    if (L.style === 'shield') {
+      ctx.save(); ctx.translate(-dir * r * .78, -r * .35); ctx.rotate(-dir * .12);
+      ctx.fillStyle = c.dark; ctx.beginPath(); ctx.moveTo(-r * .32, -r * .55); ctx.lineTo(r * .32, -r * .55); ctx.lineTo(r * .3, r * .25); ctx.lineTo(0, r * .6); ctx.lineTo(-r * .3, r * .25); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = c.trim; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = alpha(L.glow, .8); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -r * .45); ctx.lineTo(0, r * .45); ctx.moveTo(-r * .22, -r * .1); ctx.lineTo(r * .22, -r * .1); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  /** A great beast on four legs: a tusked boar king, a shadow wolf with a mane of smoke, or a white stag with starlit antlers. */
+  private bossBeast(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r, charging = en.action === 'charge' && en.actionT < .75 && en.actionT > .3, dir = charging ? Math.sign(en.chargeX || 1) : look.x >= 0 ? 1 : -1;
+    const run = en.aggro ? Math.sin(t * (charging ? 26 : 9)) : Math.sin(t * 3) * .2, stag = L.style === 'antlers', wolf = L.style === 'wolf', boar = L.style === 'tusks';
+    const howl = en.action === 'howl' ? Math.sin(Math.min(1, (1.3 - en.actionT) / .5) * Math.PI * .5) : 0;
+    shadow(ctx, 0, r * .8, r * 1.5, r * .45, .4);
+    glow(ctx, 0, -r * .3, r * 2.6, c.glow, awake ? .4 : .12);
+    ctx.save(); ctx.scale(dir, 1); if (charging) ctx.rotate(.1);
+    const legLen = stag ? r * .95 : r * .7;
+    ctx.strokeStyle = c.dark; ctx.lineWidth = r * .18; ctx.lineCap = 'round';
+    for (const [lx, ph] of [[-.65, 1], [-.35, -1], [.4, -1], [.7, 1]] as Array<[number, number]>) { ctx.beginPath(); ctx.moveTo(lx * r, r * .05); ctx.lineTo(lx * r + run * ph * 8, r * .05 + legLen); ctx.stroke(); }
+    const by = stag ? -r * .35 : -r * .1;
+    if (wolf) { ctx.lineWidth = r * .2; ctx.strokeStyle = c.body; ctx.beginPath(); ctx.moveTo(-r * .95, by - r * .1); ctx.quadraticCurveTo(-r * 1.5, by - r * .6 + Math.sin(t * 5) * 6, -r * 1.7, by - r * .1); ctx.stroke(); }
+    ellipse(ctx, 0, by, r * 1.15, r * (boar ? .72 : .6), c.body);
+    ellipse(ctx, -r * .15, by + r * .2, r * .8, r * .25, 'rgba(255,255,255,.07)');
+    if (boar) { ctx.fillStyle = c.dark; for (let i = 0; i < 10; i++) { const bx = -r * .9 + i * r * .2; ctx.beginPath(); ctx.moveTo(bx - 6, by - r * .5); ctx.lineTo(bx + 2, by - r * .95 - (i % 2) * 8); ctx.lineTo(bx + 6, by - r * .5); ctx.fill(); } }
+    if (wolf) { for (let i = 0; i < 9; i++) { const a = -2.6 + i * .28; ctx.fillStyle = i % 2 ? c.dark : alpha(L.trim, .85); ctx.beginPath(); ctx.moveTo(r * .55 + Math.cos(a) * r * .35, by - r * .2 + Math.sin(a) * r * .35); ctx.lineTo(r * .55 + Math.cos(a) * r * (.85 + Math.sin(t * 6 + i) * .08), by - r * .2 + Math.sin(a) * r * .85); ctx.lineTo(r * .55 + Math.cos(a + .2) * r * .35, by - r * .2 + Math.sin(a + .2) * r * .35); ctx.fill(); } }
+    if (stag) { ctx.fillStyle = alpha(L.trim, .9); star(ctx, -r * .2, by - r * .05, r * .18, 5, .45, t); ctx.fill(); }
+    // Neck and head, lifted back in a howl.
+    const hx = r * (boar ? .95 : 1), hy = by - r * (stag ? .75 : .35) - howl * r * .4;
+    ctx.fillStyle = c.body; ctx.beginPath(); ctx.moveTo(r * .55, by - r * .4); ctx.lineTo(hx + r * .1, hy - r * .1); ctx.lineTo(hx + r * .15, hy + r * .3); ctx.lineTo(r * .7, by + r * .2); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(-howl * .7);
+    ellipse(ctx, 0, 0, r * .45, r * .36, c.body);
+    ctx.fillStyle = c.body; ctx.beginPath(); ctx.moveTo(r * .2, -r * .18); ctx.lineTo(r * (boar ? .7 : .85), boar ? 0 : -r * .02); ctx.lineTo(r * .2, r * .22); ctx.fill();
+    if (boar) { ellipse(ctx, r * .7, r * .02, r * .15, r * .13, '#e0a08a'); ctx.fillStyle = '#fff4e0'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(r * .5, r * .12 * s + r * .06); ctx.quadraticCurveTo(r * .75, -r * .3 + s * r * .05, r * .62, -r * .45 + s * r * .05); ctx.lineTo(r * .48, r * .05); ctx.fill(); } }
+    if (wolf || boar) { ctx.fillStyle = c.dark; for (const ex of [-.15, .1]) { ctx.beginPath(); ctx.moveTo(r * ex - 6, -r * .25); ctx.lineTo(r * ex, -r * .7); ctx.lineTo(r * ex + 6, -r * .25); ctx.fill(); } }
+    if (stag) {
+      ctx.strokeStyle = c.trim; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+      for (const s of [0, 12]) { ctx.beginPath(); ctx.moveTo(-r * .05 + s, -r * .3); ctx.lineTo(-r * .2 + s, -r * 1.1); ctx.moveTo(-r * .12 + s, -r * .7); ctx.lineTo(-r * .45 + s, -r * .95); ctx.moveTo(-r * .17 + s, -r * .95); ctx.lineTo(r * .1 + s, -r * 1.3); ctx.moveTo(-r * .2 + s, -r * 1.1); ctx.lineTo(-r * .5 + s, -r * 1.35); ctx.stroke(); }
+      for (const [x, y] of [[-r * .2, -r * 1.1], [r * .1, -r * 1.3], [-r * .5, -r * 1.35], [-r * .45, -r * .95]]) glow(ctx, x, y, 12, c.glow, .9);
+    }
+    circle(ctx, r * .22, -r * .1, 4.2, c.eye); if (awake) glow(ctx, r * .22, -r * .1, 16, c.eye, .9);
+    if (wolf && (charging || howl > 0)) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(r * (.35 + i * .13), r * .14); ctx.lineTo(r * (.4 + i * .13), r * .28); ctx.lineTo(r * (.45 + i * .13), r * .14); ctx.fill(); } }
+    ctx.restore();
+    ctx.restore();
+    if (wolf && Math.random() < .3) this.pushAmbient({ x: en.x + rand(-r, r), y: en.y - r * .5, vx: rand(-10, 10), vy: rand(-30, -10), life: 1, max: 1, size: 8, rot: 0, vr: 0, kind: 'smoke', color: alpha(L.trim, .35), phase: 0 });
+  }
+  /** A towering specter: a hooded huntress, a helmed marshal or a masked broker, with two floating clawed hands. */
+  private bossWraith(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r * 1.15, hover = Math.sin(t * 2) * 7 - 20, cast = en.action === 'nova' || en.action === 'volley' || en.action === 'meteors' ? 1 : 0;
+    shadow(ctx, 0, en.r * 1.2, en.r * 1.1, en.r * .35, .25);
+    ctx.translate(0, hover);
+    glow(ctx, 0, -r * .3, r * 3, c.glow, awake ? .6 : .2);
+    const g = ctx.createLinearGradient(0, -r * 1.6, 0, r * 1.5); g.addColorStop(0, c.body); g.addColorStop(.55, alpha(L.body, .8)); g.addColorStop(1, alpha(L.body, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -r * 1.6);
+    ctx.quadraticCurveTo(r * 1.2, -r * 1.2, r * 1, r * .3);
+    for (let i = 0; i <= 5; i++) { const px = r - i * r * .4; ctx.quadraticCurveTo(px - r * .2, r * (1.2 + Math.sin(t * 6 + i) * .2), px - r * .4, r * (.95 + (i % 2) * .45)); }
+    ctx.quadraticCurveTo(-r * 1.2, -r * 1.2, 0, -r * 1.6); ctx.fill();
+    ctx.strokeStyle = alpha(L.trim, .8); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-r * .55, -r * .9); ctx.quadraticCurveTo(0, -r * .4, r * .55, -r * .9); ctx.stroke();
+    // The face under the hood, helm or mask.
+    ctx.fillStyle = L.style === 'mask' ? '#d8cfc0' : 'rgba(10,14,30,.75)'; ctx.beginPath(); ctx.ellipse(look.x * 3, -r * .95, r * .42, r * .38, 0, 0, TAU); ctx.fill();
+    if (L.style === 'mask') { ctx.strokeStyle = '#4a3a3a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(look.x * 3 - r * .1, -r * 1.3); ctx.lineTo(look.x * 3, -r * .95); ctx.lineTo(look.x * 3 - r * .15, -r * .65); ctx.stroke(); }
+    for (const s of [-1, 1]) { ellipse(ctx, look.x * 4 + s * r * .16, -r * .98, 4.5, 3, c.eye); if (awake) glow(ctx, look.x * 4 + s * r * .16, -r * .98, 14, c.eye, .9); }
+    if (L.style === 'helm') {
+      ctx.fillStyle = c.trim; ctx.beginPath(); ctx.moveTo(-r * .48, -r * 1.05); ctx.quadraticCurveTo(0, -r * 1.75, r * .48, -r * 1.05); ctx.lineTo(r * .4, -r * 1.2); ctx.quadraticCurveTo(0, -r * 1.5, -r * .4, -r * 1.2); ctx.fill();
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .38, -r * 1.3); ctx.quadraticCurveTo(s * r * .8, -r * 1.55, s * r * .72, -r * 1.95); ctx.lineTo(s * r * .3, -r * 1.42); ctx.fill(); }
+    } else if (L.style === 'hood') {
+      ctx.fillStyle = alpha(L.trim, .7); for (let i = 0; i < 5; i++) { const a = -Math.PI * .85 + i * Math.PI * .175; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .45 - 3, -r * 1.05 + Math.sin(a) * r * .45); ctx.lineTo(Math.cos(a) * r * .75, -r * 1.05 + Math.sin(a) * r * .8); ctx.lineTo(Math.cos(a) * r * .45 + 3, -r * 1.05 + Math.sin(a) * r * .45); ctx.fill(); }
+    }
+    for (const s of [-1, 1]) {
+      const hx = s * r * (1.15 + cast * .25), hy = -r * (.3 + cast * .45) + Math.sin(t * 3 + s) * 6;
+      ellipse(ctx, hx, hy, r * .2, r * .16, c.body);
+      ctx.strokeStyle = c.trim; ctx.lineWidth = 2.5; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(hx + s * r * .12, hy + k * 5); ctx.lineTo(hx + s * r * .3, hy + k * 9 - 4); ctx.stroke(); }
+      if (cast) glow(ctx, hx, hy, 26, c.glow, .9);
+    }
+    for (let i = 0; i < 4; i++) { const a = t * 1.6 + i * TAU / 4, ox = Math.cos(a) * r * 1.5, oy = -r * .3 + Math.sin(a) * r * .55; ctx.fillStyle = c.trim; ctx.beginPath(); ctx.moveTo(ox, oy - 8); ctx.lineTo(ox + 3.5, oy); ctx.lineTo(ox, oy + 8); ctx.lineTo(ox - 3.5, oy); ctx.fill(); glow(ctx, ox, oy, 12, c.glow, .7); }
+  }
+  /** A great coiled serpent: a lake serpent with fins, a fire-wyrm, or a sand-worm with a round, toothed maw. */
+  private bossSerpent(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r, sand = L.style === 'sand', strike = en.action === 'charge' ? 1 : en.action === 'nova' || en.action === 'spiral' ? .5 : 0;
+    shadow(ctx, 0, r * .75, r * 1.6, r * .5, .4);
+    glow(ctx, 0, -r * .3, r * 2.6, c.glow, awake ? .4 : .12);
+    // The coils: a ring of scales on the ground.
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU + t * .4, x = Math.cos(a) * r * .95, y = r * .35 + Math.sin(a) * r * .38, s = r * (.34 + .06 * Math.sin(i * 1.7));
+      ellipse(ctx, x, y, s, s * .8, i % 2 ? c.body : c.dark);
+      if (!sand && i % 3 === 0) { ctx.fillStyle = alpha(L.trim, .9); ctx.beginPath(); ctx.moveTo(x - 5, y - s * .7); ctx.lineTo(x, y - s * 1.3); ctx.lineTo(x + 5, y - s * .7); ctx.fill(); }
+    }
+    // The neck, rising and swaying toward the hero.
+    const sway = Math.sin(t * 1.8) * r * .15 + look.x * r * .25, hx = sway + look.x * strike * r * .3, hy = -r * (1.35 + strike * .25);
+    ctx.strokeStyle = c.body; ctx.lineWidth = r * .42; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, r * .2); ctx.bezierCurveTo(-r * .3, -r * .3, sway + r * .3, -r * .8, hx, hy); ctx.stroke();
+    ctx.strokeStyle = alpha(L.trim, .55); ctx.lineWidth = r * .14;
+    ctx.beginPath(); ctx.moveTo(r * .05, r * .15); ctx.bezierCurveTo(-r * .2, -r * .3, sway + r * .35, -r * .8, hx + 2, hy + 4); ctx.stroke();
+    if (sand) {
+      circle(ctx, hx, hy, r * .42, c.body);
+      circle(ctx, hx + look.x * 3, hy + r * .05, r * .28, '#2a1810');
+      ctx.fillStyle = '#fff1d8'; for (let i = 0; i < 10; i++) { const a = i / 10 * TAU + t; ctx.beginPath(); ctx.moveTo(hx + look.x * 3 + Math.cos(a) * r * .28, hy + r * .05 + Math.sin(a) * r * .28); ctx.lineTo(hx + look.x * 3 + Math.cos(a) * r * .16, hy + r * .05 + Math.sin(a) * r * .16); ctx.lineTo(hx + look.x * 3 + Math.cos(a + .25) * r * .28, hy + r * .05 + Math.sin(a + .25) * r * .28); ctx.fill(); }
+      glow(ctx, hx, hy + r * .05, r * .5, c.glow, .6);
+      for (const s of [-1, 1]) circle(ctx, hx + s * r * .36, hy - r * .22, 3.5, c.eye);
+    } else {
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(look.x * .25);
+      ellipse(ctx, 0, 0, r * .5, r * .34, c.body);
+      ellipse(ctx, 0, r * .12, r * .38, r * .16 + strike * r * .1, '#1a0e0a');
+      if (strike) { ctx.fillStyle = '#ffffff'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .18, r * .02); ctx.lineTo(s * r * .14, r * .22); ctx.lineTo(s * r * .1, r * .02); ctx.fill(); } }
+      ctx.fillStyle = c.trim; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .35, -r * .1); ctx.lineTo(s * r * .85, -r * .45 + Math.sin(t * 5) * 4); ctx.lineTo(s * r * .45, r * .08); ctx.fill(); }
+      for (const s of [-1, 1]) { ellipse(ctx, s * r * .2, -r * .1, 5, 3.5, c.eye); if (awake) glow(ctx, s * r * .2, -r * .1, 15, c.eye, .9); }
+      ctx.restore();
+    }
+  }
+  /** A spider queen: a huge striped body under a crown, eight long legs and a cluster of glowing eyes. */
+  private bossSpider(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r * 1.1, walk = en.aggro ? t * 12 : t * 3;
+    shadow(ctx, 0, r * .7, r * 1.6, r * .5, .4);
+    glow(ctx, 0, -r * .2, r * 2.6, c.glow, awake ? .35 : .1);
+    ctx.strokeStyle = alpha(L.trim, .25); ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; ctx.beginPath(); ctx.moveTo(0, r * .3); ctx.lineTo(Math.cos(a) * r * 2, r * .3 + Math.sin(a) * r * .8); ctx.stroke(); }
+    ctx.strokeStyle = c.dark; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const a = (-1 + i * .55) + Math.sin(walk + i * 1.7 + (s > 0 ? 1 : 0)) * .15, kx = s * Math.cos(a) * r * 1.35, ky = Math.sin(a) * r * .6 - r * .75;
+      ctx.beginPath(); ctx.moveTo(s * r * .35, -r * .1); ctx.lineTo(kx, ky); ctx.lineTo(kx + s * r * .5, ky + r * 1.25); ctx.stroke();
+    }
+    ellipse(ctx, 0, r * .05, r * .95, r * .78, c.body);
+    ctx.fillStyle = c.trim; ctx.beginPath(); ctx.moveTo(0, -r * .45); ctx.lineTo(r * .22, 0); ctx.lineTo(0, r * .45); ctx.lineTo(-r * .22, 0); ctx.closePath(); ctx.fill();
+    for (const s of [-1, 1]) { ctx.strokeStyle = alpha(L.trim, .5); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, r * .05, r * .65, s > 0 ? -.9 : Math.PI - .9 + 1.8, s > 0 ? .9 : Math.PI + .9); ctx.stroke(); }
+    const hx = look.x * r * .25, hy = -r * .7 + look.y * 3;
+    ellipse(ctx, hx, hy, r * .5, r * .4, c.dark);
+    for (let i = 0; i < 6; i++) { const ex = hx + (i - 2.5) * r * .13, ey = hy - (i % 2) * 5; circle(ctx, ex, ey, 3, c.eye); if (awake) glow(ctx, ex, ey, 9, c.eye, .8); }
+    ctx.fillStyle = '#e8d8a0'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hx + s * r * .12, hy + r * .25); ctx.quadraticCurveTo(hx + s * r * .25, hy + r * .45, hx + s * r * .08, hy + r * .55); ctx.lineTo(hx + s * r * .05, hy + r * .28); ctx.fill(); }
+    ctx.fillStyle = '#d8b44a'; ctx.beginPath(); ctx.moveTo(hx - r * .3, hy - r * .3); for (let i = 0; i <= 4; i++) ctx.lineTo(hx - r * .3 + i * r * .15, hy - r * (i % 2 ? .45 : .62)); ctx.lineTo(hx + r * .3, hy - r * .3); ctx.closePath(); ctx.fill();
+  }
+  /** A colossus of stone and metal: an ice-crystal queen, or an iron war engine with a furnace for a heart. */
+  private bossColossus(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r, raise = en.action === 'slam' ? Math.min(1, (1.25 - en.actionT) / .6) : en.action === 'geysers' ? .6 : 0, step = en.aggro && !en.action ? Math.sin(t * 3.5) : 0, crystal = L.style === 'crystal';
+    shadow(ctx, 0, r * .9, r * 1.5, r * .48, .4);
+    glow(ctx, 0, -r * .5, r * 2.8, c.glow, awake ? .45 : .12);
+    ctx.translate(0, -raise * 10);
+    for (const s of [-1, 1]) { ctx.fillStyle = c.dark; ctx.beginPath(); ctx.roundRect(s * r * .35 - r * .24, r * .15 + step * s * 4, r * .48, r * .75, 8); ctx.fill(); }
+    ctx.fillStyle = c.body; ctx.beginPath(); ctx.moveTo(-r * .9, r * .35); ctx.lineTo(-r * 1.1, -r * .5); ctx.lineTo(-r * .6, -r * 1.25); ctx.lineTo(r * .6, -r * 1.25); ctx.lineTo(r * 1.1, -r * .5); ctx.lineTo(r * .9, r * .35); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.moveTo(r * .1, -r * 1.25); ctx.lineTo(r * .6, -r * 1.25); ctx.lineTo(r * 1.1, -r * .5); ctx.lineTo(r * .9, r * .35); ctx.lineTo(r * .2, r * .35); ctx.closePath(); ctx.fill();
+    if (crystal) {
+      for (const [x, y, h, a] of [[-.7, -1.15, .9, -.4], [-.35, -1.25, 1.2, -.15], [.1, -1.3, 1.4, .05], [.5, -1.2, 1, .3], [.85, -1, .7, .5]] as Array<[number, number, number, number]>) {
+        ctx.save(); ctx.translate(x * r, y * r); ctx.rotate(a);
+        const cg = ctx.createLinearGradient(-8, 0, 8, 0); cg.addColorStop(0, c.trim); cg.addColorStop(1, '#ffffff');
+        ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(-r * .12, 0); ctx.lineTo(0, -h * r * .55); ctx.lineTo(r * .12, 0); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      glow(ctx, 0, -r * 1.6, r * .9, c.glow, .6);
+    } else {
+      // Rivets, a chimney that smokes and a furnace mouth.
+      ctx.fillStyle = shade(L.body, .3); for (let i = 0; i < 6; i++) circle(ctx, -r * .75 + i * r * .3, -r * 1.05, 3, shade(L.body, .35));
+      rect(ctx, r * .45, -r * 1.75, r * .25, r * .55, c.dark);
+      if (Math.random() < .35) this.pushAmbient({ x: en.x + r * .57, y: en.y - r * 1.8, vx: rand(-8, 8), vy: -50, life: 1.4, max: 1.4, size: 10, rot: 0, vr: 0, kind: 'smoke', color: 'rgba(60,50,48,.5)', phase: 0 });
+    }
+    const core = crystal ? c.glow : L.trim;
+    ctx.fillStyle = '#140c0a'; ctx.beginPath(); ctx.roundRect(-r * .32, -r * .7, r * .64, r * .45, 8); ctx.fill();
+    const fg = ctx.createRadialGradient(0, -r * .48, 2, 0, -r * .48, r * .35); fg.addColorStop(0, '#ffffff'); fg.addColorStop(.4, core); fg.addColorStop(1, alpha(core, 0));
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(-r * .3, -r * .68, r * .6, r * .41, 7); ctx.fill(); glow(ctx, 0, -r * .48, r * 1.1, core, .5 + raise * .5);
+    for (const s of [-1, 1]) { ellipse(ctx, look.x * 3 + s * r * .3, -r * .98, 5, 3.5, c.eye); if (awake) glow(ctx, look.x * 3 + s * r * .3, -r * .98, 13, c.eye, .9); }
+    for (const s of [-1, 1]) {
+      ctx.save(); ctx.translate(s * r * 1.08, -r * .55); ctx.rotate(s * (.3 - raise * 2.5) + step * .1);
+      ctx.fillStyle = c.body; ctx.beginPath(); ctx.roundRect(-r * .26, 0, r * .52, r * .9, 8); ctx.fill();
+      ctx.fillStyle = c.dark; ctx.beginPath(); ctx.roundRect(-r * .32, r * .8, r * .64, r * .42, 8); ctx.fill();
+      rect(ctx, -r * .22, r * .95, r * .44, 3, core);
+      ctx.restore();
+    }
+  }
+  /** A floating mask over a cloak of shadow: a crow-beaked mask of black feathers, or a blank white mask like a mirror. */
+  private bossMask(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, L: BossLook, c: BossColors, awake: boolean) {
+    const r = en.r * 1.1, hover = Math.sin(t * 1.8) * 8 - 22, feathers = L.style === 'feathers', cast = en.action === 'volley' || en.action === 'spiral' || en.action === 'nova' ? 1 : 0;
+    shadow(ctx, 0, en.r * 1.2, en.r, en.r * .32, .25);
+    ctx.translate(0, hover);
+    glow(ctx, 0, -r * .2, r * 3, c.glow, awake ? .55 : .18);
+    // The cloak: tatters of shadow, or long black feathers.
+    const cloak = feathers ? '#0e0a14' : '#1a1030';
+    for (let i = 0; i < 11; i++) {
+      const a = Math.PI * .1 + i / 10 * Math.PI * .8, len = r * (1.35 + Math.sin(t * 3 + i) * .12 + (i % 2) * .2);
+      ctx.fillStyle = i % 2 ? cloak : '#2a1c3a';
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .3, -r * .2); ctx.quadraticCurveTo(Math.cos(a) * len * .8, Math.sin(a) * len * .4, Math.cos(a) * len, Math.sin(a) * len * .8); ctx.lineTo(Math.cos(a + .12) * r * .3, -r * .2); ctx.fill();
+      if (feathers) { ctx.strokeStyle = alpha(L.trim, .6); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .5, -r * .1); ctx.lineTo(Math.cos(a) * len * .95, Math.sin(a) * len * .75); ctx.stroke(); }
+    }
+    // The mask itself.
+    const mg = ctx.createLinearGradient(-r * .6, -r * 1.2, r * .6, 0); mg.addColorStop(0, c.light); mg.addColorStop(1, c.body);
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.ellipse(0, -r * .65, r * .58, r * .75, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = alpha(L.trim, .9); ctx.lineWidth = 2.5; ctx.stroke();
+    if (feathers) {
+      ctx.fillStyle = c.dark; ctx.beginPath(); ctx.moveTo(-r * .12, -r * .6); ctx.lineTo(look.x * r * .2, -r * .05); ctx.lineTo(r * .12, -r * .6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = c.trim; for (let i = 0; i < 5; i++) { const a = -Math.PI * .9 + i * Math.PI * .2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .5, -r * .7 + Math.sin(a) * r * .65); ctx.lineTo(Math.cos(a) * r * .95, -r * .75 + Math.sin(a) * r * 1.1); ctx.lineTo(Math.cos(a + .15) * r * .5, -r * .7 + Math.sin(a + .15) * r * .65); ctx.fill(); }
+    } else {
+      // A mirror sheen and a crack across the blank face.
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(-r * .2, -r * .95, r * .12, r * .3, -.4, 0, TAU); ctx.fill();
+      ctx.strokeStyle = c.trim; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(r * .3, -r * 1.25); ctx.lineTo(r * .08, -r * .8); ctx.lineTo(r * .2, -r * .55); ctx.lineTo(-r * .05, -r * .15); ctx.stroke();
+    }
+    for (const s of [-1, 1]) {
+      ctx.fillStyle = '#05020c'; ctx.beginPath(); ctx.ellipse(look.x * 3 + s * r * .22, -r * .8, r * .13, r * .07, s * .3, 0, TAU); ctx.fill();
+      circle(ctx, look.x * 4 + s * r * .22, -r * .8, 3.2, L.eye === '#05020c' ? c.glow : c.eye); if (awake) glow(ctx, look.x * 4 + s * r * .22, -r * .8, 16, L.eye === '#05020c' ? c.glow : c.eye, .9);
+    }
+    for (const s of [-1, 1]) {
+      const hx = s * r * (1.1 + cast * .3), hy = -r * (.2 + cast * .4) + Math.sin(t * 2.6 + s * 2) * 8;
+      ctx.fillStyle = cloak; ctx.beginPath(); ctx.ellipse(hx, hy, r * .18, r * .22, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = c.trim; ctx.lineWidth = 2; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(hx, hy + r * .1); ctx.lineTo(hx + k * 6, hy + r * .38); ctx.stroke(); }
+      if (cast) glow(ctx, hx, hy, 28, c.glow, .9);
+    }
+  }
+  /** Umbra as one hero sees it: the same black sun, in that hero's colours, circled by the shapes of their fears. */
+  private bossEclipse(ctx: CanvasRenderingContext2D, en: Enemy, t: number, L: BossLook, c: BossColors) {
+    const r = en.r, ph = en.phase, hover = Math.sin(t * 1.6) * 10 - 26;
+    shadow(ctx, 0, r * 1.1, r * 1.3, r * .4, .4);
+    ctx.translate(0, hover);
+    glow(ctx, 0, 0, r * 4, ph === 3 ? '#ff3b6b' : L.glow, .8);
+    ctx.save(); ctx.rotate(t * .4);
+    for (let i = 0; i < 16; i++) { ctx.rotate(TAU / 16); const len = r * (1.5 + Math.sin(t * 3 + i) * .25 + (i % 2) * .3); const g = ctx.createLinearGradient(0, 0, len, 0); g.addColorStop(0, alpha(L.trim, 0)); g.addColorStop(.55, alpha(ph > 1 ? '#ff6b9a' : L.trim, .75)); g.addColorStop(1, alpha(L.trim, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(r * .9, -6); ctx.lineTo(len, 0); ctx.lineTo(r * .9, 6); ctx.fill(); }
+    ctx.restore();
+    circle(ctx, 0, 0, r * 1.02, c.body === '#ffffff' ? '#ffffff' : L.body);
+    ctx.strokeStyle = L.trim; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * 1.02, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = alpha(L.trim, .8); ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(0, 0, r * (.25 + i * .15), t * (2 + i) + i, t * (2 + i) + i + 2.2); ctx.stroke(); }
+    const eye = ph === 3 ? '#ff3b6b' : L.eye;
+    for (const s of [-1, 1]) { ellipse(ctx, s * r * .3, -r * .1, r * .14, r * .07, eye, s * .25); glow(ctx, s * r * .3, -r * .1, 22, eye, .9); }
+    // Three shapes circle it: shields, crystals, feathers or moons, whatever this hero fears losing.
+    for (let i = 0; i < 3; i++) {
+      const a = t * .9 + i * TAU / 3, ox = Math.cos(a) * r * 1.9, oy = Math.sin(a) * r * .8;
+      ctx.save(); ctx.translate(ox, oy);
+      if (L.style === 'shield') { ctx.fillStyle = '#3f5a8a'; ctx.beginPath(); ctx.moveTo(-10, -12); ctx.lineTo(10, -12); ctx.lineTo(9, 4); ctx.lineTo(0, 14); ctx.lineTo(-9, 4); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#c9cfd8'; ctx.lineWidth = 2; ctx.stroke(); }
+      else if (L.style === 'crystal') { ctx.fillStyle = '#dff6ff'; ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(7, 0); ctx.lineTo(0, 16); ctx.lineTo(-7, 0); ctx.closePath(); ctx.fill(); }
+      else if (L.style === 'feathers') { ctx.rotate(t * 2 + i); ctx.fillStyle = '#1a1026'; ctx.beginPath(); ctx.ellipse(0, 0, 5, 15, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = '#ff6b9a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, 14); ctx.stroke(); }
+      else { ctx.fillStyle = '#f2ecd8'; ctx.beginPath(); ctx.arc(0, 0, 12, 0, TAU); ctx.fill(); ctx.fillStyle = L.body; ctx.beginPath(); ctx.arc(5, -3, 11, 0, TAU); ctx.fill(); }
+      ctx.restore(); glow(ctx, ox, oy, 26, L.trim, .7);
+    }
+  }
   private drawSeal(ctx: CanvasRenderingContext2D, en: Enemy, t: number, e: GameEngine) {
     const r = en.r * 1.9, c = regionOf(e.world, en.x).palette.accent, found = e.keysFound(en.region);
     ctx.save(); ctx.translate(en.x, en.y - en.r * .3);
@@ -2399,6 +2691,7 @@ export class Renderer {
         ctx.restore();
       } else if (p.kind === 'knife') {
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + Math.PI / 2);
+        if (p.owner === 'enemy') { ctx.scale(1.6, 1.6); glow(ctx, 0, 0, 14, '#ff8f7a', .8); }
         glow(ctx, 0, 0, 12, '#e0c8ff', .6);
         rect(ctx, -1.5, 2, 3, 5, '#3a2a26'); ctx.fillStyle = '#eef0f8'; ctx.beginPath(); ctx.moveTo(-2.5, 2); ctx.lineTo(0, -10); ctx.lineTo(2.5, 2); ctx.closePath(); ctx.fill();
         ctx.restore();
