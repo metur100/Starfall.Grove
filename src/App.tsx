@@ -442,7 +442,7 @@ function App() {
         </div>
         {mode === 'practice' && <button className={`practice-guide-toggle ${practiceGuideOpen ? 'guide-button-on' : ''}`} onClick={() => setPracticeGuideOpen(open => !open)} aria-pressed={practiceGuideOpen} aria-label={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'} title={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'}><span>Spell guide</span><i className="guide-toggle-track"><b /></i></button>}
         {mode === 'practice' && practiceGuideOpen && <PracticeSpellGuide hero={hero} />}
-        {snapshot && !journal && !panel && <QuestTracker snapshot={snapshot} onOpen={() => { setJournal(true); setJournalTab('quests'); sfx.play('page'); }} />}
+        {snapshot && !journal && !panel && !mapOpen && <QuestTracker snapshot={snapshot} onOpen={() => { setJournal(true); setJournalTab('quests'); sfx.play('page'); }} />}
 
         {snapshot && snapshot.combo >= 3 && <div className="combo" key={`combo-${snapshot.combo}`}><b>{snapshot.combo}</b><small>COMBO</small></div>}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast tone-${t.tone} ${t.color ? 'loot' : ''}`} style={t.color ? { '--r': t.color } as CSSProperties : undefined}>{t.text}</div>)}</div>

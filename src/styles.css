@@ -240,7 +240,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .mana b { position: absolute; right: 6px; top: -1px; font: 900 10px var(--ui); color: #fff; text-shadow: 0 1px 2px #000; }
 .hud-center { position: absolute; left: 50%; transform: translateX(-50%); top: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; width: clamp(160px, calc(100vw - 560px), 560px); pointer-events: none; }
 /* Quest tracker: small objective text on the right, under the minimap. */
-.tracker { position: absolute; right: 14px; top: 234px; z-index: 3; width: 230px; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: right; cursor: pointer; }
+.tracker { position: absolute; right: 14px; top: 214px; z-index: 3; width: min(240px, 30vw); max-height: calc(100% - 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: right; cursor: pointer; }
 .trk { display: flex; flex-direction: column; gap: 1px; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, .8); }
 .trk b { font: 800 12.5px var(--ui); }
 .trk > span { font: 700 12px var(--ui); color: #e8ecf8; }
@@ -398,7 +398,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .stat-row b { font-size: 18px; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
-  .touch-actions { transform: scale(.72); transform-origin: bottom right; }
+  .touch-actions { transform: scale(.72); transform-origin: bottom right; right: 18px; bottom: 8px; }
   .virtual-stick { width: 150px; height: 150px; margin: -75px 0 0 -75px; left: 96px; top: calc(100% - 96px); }
   .title-hero { padding-top: 6px; }
   .title-logo { font-size: 54px; }
@@ -1213,8 +1213,13 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .title-actions { width: min(420px, 72vw); }
   .title-actions .btn { min-height: 54px; font-size: 18px; }
   .title-page .title-actions { gap: 8px; }
-  .hud-buttons { max-width: 180px; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-  .hud-buttons .icon-button { width: 34px; height: 34px; border-radius: 10px; font-size: 13px; }
+  .hud-buttons { max-width: none; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; white-space: nowrap; }
+  .hud-buttons .icon-button { width: 30px; height: 30px; padding: 0; border-radius: 8px; font-size: 12px; line-height: 0; display: grid; place-items: center; }
+  .tracker { top: 160px; right: 8px; width: min(220px, 34vw); max-height: 45px; overflow-y: auto; gap: 2px; }
+  .tracker .trk b { font-size: 10px; }
+  .tracker .trk > span { font-size: 9px; }
+  .spell.touch.slot-inner { right: 102px; }
+  .spell.touch.slot-top { bottom: 150px; }
   .practice-guide-toggle { top: 105px; left: 8px; }
   .practice-guide { top: 151px; max-height: calc(100% - 167px); width: min(285px, 42vw); }
   .practice-guide article { padding: 5px 0; }
