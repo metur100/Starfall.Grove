@@ -1,0 +1,263 @@
+/* ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Pop-up storybook theme. The world is drawn as paper cutouts; the interface is made of the same paper.
+   · Things that sit over the world (health, spells, prompts, toasts, buttons) are dark cardstock with a cream cut
+     edge ringed in ink and a crisp paper shadow, exactly like the stickers of the heroes and villagers.
+   · Things you read (the journal and spellbook, the character sheet and bag, shops, dialogue, the pause menu,
+     settings, the map) are parchment pages with ink text and a ruled border.
+   This file only recolours: every size and position (and every phone, tablet and desktop layout) stays in styles.css.
+   ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ink: #1d1520;
+  --night: #2a2030;
+  --plum: #2f2330;
+  --glass: rgba(45, 33, 50, .95);
+  --glass-strong: rgba(38, 28, 43, .97);
+  --line: rgba(255, 236, 205, .42);
+  --gold: #f2c96a;
+  --gold-2: #e8a94a;
+  --cream: #fff4de;
+  --muted: #cdbcb6;
+  --paper: #f3e6cb;
+  --paper-2: #e8d7b3;
+  --paper-3: #fbf4e4;
+  --paper-ink: #3b2a2f;
+  --paper-muted: #7c6760;
+  --paper-line: rgba(59, 42, 47, .22);
+  --edge: #fff1d6;
+  --shadow: 3px 4px 0 rgba(18, 10, 20, .5);
+  --grain-dark: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .95  0 0 0 0 .88  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --grain-light: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .3  0 0 0 0 .2  0 0 0 0 .18  0 0 0 .13 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background: var(--ink);
+}
+body { background: var(--ink); }
+kbd { border: 1.5px solid var(--edge); border-bottom-width: 3px; background: var(--plum); color: var(--cream); border-radius: 5px; }
+
+/* ─────────── cardstock: everything that sits over the world */
+.vitals, .spellbar, .toast, .near-prompt, .icon-button, .gold-chip, .select-info, .roster-card, .last-played,
+.practice-guide, .practice-guide-toggle, .ach-pop, .cd-card, .update-pill, .work-bar, .cine-skip, .buff::before,
+.tutorial-select-card, .tutorial-roster, .practice-board, .hero-choice, .title-page .title-foot {
+  background-color: var(--glass); background-image: var(--grain-dark);
+  border: 2px solid var(--edge);
+  box-shadow: 0 0 0 1.5px var(--ink), var(--shadow);
+}
+.buff::before { border-width: 1.5px; box-shadow: none; }
+.icon-button { border-radius: 12px; }
+.icon-button:hover { background-color: #3d2e44; transform: translateY(-2px) rotate(-2deg); }
+.vitals { border-radius: 999px 22px 22px 999px; }
+.gold-chip { border-width: 1.5px; color: #ffe38a; }
+.toast.tone-good { border-color: #d9f5c0; color: #eaffd9; }
+.toast.tone-warn { border-color: #ffd2b8; color: #ffe8da; }
+.toast.tone-epic { border-color: var(--gold); color: #fff3cf; box-shadow: 0 0 0 1.5px var(--ink), var(--shadow), 0 0 26px rgba(242, 201, 106, .35); }
+.toast.loot { border-color: var(--r); box-shadow: 0 0 0 1.5px var(--ink), var(--shadow), 0 0 22px color-mix(in srgb, var(--r) 40%, transparent); }
+.near-prompt { border-color: var(--gold); }
+.near-prompt kbd { background: var(--gold); color: var(--paper-ink); border-color: var(--paper-ink); }
+.near-prompt.compact { background-image: var(--grain-light), linear-gradient(180deg, #ffe49a, #f2bd4a 60%, #e0993a); border: 2px solid var(--paper-ink); box-shadow: 0 0 0 2px var(--edge), var(--shadow); }
+.near-prompt.compact::after { background: #e0993a; border-right: 2px solid var(--paper-ink); border-bottom: 2px solid var(--paper-ink); }
+.near-prompt.compact span { color: var(--paper-ink); }
+
+/* Health, magic and experience: strips of card set in ink. */
+.health, .mana, .xp { border: 1.5px solid var(--ink); box-shadow: 0 0 0 1px rgba(255, 241, 214, .5); }
+.health { background: #5a1f28; }
+.health .fill { background: linear-gradient(180deg, #ff9a90, #e2434f 55%, #b5263c); }
+.health b, .mana b, .xp b { text-shadow: -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink), 1px 1px 0 var(--ink); }
+.mana, .xp { background: #2a2030; }
+/* The ink border eats into the thin bars, so they grow by its width and the numbers sit in the middle of the strip. */
+.mana, .xp { height: 13px; }
+.mana b, .xp b { top: 50%; transform: translateY(-50%); line-height: 1; font-size: 8.5px; }
+.xp.wide { height: 14px; } .xp.wide b { top: 50%; line-height: 1; font-size: 9px; }
+@media (max-width: 640px), (max-height: 520px) and (orientation: landscape) {
+  .mana, .xp { height: 11px; }
+  .mana b, .xp b { font-size: 7.5px; }
+}
+.portrait { border: 2.5px solid var(--edge); box-shadow: 0 0 0 1.5px var(--ink), 2px 3px 0 rgba(18, 10, 20, .45); background: radial-gradient(circle at 35% 30%, #fff1d0, #e8a45e 60%, #8a4a52); }
+.level-badge { border: 2px solid var(--ink); background: linear-gradient(135deg, #fff1b8, #f2b84a); box-shadow: 1px 2px 0 rgba(18, 10, 20, .5); }
+
+/* Spell buttons: round paper tokens with the spell's colour, cut edge and ink ring. */
+.spell { border: 2px solid var(--edge); box-shadow: 0 0 0 1.5px var(--ink), 2px 3px 0 rgba(18, 10, 20, .5); background-color: #2e2434; background-image: var(--grain-dark), radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--spell) 38%, #3a2c40), #241b29 78%); }
+.spell.ready { border-color: color-mix(in srgb, var(--spell) 55%, var(--edge)); box-shadow: 0 0 0 1.5px var(--ink), 2px 3px 0 rgba(18, 10, 20, .5), 0 0 16px color-mix(in srgb, var(--spell) 45%, transparent); }
+.spell.active { border-color: #fff; box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--spell), 0 0 24px var(--spell); }
+.spell-icon-wrap b { text-shadow: -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink), 1px 1px 0 var(--ink), 0 0 12px var(--spell); }
+.spell .cd { background: conic-gradient(rgba(20, 12, 24, .78) var(--cd), transparent 0); }
+.spell kbd { background: var(--paper); color: var(--paper-ink); border-color: var(--paper-ink); }
+.spell small { text-shadow: -1px -1px 0 var(--ink), 1px 1px 0 var(--ink); }
+.spellbar { border-radius: 26px; }
+.bar-gap { background: var(--edge); opacity: .4; }
+.virtual-stick { background: radial-gradient(circle, rgba(255, 244, 222, .1), rgba(29, 21, 32, .5)); border: 3px solid rgba(255, 241, 214, .55); box-shadow: 0 0 0 1.5px rgba(29, 21, 32, .6); }
+.stick-thumb { background: radial-gradient(circle at 40% 35%, #fff6d8, #f2bd4a); border: 2.5px solid var(--paper-ink); box-shadow: 0 0 0 2px var(--edge), 3px 4px 0 rgba(18, 10, 20, .45); }
+
+/* Buttons: a gold card you can press, and a plain one. */
+.btn { border-radius: 16px; }
+.btn.primary { background-color: #f2c24e; background-image: var(--grain-light), linear-gradient(180deg, #ffe08a, #f2bd4a 55%, #df963a); color: var(--paper-ink); border: 2px solid var(--paper-ink); box-shadow: 0 0 0 2px var(--edge), 0 5px 0 2px #6a4418; }
+.btn.primary:hover { box-shadow: 0 0 0 2px var(--edge), 0 7px 0 2px #6a4418; }
+.btn.primary:active { box-shadow: 0 0 0 2px var(--edge), 0 2px 0 2px #6a4418; transform: translateY(3px); }
+.btn.primary::after { background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .45) 50%, transparent 65%); }
+.btn.ghost { background-color: var(--glass); background-image: var(--grain-dark); color: var(--cream); border: 2px solid var(--edge); box-shadow: 0 0 0 1.5px var(--ink), var(--shadow); }
+.btn.ghost:hover { background-color: #3d2e44; }
+.btn.danger { border-color: #ffb8a8; color: #ffd4cc; }
+
+/* ─────────── parchment: everything you read */
+.journal, .side-panel, .panel, .dialogue, .item-card, .gear-tip, .spell-card, .char-screen, .map-overlay {
+  --cream: var(--paper-ink); --muted: var(--paper-muted); --gold: #9a6414; --line: rgba(59, 42, 47, .3);
+  --side-q: #2e6aa8; --main-q: #a86e0c; --mana: #2a6fb8; --glass: rgba(59, 42, 47, .06); --glass-strong: var(--paper-3);
+  color: var(--paper-ink);
+  background-color: var(--paper); background-image: var(--grain-light), radial-gradient(ellipse at 50% 40%, rgba(255, 252, 240, .7), rgba(232, 215, 179, 0) 75%);
+  border: 2px solid var(--paper-ink);
+  box-shadow: inset 0 0 0 5px var(--paper), inset 0 0 0 6.5px rgba(59, 42, 47, .3), 0 0 0 2px var(--edge), 5px 7px 0 rgba(18, 10, 20, .45);
+}
+.journal, .side-panel { border-width: 0 0 0 2px; box-shadow: inset 6px 0 0 var(--paper), inset 7.5px 0 0 rgba(59, 42, 47, .3), -2px 0 0 var(--edge), -8px 0 0 rgba(18, 10, 20, .35); }
+.char-screen { border: 0; box-shadow: none; background-image: var(--grain-light), radial-gradient(ellipse at 30% 40%, #fbf1dc, #e8d4ad 80%); }
+.map-overlay { border: 0; box-shadow: none; background-color: rgba(243, 230, 203, .97); }
+.overlay { background: rgba(29, 18, 30, .55); }
+.item-card-wrap { background: rgba(29, 18, 30, .35); }
+.dialogue { border-color: var(--paper-ink); }
+.dialogue:hover { box-shadow: inset 0 0 0 5px var(--paper), inset 0 0 0 6.5px rgba(59, 42, 47, .4), 0 0 0 2px var(--edge), 5px 7px 0 rgba(18, 10, 20, .45); }
+.dialogue-portrait { background: var(--paper-3); border: 2px solid var(--paper-ink); box-shadow: 2px 3px 0 rgba(59, 42, 47, .35); }
+.dialogue-body strong { color: #8a3a2a; }
+.dialogue-body p { color: var(--paper-ink); }
+.caret { background: #8a3a2a; }
+.dialogue-foot em { color: #8a3a2a; }
+
+/* Plain buttons and chips on a page: ink on paper. */
+:is(.journal, .side-panel, .panel, .dialogue, .item-card, .char-screen, .map-overlay, .spell-card) .btn.ghost { background-color: var(--paper-3); background-image: none; color: var(--paper-ink); border: 2px solid var(--paper-ink); box-shadow: 2px 3px 0 rgba(59, 42, 47, .35); }
+:is(.journal, .side-panel, .panel, .dialogue, .item-card, .char-screen, .map-overlay, .spell-card) .btn.ghost:hover { background-color: #fff; }
+:is(.journal, .side-panel, .panel, .dialogue, .item-card, .char-screen, .map-overlay, .spell-card) .btn.primary { box-shadow: 0 5px 0 #6a4418; border-color: var(--paper-ink); }
+:is(.journal, .side-panel, .panel, .dialogue, .item-card, .char-screen, .map-overlay, .spell-card) .btn.danger { color: #9a2a1e; border-color: #b8453a; background-color: #f7d8cc; }
+:is(.journal, .side-panel, .panel, .char-screen, .map-overlay) .icon-button { background-color: var(--paper-3); background-image: none; border: 2px solid var(--paper-ink); color: var(--paper-ink); box-shadow: 2px 3px 0 rgba(59, 42, 47, .35); }
+:is(.journal, .side-panel, .panel, .char-screen, .map-overlay) .gold-chip { background-color: var(--paper-ink); background-image: none; border-color: var(--paper-ink); box-shadow: none; }
+:is(.journal, .side-panel, .panel, .char-screen, .item-card, .gear-tip, .spell-card, .dialogue, .map-overlay) kbd { background: var(--paper-3); color: var(--paper-ink); border-color: var(--paper-ink); }
+.journal section, .side-panel section, .stats-pane section, .setting-row, .key-controls, .hero-card { border-color: var(--paper-line) !important; }
+.journal-tabs button, .seg, .ach-cats button, .map-tabs button { background: rgba(255, 252, 240, .55); border: 1.5px solid var(--paper-line); color: var(--paper-muted); }
+.journal-tabs button.on, .seg button.on, .ach-cats button.on, .map-tabs button.on { background: var(--paper-ink); color: var(--paper); border-color: var(--paper-ink); box-shadow: 2px 3px 0 rgba(59, 42, 47, .3); }
+.seg { padding: 3px; } .seg button { color: var(--paper-muted); } .seg button.on { color: var(--paper); }
+.map-tabs button small, .ach-cats button small { color: inherit; opacity: .75; }
+
+/* The journal: quests, spellbook, achievements. */
+.journal-head strong { color: #7a3322; }
+.q-main { border-left-color: var(--main-q); }
+.q-main .main-q { color: var(--paper-ink); }
+.q-main .sub-q { color: var(--paper-muted); }
+.side:hover { background: rgba(59, 42, 47, .05); }
+.side b { color: #1f4a78; }
+.side em.reward { color: #5c7892; }
+.side > span { border-color: var(--paper-line); }
+.side.tracked { border-color: rgba(46, 106, 168, .55); background: rgba(46, 106, 168, .08); }
+.side.status-available > span, .side.status-ready > span { color: #fff; }
+.side.done > span, .side.status-done > span { background: #6aa84f; color: #fff; border-color: #4f8a3a; }
+.story li { color: var(--paper-ink); }
+.story li.done { color: var(--paper-muted); }
+.story li.personal { color: #5a3a8a; }
+.story li .own { color: #6a4ab0; }
+.fox-tip p { color: #5a3a2a; }
+.book-spell { background: rgba(255, 252, 240, .6); border: 1.5px solid var(--paper-line); box-shadow: 2px 3px 0 rgba(59, 42, 47, .12); }
+.book-spell > b { background: color-mix(in srgb, var(--spell) 30%, #3a2c40); border: 2px solid var(--paper-ink); color: #fff; text-shadow: -1px -1px 0 var(--ink), 1px 1px 0 var(--ink); }
+.book-stats { color: #8a5a10 !important; }
+.stars i { color: rgba(59, 42, 47, .18); } .stars i.on { color: #d9962a; text-shadow: 0 1px 0 #6a4418; }
+.star-bonus.on { color: #3f7a2a; }
+.btn.star-buy .price { color: #8a5a10; }
+.ach-summary strong { color: #7a3322; }
+.ach-bar { background: rgba(59, 42, 47, .12); }
+.ach-row { background: rgba(255, 252, 240, .55); border: 1.5px solid var(--paper-line); }
+.ach-row strong { color: var(--paper-muted); }
+.ach-row.got { background: linear-gradient(90deg, rgba(242, 201, 106, .3), rgba(255, 252, 240, .5)); border-color: rgba(154, 100, 20, .55); }
+.ach-row.got strong { color: var(--paper-ink); }
+.ach-date { color: #3f7a2a; }
+.stable-card { background: rgba(255, 252, 240, .55); border: 1.5px solid var(--paper-line); }
+.stable-card strong { color: var(--paper-ink); }
+.stable-card.on { background: linear-gradient(90deg, rgba(242, 201, 106, .35), rgba(255, 252, 240, .5)); border-color: #9a6414; }
+
+/* Offers at the end of a conversation. */
+.offer-info { background: rgba(46, 106, 168, .08); border: 1.5px solid rgba(46, 106, 168, .5); }
+.offer-info b { color: #1f4a78; }
+.offer-info em { color: var(--paper-muted); }
+.offer-info span { color: #8a5a10; }
+.offer-info.main { background: rgba(242, 201, 106, .2); border-color: rgba(154, 100, 20, .6); }
+.offer-info.main b { color: #6a3a0a; }
+
+/* Bag, shops and the character sheet. */
+.bag-item { background: rgba(255, 252, 240, .6); border: 1.5px solid color-mix(in srgb, var(--c) 55%, var(--paper-line)); }
+.bag-icon { background: color-mix(in srgb, var(--c) 22%, var(--paper-3)); border: 1.5px solid var(--paper-ink); }
+.bag-icon b { background: var(--paper-ink); color: var(--paper); border-color: var(--paper-ink); }
+.stat-lines { color: #2f6a2a; } .stat-lines li.lost { color: #a8322a; }
+.stat-lines em.up, .armoury-item .stat-lines em.up, .score-line.up { color: #2f7a2f; }
+.stat-lines em.down, .armoury-item .stat-lines em.down, .score-line.down { color: #b0322a; }
+.hero-card > div > b, .char-title b { color: #7a3322; }
+.doll, .char-side { background: rgba(255, 252, 240, .45); border: 2px solid var(--paper-ink); box-shadow: inset 0 0 0 4px rgba(255, 252, 240, .5), 3px 4px 0 rgba(59, 42, 47, .2); }
+.doll-slot { background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--r) 25%, var(--paper-3)), color-mix(in srgb, var(--r) 10%, var(--paper-2))); border: 2px solid color-mix(in srgb, var(--r) 70%, var(--paper-ink)); box-shadow: 2px 3px 0 rgba(59, 42, 47, .25); }
+.doll-slot.empty { background: rgba(255, 252, 240, .5); border: 2px dashed rgba(59, 42, 47, .35); box-shadow: none; }
+.doll-slot small { background: var(--paper-ink); color: var(--paper); }
+.bag-slot { background: linear-gradient(180deg, var(--paper-3), var(--paper-2)); border: 1.5px solid rgba(59, 42, 47, .3); box-shadow: inset 0 -2px 0 rgba(59, 42, 47, .12); }
+.bag-slot[class*=' r-'] { border: 2px solid var(--r); box-shadow: inset 0 0 12px color-mix(in srgb, var(--r) 28%, transparent); }
+.bag-slot .stack { color: #fff; text-shadow: -1px -1px 0 var(--paper-ink), 1px -1px 0 var(--paper-ink), -1px 1px 0 var(--paper-ink), 1px 1px 0 var(--paper-ink); }
+.upgrade-arrow { color: #2f8a2f; text-shadow: 0 1px 0 #fff; } .upgrade-arrow.down { color: #b8322a; text-shadow: 0 1px 0 #fff; }
+.item-card p, .item-card p.compare { color: var(--paper-muted); }
+.card-icon { background: color-mix(in srgb, var(--c, #8890b0) 20%, var(--paper-3)); border: 2px solid var(--paper-ink); }
+.tip-worn { background: rgba(59, 42, 47, .05); border: 1.5px solid var(--paper-line); }
+.pips i { background: rgba(59, 42, 47, .15); } .pips i.on { background: #d9962a; box-shadow: none; }
+.stage-fallback { color: var(--paper-ink); }
+
+/* Pause, settings, victory, mini-games. */
+.pause-panel h2, .victory-panel h1, .exit-panel h2 { color: #7a3322; }
+.controls-grid, .volume-grid label, .graphics-row, .map-legend { color: var(--paper-muted); }
+.setting-row b, .kc-head b, .kc-key, .dg-line { color: var(--paper-ink); }
+.kc-key { background: rgba(255, 252, 240, .6); border: 1.5px solid var(--paper-line); }
+.kc-key.listening { background: rgba(242, 201, 106, .3); border-color: #9a6414; }
+.kc-note { color: #8a5a10; }
+.backup-panel { background: rgba(46, 106, 168, .07); border: 1.5px solid rgba(46, 106, 168, .35); }
+.backup-panel b { color: #1f4a78; } .backup-confirm { background: rgba(59, 42, 47, .06); } .backup-confirm p { color: var(--paper-ink); }
+.backup-msg.good { color: #2f7a2f; } .backup-msg.warn { color: #b0322a; }
+.danger-zone { background: rgba(184, 69, 58, .08); border: 1.5px solid rgba(184, 69, 58, .4); }
+.danger-zone b { color: #9a2a1e; }
+.dz-pick select { background: var(--paper-3); color: var(--paper-ink); border: 1.5px solid var(--paper-ink); }
+.settings-panel .settings-close { background: var(--paper-3); }
+.stat-row div, .dg-score { background: rgba(255, 252, 240, .6); border: 1.5px solid var(--paper-line); }
+.dg-row em { color: var(--paper-ink); } .dg-row.mine em { color: #2f7a2f; }
+.die { border: 2px solid var(--paper-ink); box-shadow: 3px 4px 0 rgba(59, 42, 47, .35), inset 0 -4px 0 rgba(0, 0, 0, .1); }
+.star-row span { color: rgba(59, 42, 47, .15); } .star-row span.on { color: #e0a02a; text-shadow: 0 2px 0 #6a4418; }
+.victory-panel p { color: var(--paper-muted); }
+.victory-panel h1 { background: none; -webkit-background-clip: initial; background-clip: initial; color: #7a3322; }
+
+/* A spell learned: a page torn from the spellbook. */
+.spell-card { border-color: var(--paper-ink); }
+.spell-card h2 { color: #7a3322; }
+.spell-card p { color: var(--paper-muted); }
+.spell-icon { color: #fff; background: radial-gradient(circle at 40% 35%, #fff, var(--spell) 70%); border: 3px solid var(--paper-ink); box-shadow: 0 0 0 3px var(--edge), 4px 5px 0 rgba(59, 42, 47, .35); text-shadow: -1px -1px 0 var(--ink), 1px 1px 0 var(--ink); }
+.spell-banner { background: rgba(29, 18, 30, .55); }
+
+/* The map on parchment. */
+.map-head strong { color: #7a3322; }
+.map-overlay canvas { border: 2px solid var(--paper-ink); box-shadow: 0 0 0 5px var(--paper), 0 0 0 6.5px rgba(59, 42, 47, .35), 4px 6px 0 rgba(59, 42, 47, .3); }
+
+/* ─────────── banners over the world: gold foil lettering with an ink edge */
+.chapter-banner h2, .level-banner b, .cd-card h2, .select-info h1, .title-logo span { -webkit-text-stroke: 1.5px rgba(29, 21, 32, .85); paint-order: stroke fill; }
+.chapter-banner h2, .level-banner b { filter: drop-shadow(3px 5px 0 rgba(18, 10, 20, .55)); }
+.region-banner h3, .zone-banner, .boss-name h2, .cine-title h2 { color: var(--cream); -webkit-text-stroke: 1.2px rgba(29, 21, 32, .9); paint-order: stroke fill; text-shadow: 0 2px 0 rgba(18, 10, 20, .75), 0 0 16px rgba(18, 10, 20, .5); }
+.boss-name h2 { color: #ffe0d6; text-shadow: 4px 6px 0 #4a0d12; }
+.region-banner em { background: #b8322a; border: 2px solid var(--edge); box-shadow: 0 0 0 1.5px var(--ink), var(--shadow); }
+.boss-track, .siege-track { border: 2px solid var(--ink); box-shadow: 0 0 0 1.5px var(--edge), var(--shadow); }
+.letterbox, .cine-bar { background: #140d16; }
+.cine-caption p { color: var(--cream); text-shadow: 2px 3px 0 rgba(10, 6, 12, .85); }
+.combo b { color: var(--gold); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 4px 0 rgba(18, 10, 20, .6); }
+.ach-pop, .cd-card { border-color: var(--gold); }
+.ach-shield::after { background: linear-gradient(170deg, #4a3450, #2a1e2e); }
+
+/* ─────────── title and hero select */
+.title-page .title-hero::before { background: radial-gradient(closest-side, rgba(29, 18, 30, .55), rgba(29, 18, 30, 0)); }
+.title-logo { filter: drop-shadow(4px 7px 0 rgba(18, 10, 20, .6)); }
+.title-logo span { -webkit-text-stroke: 2px rgba(29, 21, 32, .9); }
+.select-vignette { background: radial-gradient(ellipse 60% 70% at 50% 55%, rgba(29, 18, 30, 0) 35%, rgba(20, 12, 22, .78) 100%); }
+.roster-card.on { border-color: var(--gold); background-image: var(--grain-dark), linear-gradient(90deg, rgba(242, 201, 106, .28), rgba(242, 201, 106, .06)); box-shadow: 0 0 0 1.5px var(--ink), var(--shadow), 0 0 22px rgba(242, 201, 106, .3); }
+.roster-card:hover { transform: translateX(-4px) rotate(-.6deg); }
+.select-spells span { border: 2px solid var(--edge); box-shadow: 0 0 0 1.5px var(--ink); background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--spell) 38%, #3a2c40), #241b29); }
+.select-spells b { text-shadow: -1px -1px 0 var(--ink), 1px 1px 0 var(--ink); }
+.traits i { background: rgba(255, 244, 222, .14); } .traits i.on { background: linear-gradient(90deg, #ffe49a, #f2b84a); box-shadow: 0 0 0 1px var(--ink); }
+
+/* ─────────── portraits cut from the paper figures */
+.hero-face.paper { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.portrait .hero-face.paper { border-radius: 50%; }
+.portrait > span { width: 100%; height: 100%; }
+.portrait span { animation: none; }
+.dialogue-portrait { overflow: hidden; padding: 0; }
+.stage-fallback .hero-face.paper { width: min(40vh, 240px); height: auto; }
+
+/* Scrollbars on the book pages: a thin ink line instead of the system grey. */
+.journal, .journal *, .side-panel, .side-panel *, .panel, .panel *, .char-screen, .char-screen *, .map-overlay, .map-overlay * { scrollbar-width: thin; scrollbar-color: rgba(59, 42, 47, .38) transparent; }

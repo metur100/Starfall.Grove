@@ -11,6 +11,8 @@ import '@fontsource/nunito/latin-900.css';
 import App from './App';
 import { startOffline } from './pwa';
 import './styles.css';
+// The storybook paper theme, laid over the layout above.
+import './theme.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
 

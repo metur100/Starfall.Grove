@@ -835,6 +835,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .bag-slot kbd { position: absolute; top: 2px; left: 2px; min-width: 0; padding: 0 3px; font-size: 8px; border-bottom-width: 1px; }
 .bag-slot.quick::after { content: '⚡'; position: absolute; top: 1px; right: 3px; font-size: 10px; }
 .upgrade-arrow { position: absolute; top: 1px; right: 4px; font-style: normal; font-size: 11px; color: #5fdc6a; text-shadow: 0 0 6px #5fdc6a; }
+.stats-pane { padding-right: 10px; }
 .stats-pane section { padding: 10px 2px; border-bottom: 1px solid rgba(255, 255, 255, .07); }
 .stats-pane section > small { font: 800 10px var(--ui); letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
 .item-card-wrap { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 14, .5); animation: fade-in .15s both; }
@@ -920,6 +921,14 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .char-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr); }
   .char-xp { display: none; }
   .doll-slot { width: 50px; height: 50px; }
+}
+/* Upright tablets: the doll gets the full width on top, the bag and stats below, instead of two thin columns. */
+@media (min-width: 641px) and (max-width: 1100px) and (orientation: portrait) {
+  .char-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* Very wide monitors: the sheet stays a readable width in the middle rather than stretching edge to edge. */
+@media (min-width: 1700px) {
+  .char-head, .char-body { width: 100%; max-width: 1600px; margin-left: auto; margin-right: auto; }
 }
 
 /* ─────────── title: everything centred in one column, the tools tucked in the corner */
@@ -1051,7 +1060,7 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .map-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: calc(100vw - 80px); }
   .map-tabs button { flex: none; }
 }
-/* Portrait phones: four heroes fit in one row of small cards (face and name) under the info panel. */
+/* Portrait phones: five heroes fit in one row of small cards (face and name) under the info panel. */
 @media (max-width: 640px) and (orientation: portrait) {
   .select-stage { height: 42%; }
   .select-info { bottom: 188px; }

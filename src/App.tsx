@@ -20,7 +20,7 @@ import { applyUpdate, onUpdateReady } from './pwa';
 import type { EngineEvent, GameSnapshot, HeroId, ItemId, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
-import { GearIcon, HeroFace, ItemIcon, JournalIcon } from './ui/icons';
+import { GearIcon, HeroFace, ItemIcon, JournalIcon, PersonFace } from './ui/icons';
 import { CineOverlay, IntroFilm, SiegeBar } from './ui/Story';
 import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
 import { TRAILS, TRAIL_ORDER } from './game/trails';
@@ -253,6 +253,8 @@ function App() {
   const line = dialogue ? dialogue.lines[dialogue.index] : '';
   const lastLine = !!dialogue && dialogue.index >= dialogue.lines.length - 1 && typed >= line.length;
   const offerOpen = lastLine && (!!dialogue?.offer || !!dialogue?.choice);
+  /** The villager speaking, drawn as they look in the world (the lines only carry their name). */
+  const speakerNpc = dialogue ? engineRef.current?.npcs.find(n => n.name === dialogue.speaker) : undefined;
   // The quest buttons ignore taps for a moment after they appear, so a tap meant to skip the text can't answer the offer.
   const [offerArmed, setOfferArmed] = useState(false);
   useEffect(() => { if (!offerOpen) { setOfferArmed(false); return; } const t = window.setTimeout(() => setOfferArmed(true), 550); return () => window.clearTimeout(t); }, [offerOpen, dialogue]);
@@ -493,7 +495,7 @@ function App() {
         </div>}
 
         {dialogue && <div className={`dialogue ${dialogue.offer ? 'has-offer' : ''} ${offerOpen ? 'offer-open' : ''}`} onClick={advanceDialogue} role="dialog" aria-modal="true">
-          <div className="dialogue-portrait">{dialogue.portrait.startsWith('hero:') ? <HeroFace hero={dialogue.portrait.slice(5) as HeroId} /> : dialogue.portrait}</div>
+          <div className="dialogue-portrait">{dialogue.portrait.startsWith('hero:') ? <HeroFace hero={dialogue.portrait.slice(5) as HeroId} /> : speakerNpc && !speakerNpc.beast ? <PersonFace id={speakerNpc.id} look={speakerNpc.look} /> : dialogue.portrait}</div>
           <div className="dialogue-body">
             <strong>{dialogue.speaker}</strong>
             <p>{line.slice(0, typed)}<span className="caret" /></p>
@@ -587,7 +589,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
     <section className="title-hero">
       <small className="eyebrow">A storybook action RPG</small>
       <h1 className="title-logo"><span>Starfall</span><span>Grove</span></h1>
-      <p className="title-tag">Four lands · four heroes · one fallen star</p>
+      <p className="title-tag">Four lands · five heroes · one fallen star</p>
       <p className="title-blurb">A fallen star has dimmed the valley, and Master Orrin has vanished. Cross sunlit meadows, whispering woods, the silver summit and the burning Ember Wastes. Help the valley folk, gather loot, earn achievements — and learn what hides inside the Hollow Star.</p>
       <div className="menu-actions title-actions"><button className="btn primary big play-button" onClick={onPlay}>Play <b>→</b></button><button className="btn ghost big" onClick={onTutorial}>Tutorial <b>✦</b></button></div>
       {last && <button className="last-played" onClick={onPlay}><span className="portrait"><HeroFace hero={hero} /></span><span><b>{HEROES[hero].name} · Level {last.level}</b><small>{last.where}</small></span></button>}

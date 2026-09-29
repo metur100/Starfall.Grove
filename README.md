@@ -2,7 +2,7 @@
 
 A responsive single-player 2D action RPG built with React, TypeScript and Vite. The world is drawn with the Canvas 2D API, and React handles the menus, HUD, touch controls, dialogue, journal and map. All in-game music and sound are synthesized live with Web Audio. The only media files are the five hero intro films (`public/intro/`).
 
-**Plays offline and installs like an app.** A service worker (made by `vite-plugin-pwa`) keeps every game file on the device after the first visit, so the game opens with no connection and loads faster. The app manifest lets phones and PCs install it to the home screen, where it opens full screen with its own icon. A new version downloads quietly in the background; the title screen then shows **A new version is ready · Restart**, so it never reloads in the middle of a fight. The fonts (Cinzel Decorative, Cinzel, Nunito) ship with the game, latin letters and used weights only, so text never jumps when a font arrives late. Until the code has loaded, `index.html` shows its own loading screen (logo, a spinning star and rising sparks), which fades once the fonts are in.
+**Plays offline and installs like an app.** A service worker (made by `vite-plugin-pwa`) keeps every game file on the device after the first visit, so the game opens with no connection and loads faster. The app manifest lets phones and PCs install it to the home screen, where it opens full screen with its own icon. A new version downloads quietly in the background; the title screen then shows **A new version is ready · Restart**, so it never reloads in the middle of a fight. The fonts (Cinzel Decorative, Cinzel, Nunito) ship with the game, latin letters and used weights only, so text never jumps when a font arrives late. Until the code has loaded, `index.html` shows its own loading screen (the name in inked letters, a spinning paper star and a card loading bar), which fades once the fonts are in.
 
 ## Run the project
 
@@ -109,9 +109,9 @@ The last chapter ends with Umbra, then an epilogue shows every light shining. Th
 
 ## Levels, spells and quests
 
-There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands in 3D on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
+There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands as a paper puppet on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
 
-The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, which is loaded only when a 3D view is first shown. Without WebGL a large portrait is shown instead.
+The pedestal (`src/ui/paperStage.ts`) draws the same figure the world uses, only larger: it breathes, turns in four steps when dragged, shows off a spell now and then and wears the equipped gear. Tuft or Fenn sit beside Mira and Wren.
 
 | Level | Mira, Astralmancer (ranged) | Kael, Knight (melee) | Lyra, Frostweaver (ranged) | Riven, Assassin (melee) |
 | --- | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ The 3D heroes (`src/ui/hero3d.ts`) are built from simple shapes with three.js, w
 | 6 | Guardian Stars (J): three stars circle her for 8 s, each catches one blow | Earthsplitter (J): stunning shockwave | Ice Block (J): frozen in ice, nothing can harm her, press again to break out | Stealth (J): invisible to every creature for up to 15 s, first strike deals triple damage |
 | 10 | Starfall (H) | Bladestorm (H): 3 s whirlwind, half damage taken | Blizzard (H): 4 s of ice raining on a pack | Death Mark (H): the toughest foe near you bursts after 2 s |
 
-**Wren, Ranger (ranged), with Fenn the wolf:** Quick Shot (L): an arrow that pierces the first creature it hits · Fenn: Attack / Passive (E): a command to Fenn (see below) · Volley (K, level 3): seven arrows in a fan · Snare Trap (J, level 6): a trap at her feet that catches and hurts the first creatures to step on it for 3 s (up to three traps, 20 s each) · Call of the Wild (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. In 3D he sits beside her on the pedestal.
+**Wren, Ranger (ranged), with Fenn the wolf:** Quick Shot (L): an arrow that pierces the first creature it hits · Fenn: Attack / Passive (E): a command to Fenn (see below) · Volley (K, level 3): seven arrows in a fan · Snare Trap (J, level 6): a trap at her feet that catches and hurts the first creatures to step on it for 3 s (up to three traps, 20 s each) · Call of the Wild (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. On the pedestal he sits beside her.
 
 **The toggles:**
 - **Fenn's command** (Wren, E): pressed while Fenn is attacking, he goes **passive**: he stays at her heel and attacks nothing, even what she shoots (the button shows 💤 and glows). Pressed again, he goes back to **attack**: he pounces on the nearest foe within 520 px and stuns it (the pounce needs 5 s to come back). Out of combat that means he picks the nearest creature and starts the fight. Call of the Wild always sends him back to attack.
@@ -137,9 +137,9 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Spell stars:** every ability can be upgraded five times in the spellbook (U) with gold. Each star adds 12% damage (15% for Charge, Gravity Well and Fenn's pounce); Blink, Shadowstep, Ice Block and Stealth get 8% shorter cooldowns per star, and Shield Wall and Call of the Wild last 12% longer. Stars bought for a spell that was replaced (Dash, Moss Shield, Ice Barrier, Smoke Veil, Tumble) carry over to the spell in its place. Star *n* needs hero level `ability level + 3 × (n − 1)`.
 
-**Equipment and loot:** nine slots: head, shoulders, back, chest, hands, waist, legs, feet and **weapon**. Each hero has their own kind of weapon (Mira a staff, Kael a sword, Lyra a frost staff, Riven twin daggers, Wren a bow), named for the land it comes from (Oak Staff, Bronze Leafblade, Glacier Staff, Obsidian Fangs, Moonhowl…). The weapon changes how it looks in the game and in 3D: its wood or metal follows the land (wood and iron, then root and bronze, starsilver and crystal, obsidian and ember), its gem or edge takes the rarity colour, higher tiers add ornaments (leaves, a crescent, a crown of flame, cross-guard wings, a glowing edge), and epic and legendary weapons glow. Weapons roll power and critical chance with a bigger budget than armour. Worn gear changes how the hero looks, in the game and in 3D: each piece dyes its body part (hat or helm, robe or armour, cape, gloves, belt, boots) in a colour picked from its land and rarity, shoulder pads and leg guards appear when worn, and epic and legendary pieces glow. Pieces come in five rarities (common, uncommon, rare, epic, legendary) and roll armour, power, health, magic, regeneration, speed or critical chance from a budget set by item level and rarity. Creatures sometimes drop a glowing loot bag, elites and chests often do, guardians always drop an epic. Every side quest rewards a rare piece (shown in the offer), and guardian quests an epic one. A piece for a slot that is still empty is put on straight away; everything else goes into the bag. Worn gear is capped at 40% armour, 25% speed and 30% critical chance in total.
+**Equipment and loot:** nine slots: head, shoulders, back, chest, hands, waist, legs, feet and **weapon**. Each hero has their own kind of weapon (Mira a staff, Kael a sword, Lyra a frost staff, Riven twin daggers, Wren a bow), named for the land it comes from (Oak Staff, Bronze Leafblade, Glacier Staff, Obsidian Fangs, Moonhowl…). The weapon changes how it looks in the game and on the pedestal: its wood or metal follows the land (wood and iron, then root and bronze, starsilver and crystal, obsidian and ember), its gem or edge takes the rarity colour, higher tiers add ornaments (leaves, a crescent, a crown of flame, cross-guard wings, a glowing edge), and epic and legendary weapons glow. Weapons roll power and critical chance with a bigger budget than armour. Worn gear changes how the hero looks, in the game and on the pedestal: each piece dyes its body part (hat or helm, robe or armour, cape, gloves, belt, boots) in a colour picked from its land and rarity, shoulder pads and leg guards appear when worn, and epic and legendary pieces glow. Pieces come in five rarities (common, uncommon, rare, epic, legendary) and roll armour, power, health, magic, regeneration, speed or critical chance from a budget set by item level and rarity. Creatures sometimes drop a glowing loot bag, elites and chests often do, guardians always drop an epic. Every side quest rewards a rare piece (shown in the offer), and guardian quests an epic one. A piece for a slot that is still empty is put on straight away; everything else goes into the bag. Worn gear is capped at 40% armour, 25% speed and 30% critical chance in total.
 
-**Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands in 3D in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece. **Loot comparison:** bag slots carry a green ▲ when a piece is better than what you wear in that slot and a red ▼ when it is weaker; on PC, hovering a piece shows a tooltip with every stat compared (green ▲ / red ▼ per stat), the overall verdict ("▲ Upgrade · +22 item score") and the worn piece below. The same comparison is on the tapped card, at the armourer, and in the loot notice ("▲ upgrade"). Merchants buy spare gear.
+**Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands on the pedestal in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece. **Loot comparison:** bag slots carry a green ▲ when a piece is better than what you wear in that slot and a red ▼ when it is weaker; on PC, hovering a piece shows a tooltip with every stat compared (green ▲ / red ▼ per stat), the overall verdict ("▲ Upgrade · +22 item score") and the worn piece below. The same comparison is on the tapped card, at the armourer, and in the loot notice ("▲ upgrade"). Merchants buy spare gear.
 
 **Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Sunfire Elixir and Barkskin Brew (keys 1–5), plus Fire Bomb, Frost Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Bomb (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
 
@@ -195,10 +195,43 @@ Some conversations end with **a choice** of two answers. The answer changes what
 - **Footsteps:** they change with the ground (grass, road, stone, snow).
 - **Volume:** master, music and effects sliders in the pause menu.
 
+## Art direction
+
+The whole game is a **pop-up paper storybook**, in the spirit of Cult of the Lamb, Wytchwood and Paper Mario. Everything is cut from coloured card:
+
+- **Living things** (heroes, villagers, creatures, pets, critters) are paper stickers: flat shapes with a soft top-left light, a cream paper edge, a thin ink line around it and a drop shadow, as if they stood a little above the page.
+- **Scenery** (houses, trees, rocks, wells, stalls, lamps) has an ink edge and a longer shadow. Houses have scalloped roofs, shutters and flower boxes. Trees are stacked cloud shapes, pines are tiered cones.
+- **Ground** is layered sheets of paper: meadow over earth, roads with a stitched centre line, cobbles and flagstones for towns, paper grass tufts and flowers.
+- **Characters** share one figure rig (`src/game/art/rig.ts`): big head, small body, four facings, walk, idle and action poses. Each hero has a signature look (Mira's green star hat, Kael's plumed helm, Lyra's pale hair, Riven's cowl and glowing eyes, Wren's hood and braid). Villagers get a build, outfit, hair and hat from their name, so each one always looks the same.
+- **Menus** match the world. The HUD is dark card with a cream edge. Everything you read (journal, dialogue, shop, character sheet, map, item cards) is a parchment page with ink text. Portraits are cut from the same figures.
+- **Title:** a paper diorama at night. Hills with trees, a paper moon, punched-out stars and clouds, and the Beacon tower glowing.
+
+**How it is drawn** (`src/game/art/`):
+
+| File | What it draws |
+| --- | --- |
+| `cutout.ts` | The paper compositor. A shape is painted once, then lit and grained, then the edge, ink ring and shadow are built from its silhouette. |
+| `rig.ts` | The figure rig for everyone. |
+| `heroes.ts` | The heroes' looks and weapons. |
+| `people.ts` | The villagers and their tools. |
+| `animals.ts` | The fox and the wolf. |
+| `props.ts` | Every building and object. |
+| `ground.ts` | Paper sheets, roads, paving, grass and flowers. |
+| `bust.ts` | The portraits. |
+
+`src/theme.css` recolours the menus. It is loaded after `styles.css` and changes only colours, borders and shadows, never layout, so every phone, tablet and desktop layout rule still applies.
+
+**Art lab:** `npm run dev`, then open `/lab.html` to see every hero, villager, creature, building and ground piece side by side. Use this when changing the art.
+
 ## Performance
 
 - **Ground:** pre-rendered into cached 512 px chunks.
-- **Trees and buildings:** cached sprites that sway with a cheap skew.
+- **Trees and buildings:** cached paper sprites that sway with a cheap skew. The ones just beyond the view are baked ahead, a few per frame.
+- **Paper figures:** the edge, ink line and shadow are built once per pose, not every frame.
+  - Villagers keep a cache of their poses (walk, work and sweep steps).
+  - Creatures, pets, critters and objects move in stop-motion at 12 frames a second, each on its own beat, so their redraws are spread across frames.
+  - Only the hero is cut fresh every frame.
+- **Big screens:** on large monitors the camera comes closer, so a 1440p screen shows about the same part of the valley as a laptop. The ground is still baked at screen resolution, because larger ground textures were too much for the GPU.
 - **Queries:** everything is looked up through spatial grids, so only what is on screen or nearby gets drawn or collided with.
 - **Distant entities:** creatures, villagers and animals far from Mira sleep.
 - **Settings (pause menu → ⚙ Settings):** quality (Auto, High, Balanced, Low, Lowest), grass and flowers (Full, Less, Off), weather effects, a 30 fps cap, screen shake and an FPS counter.
@@ -227,8 +260,10 @@ Some conversations end with **a choice** of two answers. The answer changes what
 ```text
 src/
   App.tsx              Screens, HUD, banners, dialogue, journal, map overlay, touch controls
-  TitleBackdrop.tsx    Animated night-sky menu background
-  styles.css           Visual system and animation library
+  TitleBackdrop.tsx    The paper diorama behind the menus: hills, moon, stars, clouds and the Beacon
+  styles.css           Layout, responsive rules and animation library
+  theme.css            The paper storybook colours for every menu (colours only, loaded after styles.css)
+  lab/lab.ts           The art lab page (lab.html): every figure and prop side by side
   game/
     types.ts           Shared game types
     spells.ts          Heroes, their abilities and unlock levels
@@ -242,6 +277,7 @@ src/
     spatial.ts         Uniform grid for fast proximity and view queries
     engine.ts          Movement, combat, bosses, quests, villagers, wildlife, exploration, saves
     render.ts          Canvas renderer: ground chunks, sprites, characters, lighting, minimap, world map
+    art/               The paper look: cutout compositor, figure rig, heroes, villagers, animals, props, ground, portraits
     audio.ts           Audio core, sound effects, footsteps and ambient soundscapes
     music.ts           Music sequencer and composed themes
     GameCanvas.tsx     Game loop, pixel budget, adaptive quality, music switching, autosave
@@ -252,6 +288,7 @@ src/
     backup.ts          Save backup export and import
   pwa.ts               Offline service worker registration and the update notice
   ui/MiniGames.tsx     Starfall Dice and the archery range
+  ui/paperStage.ts     The hero on the rune pedestal (character select and character sheet)
   ui/Story.tsx         The intro film player, the cutscene letterbox and captions, and the siege bar
 ```
 
