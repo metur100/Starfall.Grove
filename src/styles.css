@@ -1272,11 +1272,11 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .title-actions { width: min(420px, 72vw); }
   .title-actions .btn { min-height: 54px; font-size: 18px; }
   .title-page .title-actions { gap: 8px; }
-  /* Big enough to hit with a thumb: 40 px with room between them. The minimap sits below them. */
-  .hud-buttons { max-width: none; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; white-space: nowrap; }
-  .hud-buttons .icon-button { width: 40px; height: 40px; padding: 0; border-radius: 12px; font-size: 18px; line-height: 0; display: grid; place-items: center; }
-  .hud-buttons .journal-button svg { width: 22px; height: 22px; }
-  .tracker { top: 170px; right: 8px; width: min(220px, 34vw); max-height: 45px; overflow-y: auto; gap: 2px; }
+  /* Big enough to hit with a thumb: 36 px with room between them. The minimap sits below them. */
+  .hud-buttons { max-width: none; flex-wrap: nowrap; justify-content: flex-end; gap: 5px; white-space: nowrap; }
+  .hud-buttons .icon-button { width: 35px; height: 35px; padding: 0; border-radius: 11px; font-size: 16px; line-height: 0; display: grid; place-items: center; }
+  .hud-buttons .journal-button svg { width: 19px; height: 19px; }
+  .tracker { top: 166px; right: 8px; width: min(220px, 34vw); max-height: 45px; overflow-y: auto; gap: 2px; }
   .tracker .trk b { font-size: 10px; }
   .tracker .trk > span { font-size: 9px; }
   .spell.touch.slot-inner { right: 105px; }
