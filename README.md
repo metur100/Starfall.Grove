@@ -144,6 +144,36 @@ Mira fights from range, is the most fragile hero and has no escape spell, so she
 
 **Balance:** the heroes are tuned to be about equally strong, though some are harder to play well. A simulation (`.sim/bal.ts`, run with esbuild) runs each hero, with no gear or spell stars, under a simple bot. At levels 3 to 25 it fights a creature pack of each land and measures the time to clear it and the health lost. Against each guardian it measures the share of the guardian's health taken in 40 seconds and the damage received. After tuning, every hero clears a pack within about 20% of the others (Lyra had been 60–90% slower). Kael is the toughest. Riven deals the most damage but takes the most, so Riven is the one to play carefully. Mira and Lyra are safer at range. The tuning: Lyra's Frost Bolt 12 → 18 (cooldown 0.42 → 0.4 s), Blink 10 → 12, Frost Nova 28 → 40, Blizzard 13 → 18; Mira's Spark 10 → 12, Sunfire 40 → 44, Starfall 34 → 38; Wren's Quick Shot 11 → 10 and Volley 20 → 18; Riven now takes 78% of a hit instead of 82%, and gains 10 health per level instead of 9. Ability damage now comes from one table (`spells.ts`), which the engine and the spellbook both read. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
 
+**Casting.** Mira's and Lyra's bolts and big spells take a moment to cast, with a small bar filling above the hero's head:
+
+| Spell | Cast time |
+| --- | --- |
+| Spark | 0.45 s |
+| Frost Bolt | 0.5 s |
+| Sunfire | 0.95 s |
+| Blizzard | 1.05 s |
+
+- While casting the hero walks at under half speed.
+- Another spell, Blink, the Ice Block, mounting or a cutscene breaks the cast off.
+- Magic is spent and the cooldown starts when the spell goes off.
+- A tap on a bolt while it is being cast (or a held key) casts it again straight after.
+- Upgrades that speed up a bolt shorten its cast just as much.
+- The bolts hit harder to make up for the wait (Spark 17, Frost Bolt 22, Sunfire 58).
+
+**Magic, stamina, energy and focus run out.** In a fight they regenerate slowly:
+- each hero's own rate (2–2.6 per second);
+- a little more each level;
+- 40% of what quests and gear add.
+
+Out of a fight they come back 2.5 times as fast.
+- A kill gives back a little: a normal creature drops one orb about half the time, and a fifth of those are hearts.
+- Glow pods, wells, campfires, level-ups and potions refill more.
+- Abilities cost 15–25% more than before; basic attacks are free.
+
+In a bot's minute of pressing every ability on cooldown in a crowd, Mira, Kael and Wren at level 12 ran dry, and Lyra and Riven fell to about a fifth. Before, no hero ever dropped below half.
+
+**More creatures, a little less experience each.** Each land has up to 60 roaming packs (was 34), at least 430 px apart (was 540). A phone screen in the wild shows about 3.5 creatures on average (was 2.3), and only 7–14% of the wild is more than 600 px from one (was 21–26%). Villages, farms, camps and each hero's start stay calm. Each kill gives a fifth less experience than before.
+
 When the new spells came in, the same bot was run on packs and on a heroic creature at levels 3, 8, 14 and 21, before and after. Gravity Well was first far too strong (packs cleared 2–3 times faster, because Sunfire hit the whole bunched-up pack), so it was cut to 3 damage a tick, a 2 s pull with a weaker drag, an 11 s cooldown and 16 magic. Mira still clears packs faster than before (about 3–8 s against 5–11 s), but she no longer has Dash to escape. Riven's Stealth now breaks when he is hurt (Smoke Veil did not), so Riven takes 72% of a hit instead of 78%. Wren's walking speed went from 275 to 312. Charge and Shadowstep only changed in needing a target, and they fight as before.
 
 Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.

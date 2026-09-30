@@ -429,10 +429,11 @@ function buildRegion(spec: RegionSpec): RegionPart {
     }
   }
   const safe = pois.filter(p => p.kind === 'start' || p.kind === 'village' || p.kind === 'farm' || p.kind === 'city' || p.kind === 'camp');
-  for (let i = 0, packs = 0; i < 1400 && packs < 34; i++) {
+  // Enough roaming packs that most of the wild has creatures within half a screen (villages and camps stay calm).
+  for (let i = 0, packs = 0; i < 2400 && packs < 60; i++) {
     const x = R(400, W - 400), y = R(400, H - 400);
     if (safe.some(p => d2(p, { x, y }) < p.r + 560) || d2({ x, y }, entry) < 1100 || blocked(x, y, 40)) continue;
-    if (enemies.some(e => d2(e, { x, y }) < 540)) continue;
+    if (enemies.some(e => d2(e, { x, y }) < 430)) continue;
     const kind = pickW(rand, spec.enemyKinds), n = kind === 'cragGolem' ? 1 + Math.floor(rand() * 2) : 2 + Math.floor(rand() * 4);
     for (let k = 0; k < n; k++) {
       const s = spot(x, y, 0, 170, 26) || { x, y };

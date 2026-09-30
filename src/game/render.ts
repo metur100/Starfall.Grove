@@ -1,5 +1,6 @@
 import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap, type Well } from './engine';
 import { MOUNTS } from './mounts';
+import { SPELLS } from './spells';
 import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
@@ -1495,6 +1496,16 @@ export class Renderer {
     }
     if (h.iceT > 0) this.drawIceBlock(ctx, e);
     this.drawHeroFx(ctx, e, true);
+    this.drawCastBar(ctx, e);
+  }
+  /** A small bar above the hero's head while a spell is being cast, filling in the spell's colour. */
+  private drawCastBar(ctx: CanvasRenderingContext2D, e: GameEngine) {
+    const c = e.casting; if (!c) return;
+    const h = e.hero, k = Math.min(1, c.t / c.dur), W = 52, H = 7, x = h.x - W / 2, y = h.y - 100 * e.heroScale - (e.riding ? 30 : 0);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x - 2, y - 2, W + 4, H + 4, 5); ctx.fill();
+    ctx.fillStyle = 'rgba(255,244,222,.25)'; ctx.beginPath(); ctx.roundRect(x, y, W, H, 3); ctx.fill();
+    ctx.fillStyle = SPELLS[c.id].color; ctx.beginPath(); ctx.roundRect(x, y, Math.max(3, W * k), H, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.fillRect(x + 2, y + 1, Math.max(0, W * k - 4), 2);
   }
   /** The hero as a paper puppet, riding or on foot. */
   private drawHeroBody(ctx: CanvasRenderingContext2D, e: GameEngine, dx: number, dy: number) {

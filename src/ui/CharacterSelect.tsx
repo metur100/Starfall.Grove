@@ -43,7 +43,7 @@ export default function CharacterSelect({ hero, summary, touch, onHero, onEnter,
       <div className="select-spells">{info.spells.map(id => <button type="button" key={id} className={`spell-chip ${shown === id ? 'on' : ''}`} aria-label={SPELLS[id].name} aria-expanded={shown === id} style={{ '--spell': SPELLS[id].color } as CSSProperties}
         onClick={e => { e.stopPropagation(); sfx.play('ui'); setShown(s => s === id ? null : id); }}><b>{SPELLS[id].icon}</b>{!practice && <small>Lv {SPELLS[id].level}</small>}</button>)}</div>
       {spell && <div className="ability-card" role="dialog" aria-label={spell.name} style={{ '--spell': spell.color } as CSSProperties} onClick={e => { e.stopPropagation(); setShown(null); }}>
-        <header><b>{spell.icon}</b><span><strong>{spell.name}</strong><em>{practice || me.level >= spell.level ? 'Ready' : `Learned at level ${spell.level}`}{spell.cost ? ` · ${spell.cost} magic` : ' · free'}{spell.cooldown >= 1 ? ` · ${spell.cooldown} s cooldown` : ''}</em></span><i aria-hidden="true">✕</i></header>
+        <header><b>{spell.icon}</b><span><strong>{spell.name}</strong><em>{practice || me.level >= spell.level ? 'Ready' : `Learned at level ${spell.level}`}{spell.cost ? ` · ${spell.cost} ${info.resource.toLowerCase()}` : ' · free'}{spell.cast ? ` · ${spell.cast} s cast` : ''}{spell.cooldown >= 1 ? ` · ${spell.cooldown} s cooldown` : ''}</em></span><i aria-hidden="true">✕</i></header>
         <p>{spell.description}</p>
       </div>}
       </div>

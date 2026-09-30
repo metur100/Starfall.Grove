@@ -55,7 +55,9 @@ const heartsAt = (p: Profile) => Math.min(26, HEROES[p.hero].hearts + Number(p.l
 export const gearOf = (p: Profile) => sumGear(p.equipped);
 export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * HEROES[p.hero].hpPerLevel + rankOf(p, 'amulet') * 30 + gearOf(p).health;
 export const manaAt = (p: Profile) => 100 + (p.level - 1) * 6 + p.bonusMana + gearOf(p).mana;
-export const regenAt = (p: Profile) => HEROES[p.hero].regen + (p.level - 1) * .14 + p.regen + gearOf(p).regen;
+/** Regeneration in a fight: the hero's own, a little more each level, and part of what quests and gear add. Out of a
+ *  fight it is 2.5 times as fast (engine), so magic and energy matter in fights but walking never waits on them. */
+export const regenAt = (p: Profile) => HEROES[p.hero].regen + (p.level - 1) * .05 + p.regen * .4 + gearOf(p).regen * .4;
 /** Damage multiplier from level, the weapon upgrade and worn gear. */
 export const powerAt = (p: Profile) => (1 + (p.level - 1) * .12) * (1 + rankOf(p, 'staff') * .08) * (1 + gearOf(p).power / 100);
 /** Share of damage that gets through: the hero's own toughness times the mantle and worn armour. */

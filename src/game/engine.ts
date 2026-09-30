@@ -268,6 +268,9 @@ export class GameEngine {
   exploredVersion = 0;
   moveX = 0; moveY = 0; elapsed = 0; defeated = 0;
   shake = 0; hitStop = 0; slowMo = 0; damageFlash = 0; respawnFade = 0; flash = 0;
+  /** A spell being cast (Mira's and Lyra's bolts and big spells): it goes off when `t` reaches `dur`. A tap on the
+   *  same bolt while it is being cast (or a held key) casts it again right after. */
+  casting: { id: SpellId; t: number; dur: number; again: boolean } | null = null;
   /** When the last hit-stop began, in play time. */
   private frozeAt = -99;
   /**
@@ -683,6 +686,9 @@ export class GameEngine {
     // Inside the Ice Block nothing else can be done: the button breaks Lyra free.
     if (h.iceT > 0) { if (id === 'iceBlock') this.endIceBlock(); else this.frozenNotice(); return; }
     if (id === 'stealth' && this.stealthT > 0) { this.endStealth(); return; }
+    // Another spell breaks off the one being cast.
+    if (this.casting && this.casting.id !== id) this.casting = null;
+    if (info.cast) return this.beginCast(id);
     if (id === 'spark') return this.attack();
     if (id === 'slash') return this.swordSlash();
     if (id === 'charge') return this.charge();
@@ -693,7 +699,7 @@ export class GameEngine {
     if (id === 'arrow') return this.quickShot();
     if (id === 'command') return this.petCommand();
     if (h.cds[id] > 0) { this.play('nope'); return; }
-    if (h.mana < info.cost) { this.play('nope'); this.notice('Not enough magic! Break glow pods and defeat creatures for mana.', 'warn', 'No magic'); return; }
+    if (h.mana < info.cost) { this.noMagic(); return; }
     h.mana -= info.cost; h.cds[id] = this.cooldownOf(id); h.castTime = .3;
     if (id === 'sunfire') this.sunfire();
     else if (id === 'gravity') this.gravityWell();
@@ -712,6 +718,36 @@ export class GameEngine {
     else if (id === 'snare') this.snare();
     else if (id === 'wildcall') this.wildcall();
   }
+  /** Starts casting a spell with a cast time. Its magic is spent, and its cooldown starts, when it goes off. */
+  private beginCast(id: SpellId) {
+    const h = this.hero, info = SPELLS[id], c = this.casting;
+    if (c) { if (c.id === id) c.again = true; return; }
+    const bolt = id === 'spark' || id === 'frostbolt';
+    if (!bolt && h.cds[id] > 0) { this.play('nope'); return; }
+    if (h.mana < info.cost) { this.noMagic(); return; }
+    // Anything that speeds up a bolt's cooldown (upgrades) speeds up its casting just as much.
+    const haste = bolt ? this.cooldownOf(id) / info.cooldown : 1;
+    this.casting = { id, t: 0, dur: info.cast! * haste, again: false };
+    const t = this.nearestTarget(620); if (t) { const d = Math.max(1, dist(h, t)); h.faceX = (t.x - h.x) / d; h.faceY = (t.y - h.y) / d; }
+  }
+  private finishCast() {
+    const c = this.casting!, h = this.hero, id = c.id, info = SPELLS[id];
+    this.casting = null;
+    if (id === 'spark' || id === 'frostbolt') { h.cds[id] = 0; if (id === 'spark') this.attack(); else this.frostbolt(); if (c.again) this.beginCast(id); return; }
+    if (h.mana < info.cost) { this.noMagic(); return; }
+    h.mana -= info.cost; h.cds[id] = this.cooldownOf(id); h.castTime = .3;
+    if (id === 'sunfire') this.sunfire(); else if (id === 'blizzard') this.blizzard();
+  }
+  /** Casting goes on while the hero walks (at under half speed); a cutscene, the Ice Block, riding or falling ends it. */
+  private updateCasting(dt: number) {
+    const c = this.casting, h = this.hero; if (!c) return;
+    if (this.cine || h.iceT > 0 || this.riding || h.hp <= 0) { this.casting = null; return; }
+    c.t += dt; h.castTime = Math.max(h.castTime, .1);
+    // Motes of the spell's light gather at the hero's hands.
+    if (Math.random() < dt * 18) { const a = rand(0, 6.28), r = rand(16, 30), col = SPELLS[c.id].color; this.emit(h.x + h.faceX * 18 + Math.cos(a) * r, h.y - 30 + Math.sin(a) * r * .6, 1, [col, '#ffffff'], { speed: 30, life: .35, size: 2.5, glow: true, grav: -40 }); }
+    if (c.t >= c.dur) this.finishCast();
+  }
+  private noMagic() { this.play('nope'); this.notice(`Not enough ${HEROES[this.heroId].resource.toLowerCase()}! Break glow pods and defeat creatures to win some back, or drink a potion.`, 'warn', `No ${HEROES[this.heroId].resource.toLowerCase()}`); }
   /** A spell that needs a foe was pressed with none in reach: nothing happens and nothing is spent. */
   private noTarget(what: string) { this.play('nope'); this.notice(`No foe in reach to ${what}.`, 'warn', 'No target'); }
   private frozenNotice() { this.play('nope'); this.notice('You are frozen in your Ice Block. Press Ice Block again to break free.', 'warn', 'Frozen in ice'); }
@@ -2362,11 +2398,13 @@ export class GameEngine {
     this.emit(e.x, e.y, e.boss ? 140 : 22, colors, { speed: e.boss ? 520 : 240, life: e.boss ? 1.8 : .8, kind: 'star', glow: true, size: e.boss ? 7 : 4, drag: 2 });
     this.emit(e.x, e.y, e.boss ? 36 : 8, ['#8fd46b', '#b9f29d', '#f2a1b8'], { speed: 200, life: 1.6, kind: 'leaf', size: 7, grav: 60 });
     this.ring(e.x, e.y, e.boss ? 320 : 70, colors[0], e.boss ? 1 : .4);
-    const drops = e.boss ? 14 : e.heroic ? 10 : e.summoned ? 1 : e.elite ? 6 : 2;
-    for (let i = 0; i < drops; i++) this.spawnOrb(e.x, e.y, Math.random() < (e.boss ? .3 : e.elite ? .3 : .1) ? 'heart' : 'mana');
+    // A kill gives back a little magic, not a full refill: in a crowd two orbs a kill kept every hero topped up.
+    const drops = e.boss ? 14 : e.heroic ? 6 : e.summoned ? 0 : e.elite ? 4 : Number(Math.random() < .55);
+    for (let i = 0; i < drops; i++) this.spawnOrb(e.x, e.y, Math.random() < (e.boss ? .3 : e.elite ? .3 : .2) ? 'heart' : 'mana');
     if (!e.summoned) { const coins = e.boss ? 10 : e.heroic ? 7 : e.elite ? 3 : 1 + Number(Math.random() < .4); for (let i = 0; i < coins; i++) this.spawnOrb(e.x, e.y, 'gold', Math.round((2 + e.level * .9) * (e.boss ? 5 : e.heroic ? 3 : 1))); }
     const gap = this.profile.level - e.level, grey = gap >= 5 ? .1 : gap >= 3 ? .5 : 1;
-    const xp = ENEMY_STATS[e.kind].xp * (e.boss ? 1 : .5 * (1 + .2 * (e.level - 1)) * (e.heroic ? 9 : e.elite ? 3 : e.summoned ? .3 : 1) * grey);
+    // Creatures are many, so each one is worth a little less than it used to (.5).
+    const xp = ENEMY_STATS[e.kind].xp * (e.boss ? 1 : .4 * (1 + .2 * (e.level - 1)) * (e.heroic ? 9 : e.elite ? 3 : e.summoned ? .3 : 1) * grey);
     if (e.boss) { this.addItem(rollItem()); this.addItem('healthPotion'); }
     else if (e.heroic) { this.addItem(rollItem()); this.addItem(rollItem()); }
     else if (e.elite ? Math.random() < .45 : !e.summoned && Math.random() < .04) this.addItem(e.elite ? rollItem() : 'healthPotion');
@@ -2498,8 +2536,9 @@ export class GameEngine {
     const h = this.hero;
     const cdRate = this.buffs.hourglass ? 2 : 1;
     for (const id of this.spellIds) h.cds[id] = Math.max(0, h.cds[id] - dt * cdRate);
-    h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt); h.slowT = Math.max(0, h.slowT - dt);
-    h.mana = this.practice ? h.maxMana : Math.min(h.maxMana, h.mana + h.manaRegen * dt);
+    h.shieldTime = Math.max(0, h.shieldTime - dt); h.hurtTime = Math.max(0, h.hurtTime - dt); h.castTime = Math.max(0, h.castTime - dt); h.slowT = Math.max(0, h.slowT - dt); this.updateCasting(dt);
+    // Out of a fight magic and energy come back two and a half times as fast.
+    h.mana = this.practice ? h.maxMana : Math.min(h.maxMana, h.mana + h.manaRegen * (this.combat < .05 ? 2.5 : 1) * dt);
     this.comboTime -= dt; if (this.comboTime <= 0) this.combo = 0;
     for (const id of ITEM_ORDER) {
       const left = this.buffs[id]; if (left === undefined) continue;
@@ -2554,7 +2593,7 @@ export class GameEngine {
   }
   private updateHero(dt: number) {
     const h = this.hero, ride = this.riding ? MOUNTS[this.mountId || 'pony'].speed : 1;
-    const speed = HEROES[this.heroId].speed * this.moveSpeed * ride * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1);
+    const speed = HEROES[this.heroId].speed * this.moveSpeed * ride * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1) * (this.casting ? .45 : 1);
     if (h.iceT > 0) h.vx = h.vy = 0;
     else if (h.dashTime > 0) {
       h.dashTime -= dt; const ds = h.charging ? 1050 : 900; h.vx = h.dashX * ds; h.vy = h.dashY * ds;
@@ -3244,7 +3283,7 @@ export class GameEngine {
         if (o.kind === 'loot') { if (o.gear) this.addGear(o.gear); this.play('pickup'); swapRemove(this.orbs, i); continue; }
         if (o.kind === 'heart') { h.hp = Math.min(h.maxHp, h.hp + HP_UNIT); this.text(h.x, h.y - 48, `+${HP_UNIT}`, '#ff9aa8', 18); this.play('pickup'); }
         else if (o.kind === 'gold') { this.gainGold(o.value, h.x, h.y); this.play('orb'); }
-        else { h.mana = Math.min(h.maxMana, h.mana + 7); this.play('orb'); }
+        else { h.mana = Math.min(h.maxMana, h.mana + 6); this.play('orb'); }
         this.emit(h.x, h.y - 10, 6, o.kind === 'heart' ? '#ff9aa8' : o.kind === 'gold' ? '#ffd35c' : '#9fd8ff', { speed: 90, life: .4, glow: true, size: 3 });
         swapRemove(this.orbs, i); continue;
       }

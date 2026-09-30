@@ -439,7 +439,7 @@ function App() {
   const restartForUpdate = () => { sfx.play('ui'); flushSave(); setRestarting(true); void applyUpdate(); };
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
-    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onTutorial={() => { sfx.play('ui'); setMode('tutorial'); }} onStartOver={startOver} onDeleteAll={deleteAll} />}
+    {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onTutorial={() => { sfx.play('ui'); setMode('tutorial'); }} onStartOver={startOver} onDeleteAll={deleteAll} onExit={() => { sfx.play('page'); setExitAsk('ask'); }} />}
     {mode === 'title' && exitAsk && <div className="overlay exit-overlay" onClick={() => setExitAsk(null)}><div className="panel pause-panel exit-panel" onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true">
       <small className="eyebrow">Leave Starfall Grove</small><h2>Do you really want to leave the game?</h2><p>Your adventure is saved. The valley will wait for you.</p>
       <div className="exit-actions"><button className="btn ghost" onClick={() => { sfx.play('ui'); setExitAsk(null); }} autoFocus>Stay</button><button className="btn primary" onClick={leaveGame}>Leave game</button></div>
@@ -597,7 +597,7 @@ function App() {
 }
 
 /** Title: the logo and one big Play button, centred on screen. Choosing a hero happens on the next screen. */
-function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onTutorial, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onTutorial: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
+function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onTutorial, onStartOver, onDeleteAll, onExit }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onTutorial: () => void; onStartOver: () => void; onDeleteAll: () => void; onExit: () => void }) {
   const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || LEVEL_ORDER[LEVEL_ORDER.length - 1], last = heroStarted(hero) ? heroSummary(hero) : null;
   const kl = useKeys();
   const update = useUpdateReady();
@@ -608,6 +608,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <div className="title-tools">
         <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
         <button className="icon-button" onClick={() => { onSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>
+        <button className="icon-button exit-button" onClick={onExit} aria-label="Leave the game" title="Leave the game">⏻</button>
       </div>
     </header>
     <section className="title-hero">
