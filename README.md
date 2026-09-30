@@ -246,6 +246,13 @@ Phones and tablets come first: changes are measured in phone and tablet emulatio
 - **Settings (pause menu → ⚙ Settings):** quality (Auto, High, Balanced, Low, Lowest), grass and flowers (Full, Less, Off), weather effects, a 30 fps cap, screen shake and an FPS counter.
 - **Graphics quality:** Each level caps the canvas resolution and sets how many glows, particles and screen effects are drawn, and how often the hero is re-cut. Auto starts where it settled last time on this device, or with a guess the first time: lower on tablets and low-core devices. It judges each second of play by the average of the fastest nine tenths of the frames, so a moment of baking new ground doesn't count. It steps down after two slow seconds in a row (under about 50 fps), or at once below about 30 fps. It steps up after 8 calm seconds, but only when frames use less than a third of their time. After every change it waits until the ground and pieces have been remade at the new level before judging again, so a change can't set off another. A level it had to drop from right after reaching it is remembered as that device's ceiling.
 - **Still HUD below High:** bars jump instead of gliding, and the pulsing glow on active spells, the achievement sheen and the enraged boss bar's shimmer hold still. Animating a painted property repaints it every frame.
+- **Menus (title and hero select):**
+  - The night backdrop's sky, moon, stars, hills, clouds and glows are painted once when the page is sized; a frame only places them and moves the twinkling stars, fireflies and petals.
+  - The hero's pedestal is painted once per hero.
+  - On touch screens:
+    - both canvases paint 30 frames a second, and the backdrop has no parallax, so its sheets share two canvases;
+    - the hero is re-cut 12 times a second;
+    - the gold titles and the buttons' shine hold still.
 - **No live blur:** the HUD uses solid glass panels. `backdrop-filter` blur over the constantly redrawn canvas was the biggest cost on weak tablets.
 - **Memory:** the ground chunk cache is sized to the view.
 

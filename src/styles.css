@@ -421,6 +421,12 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 
 /* Keyboard hints are noise on touch-only devices. */
 @media (hover: none) and (pointer: coarse) { .pause-panel .controls-grid { display: none; } }
+/* Touch screens: the menus' gold titles and buttons hold still. Their shimmer, float and shine made the page redo its
+   styles and repaint the logo's blurred glow every frame, which weak phones cannot keep up with. */
+@media (hover: none) and (pointer: coarse) {
+  .title-logo span, .title-logo span:last-child, .select-page .select-info h1 { animation: none; background-position: 30% 0; }
+  .btn.primary::after { animation: none; opacity: 0; }
+}
 
 /* ─────────── animation library */
 @keyframes shimmer { to { background-position: -250% 0; } }
