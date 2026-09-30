@@ -85,3 +85,11 @@ export function JournalIcon({ size = 24 }: { size?: number }) {
     <path d="M12.5 20.5h9" stroke="#e8c46a" strokeWidth="1.2" strokeLinecap="round" />
   </svg>;
 }
+
+/** The leave button's power symbol, drawn, since the ⏻ character is missing from many phones' fonts. */
+export function PowerIcon({ size = 18 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+    <path d="M7.1 6.6a8 8 0 1 0 9.8 0" />
+    <path d="M12 3v8.5" />
+  </svg>;
+}

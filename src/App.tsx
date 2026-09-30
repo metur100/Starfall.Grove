@@ -20,7 +20,7 @@ import { applyUpdate, onUpdateReady } from './pwa';
 import type { EngineEvent, GameSnapshot, HeroId, ItemId, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
 import CharacterSelect, { type HeroSummary } from './ui/CharacterSelect';
-import { GearIcon, HeroFace, ItemIcon, JournalIcon, PersonFace } from './ui/icons';
+import { GearIcon, HeroFace, ItemIcon, JournalIcon, PersonFace, PowerIcon } from './ui/icons';
 import { CineOverlay, IntroFilm, SiegeBar } from './ui/Story';
 import MiniGameOverlay, { type GameResult } from './ui/MiniGames';
 import { TRAILS, TRAIL_ORDER } from './game/trails';
@@ -574,6 +574,7 @@ function App() {
           <div className="pause-row">
             <button className="btn ghost" onClick={() => { setSettingsOpen(true); sfx.play('page'); }}>⚙ Settings</button>
             <button className="btn ghost" onClick={toggleMute}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
+            <button className={`btn ghost ${graphics.showFps ? 'on' : ''}`} onClick={() => changeGraphics({ showFps: !graphics.showFps })} aria-pressed={graphics.showFps}>{graphics.showFps ? 'FPS on' : 'FPS off'}</button>
           </div>
         </div></div>}
       </section>
@@ -608,7 +609,7 @@ function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGra
       <div className="title-tools">
         <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
         <button className="icon-button" onClick={() => { onSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>
-        <button className="icon-button exit-button" onClick={onExit} aria-label="Leave the game" title="Leave the game">⏻</button>
+        <button className="icon-button exit-button" onClick={onExit} aria-label="Leave the game" title="Leave the game"><PowerIcon /></button>
       </div>
     </header>
     <section className="title-hero">

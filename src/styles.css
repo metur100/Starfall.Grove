@@ -372,7 +372,8 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-bottom: 20px; text-align: left; font-size: 13px; color: #d6dbef; }
 .controls-grid kbd { margin-right: 4px; }
 .pause-panel .btn.primary { width: 100%; }
-.pause-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.pause-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 8px; margin-top: 12px; }
+.pause-row .btn.on { transform: none; }
 .pause-row .btn { min-height: 40px; font-size: 13px; padding: 0 14px; }
 
 /* ─────────── responsive */
@@ -601,6 +602,8 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .setting-row .seg { flex-wrap: wrap; }
 .settings-panel .volume-grid { margin-top: 14px; }
 .fps-meter { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 9; padding: 2px 8px; border-radius: 8px; background: rgba(0, 0, 0, .55); font: 800 11px var(--ui); color: #b9f29d; pointer-events: none; }
+.is-touch .fps-meter { bottom: max(4px, env(safe-area-inset-bottom)); padding: 3px 10px; font-size: 13px; }
+.exit-button svg { display: block; }
 /* Entering the world: a paper card over the night sky (like the boot screen) while the first view is prepared. Above
    the HUD and panels, below cutscenes and the intro film. */
 .world-veil { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 35%, #2a2560 0%, #141a44 45%, #080b1e 100%); transition: opacity .45s ease, visibility .45s; }
