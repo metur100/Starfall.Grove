@@ -382,6 +382,8 @@ export class GameEngine {
     ambience.start(this.regionId);
   }
   dispose() { ambience.stop(); if (this.profileDirty && !this.practice) saveProfile(this.profile); }
+  /** Writes the hero's profile (gold, counts, achievements) now, if it changed: a phone may close the game unseen. */
+  saveProfileNow() { if (this.profileDirty && !this.practice) { saveProfile(this.profile); this.profileDirty = false; } }
 
   private nearStart(s: EnemySeed, rest: Point): EnemySeed {
     const r = this.world.regions[0]; if (s.boss || s.region !== r.id || !HERO_START[this.heroId]) return s;

@@ -167,8 +167,12 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       if (now - lastMusic > 250) { lastMusic = now; music.play(engine.musicTrack); music.setIntensity(pausedRef.current ? 0 : engine.combat); }
       if (!practice && !pausedRef.current && now - lastSave > 3000) { saveSession(hero, engine.exportSave()); lastSave = now; }
     };
+    // Going to the background (another app, the home button, a locked screen) saves everything at once: a phone often
+    // closes a game it can't see without warning.
+    const hidden = () => { if (document.visibilityState === 'hidden' && !practice) { saveSession(hero, engine.exportSave()); engine.saveProfileNow(); lastSave = performance.now(); } };
+    document.addEventListener('visibilitychange', hidden); window.addEventListener('pagehide', hidden);
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null); };
+    return () => { document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pagehide', hidden); cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null); };
   }, [hero, runKey, practice]);
   return <>
     <canvas ref={canvasRef} className="world-canvas" aria-label="Starfall Grove game world" />
