@@ -15,11 +15,6 @@ const TIERS = [
   { budget: 2_300_000, dpr: 2, quality: 1 },
 ];
 
-/** Inside an Android app's WebView, every frame is handed through the app before it reaches the screen, which
- *  costs more per pixel and per frame than in Chrome. There the game draws a little fewer pixels, and a fast screen
- *  is drawn at 60 frames a second: late frames then only wait for the next quick refresh. */
-const IN_APP = typeof navigator !== 'undefined' && (/; wv\)/.test(navigator.userAgent) || 'Android' in window);
-
 /** `next` with every part that equals the same part of `prev` swapped for prev's own, so an unchanged snapshot (or an
  *  unchanged part of one) keeps its identity and the HUD skips redrawing it. */
 function share<T>(prev: T, next: T): T {
@@ -74,9 +69,9 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // remaking the ground and every piece at the worst moment. So a level is only tried after a long calm spell away
     // from fights (and never soon after a step down), and a level that had to be left during a fight is not tried again.
     let lastDown = -1e9, lastFight = -1e9, fightInWindow = false;
-    // Touch screens of 90 and 120 Hz draw every frame in a browser (a late frame then costs only a few ms, not a whole
-    // 17 ms one); the fastest (144 Hz and up), and every fast screen in the app, draw every other one, at half the
-    // work and heat. The rate is measured over the first frames.
+    // Touch screens of 90 and 120 Hz draw every frame (a late frame then costs only a few ms, not a whole 17 ms
+    // one); only the fastest (144 Hz and up) draw every other one, at half the work and heat. The rate is measured
+    // over the first frames.
     let hz = 0; const early: number[] = [];
     const changeTier = (to: number, now: number) => { if (to < tier) lastDown = now; tier = to; applyTier(); renderer.rewarm(); settling = true; slowRuns = 0; calmUntil = now + 4000; tierSince = now; frameSum = 0; gaps.length = works.length = 0; };
     veilRef.current?.classList.remove('gone'); if (barRef.current) barRef.current.style.width = '0%';
@@ -87,7 +82,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       // Below full detail the HUD's bars jump instead of gliding: a glide restyles and repaints them every frame.
       canvas.parentElement?.classList.toggle('hud-lite', t.quality < 1);
       const rect = canvas.getBoundingClientRect(); viewW = Math.max(1, rect.width); viewH = Math.max(1, rect.height);
-      dpr = Math.min(t.dpr * (IN_APP ? .85 : 1), window.devicePixelRatio || 1, Math.sqrt(t.budget / (viewW * viewH)));
+      dpr = Math.min(t.dpr, window.devicePixelRatio || 1, Math.sqrt(t.budget / (viewW * viewH)));
       canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     const ro = new ResizeObserver(applyTier); ro.observe(canvas);
@@ -98,7 +93,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       // The screen's rate shows in the quickest of the first frames after loading (slow ones only mean work).
       if (!hz && last && !warming && !settling) { early.push(now - last); if (early.length >= 40) { early.sort((a, b) => a - b); hz = 1000 / early[8]; } }
       if (capped && last && now - last < 1000 / 30 - 4) return;
-      if (!capped && hz > (IN_APP ? 100 : 130) && settings.current.touch && last && now - last < 1000 / 60 - 3) return;
+      if (!capped && hz > 130 && settings.current.touch && last && now - last < 1000 / 60 - 3) return;
       // A late frame doesn't slow the game down: its time is played in steps of at most 50 ms (up to a tenth of a
       // second; past that the game waits rather than jump). Clamping it to one 50 ms step played fights in slow motion.
       const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.1, raw); last = now;
@@ -164,7 +159,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       fpsFrames++; if (raw < .5) fpsWorst = Math.max(fpsWorst, raw);
       if (now - fpsSince > 500) {
         const el = fpsRef.current;
-        if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · slowest ${Math.round(fpsWorst * 1000)} ms · ${TIER_NAMES[tier]}${IN_APP ? ' · app' : ''}`; }
+        if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · slowest ${Math.round(fpsWorst * 1000)} ms · ${TIER_NAMES[tier]}`; }
         fpsFrames = 0; fpsSince = now; fpsWorst = 0;
       }
       // The HUD hears about the game ten times a second (five below full detail: each update restyles and repaints
