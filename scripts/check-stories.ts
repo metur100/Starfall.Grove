@@ -11,6 +11,8 @@ const ONLY = process.argv[2] as HeroId | undefined;
 const HEROES = (['mira', 'kael', 'lyra', 'riven', 'wren'] as HeroId[]).filter(h => !ONLY || h === ONLY);
 const GATE: Partial<Record<RegionId, string>> = { meadow: 'meadow:m12', woods: 'woods:m17', summit: 'summit:m20' };
 const BOSS: Record<RegionId, string> = { meadow: 'meadow:m10', woods: 'woods:m15', summit: 'summit:m19', ember: 'ember:m12' };
+/** The only quests of the shared story another hero plays: the guardians, and Umbra at the very end. */
+const SHARED_OK = new Set([...Object.values(BOSS), 'ember:m13']);
 /** Shared cutscenes that show Mira's story (Orrin, Sable, Pyrrhus); another hero should have their own version. */
 const MIRA_CINES = new Set(['glade-memory', 'orrin-memory', 'star-rises', 'chapter-summit', 'pyrrhus-wakes', 'tarn-vision']);
 const world = getWorld();
@@ -34,12 +36,15 @@ for (const hero of HEROES) {
     for (const q of story.quests[r]) if (!links.includes(q.id)) warn(hero, `${r}: own quest ${q.id} is not in the chain`);
     for (const id of Object.keys(story.reuse[r] || {})) if (!links.includes(id)) warn(hero, `${r}: reuse.${id} is not in the chain`);
   }
-  if (mains[0]?.id !== 'meadow:m1') err(hero, 'the story must start with meadow:m1 (the intro film waits for it)');
+  if (mains[0]?.region !== 'meadow' || mains[0].requires) err(hero, `the story must start in the meadow with a quest that needs nothing (starts with ${mains[0]?.id})`);
+  if (hero !== 'mira') for (const q of mains) if (!q.hero && !SHARED_OK.has(q.id)) err(hero, `${q.id} “${q.title}” is a quest of the shared story (every link but the guardians must be the hero's own)`);
   for (const r of LEVEL_ORDER) {
     const list = mains.filter(q => q.region === r), last = list[list.length - 1];
     const own = list.filter(q => q.hero === hero).length;
-    const want = GATE[r] || 'ember:m13';
+    // Mira opens each gate with the shared story's gate quest; another hero with their own last quest of the land.
+    const want = hero === 'mira' || r === 'ember' ? GATE[r] || 'ember:m13' : last?.id;
     if (last?.id !== want) err(hero, `${r}: the chapter must end with ${want} (ends with ${last?.id})`);
+    if (hero !== 'mira' && r !== 'ember' && last && last.boss) err(hero, `${r}: the gate can't open with a guardian's fight`);
     const boss = list.findIndex(q => q.id === BOSS[r]);
     if (boss < 0) err(hero, `${r}: the guardian's quest ${BOSS[r]} is missing`);
     const keys = new Set<number>(); list.slice(0, boss < 0 ? list.length : boss).forEach(q => q.kind === 'key' && q.keys?.forEach(k => keys.add(k)));
@@ -79,12 +84,29 @@ for (const hero of HEROES) {
     if (q.kind === 'boss' || q.kind === 'build') { /* finished at the light or the site */ }
     done.add(q.id);
   }
+  // Every cutscene this hero plays points its camera and effects at things that exist in their world (a name that
+  // doesn't resolve leaves the camera where it was, showing the wrong place).
+  const objs = new Set(hw.objects.map(o => o.id)), people = new Set(npcs.keys());
+  const played: Array<[string, QuestDef | null, string]> = [['arrive', null, 'arrive'], ['intro', null, 'intro'], ...LEVEL_ORDER.map(r => [`chapter-${r}`, null, 'chapter'] as [string, null, string])];
+  for (const q of quests) for (const [when, c] of Object.entries(q.cine || {})) if (c) played.push([c, q, when]);
+  for (const [id, q, when] of played) {
+    const shots = cineFor(id, hero); if (!shots) continue;
+    const has = (kind: string) => !!q && hw.objects.some(o => o.kind === kind && o.questId === q.id);
+    const ctx = new Set(when === 'caught' ? ['$thief'] : [...(has('ward') ? ['$ward'] : []), ...(has('site') ? ['$site'] : [])]);
+    const bad = (at?: string) => !!at && at !== 'hero' && (at.startsWith('$') ? !ctx.has(at) : at.startsWith('npc:') ? !people.has(at.slice(4)) : at.startsWith('obj:') ? !objs.has(at.slice(4)) : !poi.has(at));
+    for (const sh of shots) for (const at of [sh.at, ...(sh.fx || []).map(x => x.at)]) if (bad(at)) err(hero, `cutscene '${id}'${q ? ` (${q.id} ${when})` : ''}: nothing called '${at}' here`);
+  }
   if (hero !== 'mira') {
     for (const r of LEVEL_ORDER) {
       const c = `chapter-${r}`; if (MIRA_CINES.has(c) && !cineFor(`${c}@${hero}`, hero)) warn(hero, `no '${c}@${hero}' (the chapter ending shows Mira's story)`);
       if (!story?.script?.[r]) warn(hero, `${r}: no script words (the light's lines and chapter ending are Mira's)`);
     }
   }
+}
+// No two heroes' own quests share a title.
+const titles = new Map<string, string>();
+for (const hero of HEROES) for (const q of questsForHero(world.quests, hero).filter(q => q.main && (q.hero === hero || hero === 'mira') && !SHARED_OK.has(q.id))) {
+  const k = q.title.toLowerCase(), o = titles.get(k); if (o && o !== hero) warn(hero, `${q.id}: title “${q.title}” is also ${o}'s`); titles.set(k, hero);
 }
 // Every hero's people have ids of their own.
 const seen = new Map<string, string>();

@@ -42,7 +42,12 @@ Master Orrin vanished the night the star fell. Mira and her fox Tuft follow his 
 
 That is Mira's story (`story.ts`, 12 / 17 / 20 / 15 quests per chapter, plus her own quests in `heroStory.ts`): Tuft follows Orrin's scent, she passes the Apprentice's Test at the Moss Shrine, tells Orrin whether she forgives him and builds a star lantern of her own.
 
-**Every other hero plays a main questline of their own** (`src/game/heroes/<hero>.ts`). The lands, side quests and gates are the same for everyone, but each hero's chapters are their own chain of 14–18 main quests: at least six quests only that hero has, plus some of the shared quests told again in their own words, with new titles, new people and a different order. Umbra's shadow takes the shape of what each hero fears most, so **every hero meets different guardians** (`bosses.ts`), with their own look, name and attacks (aimed volleys, strings of shadow strikes, the ground erupting in spikes, lava or frost, howls that call the pack):
+**Every other hero plays a main questline of their own** (`src/game/heroes/<hero>.ts`). The lands and side quests are the same for everyone, but each hero's chapters are their own chain of 14–18 main quests, and **no two heroes play the same main quest**. The only shared quests are the four guardian fights and Umbra, told in each hero's own words.
+
+Each hero also has:
+- their own quest to open each land's gate;
+- their own hiding places for the land's relics (an own key quest with a `place` hides that relic there, for that hero only);
+- their own opening near where they wake. The first four or five quests are of different kinds, with new cutscenes: Kael follows his lost knight's horse from Millbrook, Lyra wakes the frost runes at Mirror Lake, Riven returns the Hushed's stolen takings in Goldenhearth, and Wren reads the night her pack vanished at the Old Stone Garden. Umbra's shadow takes the shape of what each hero fears most, so **every hero meets different guardians** (`bosses.ts`), with their own look, name and attacks (aimed volleys, strings of shadow strikes, the ground erupting in spikes, lava or frost, howls that call the pack):
 
 | Hero | Meadow | Woods | Summit | Ember | Umbra |
 | --- | --- | --- | --- | --- | --- |
@@ -57,7 +62,15 @@ That is Mira's story (`story.ts`, 12 / 17 / 20 / 15 quests per chapter, plus her
 - **Riven, the Foundling:** steals the Beacon's crystals back from the Hushed, finds the foundling house he grew up in, faces a double wearing his face, reaches Sable himself and breaks the ice seal with her, then takes the Ashen Broker's network apart.
 - **Wren, the Pack:** proves it was the Boar King, not wolves, learns Shadowmane is the shadow wearing a wolf's shape, frees Skyhorn's fawn, and heals Moonfang at the Phoenix Spring; Burr the poacher is slowly redeemed.
 
-Each hero also has their own chapter endings and cutscenes. `npm run check:stories` checks every hero's chain (people present when needed, places, keys before each guardian, gates last, no lines left over from Mira's story).
+Each hero also has their own chapter endings and cutscenes. `npm run check:stories` checks every hero's chain:
+- people present when needed, and places that exist;
+- keys before each guardian, and each chapter ending with its gate;
+- no shared quest besides the guardians;
+- no two heroes' quests with the same title;
+- every cutscene pointing at places, people and objects that exist;
+- no lines left over from Mira's story.
+
+A save made before a hero's story was rewritten catches up on load: the main quests before the furthest point it reached, and every chapter the hero has already left, count as done, along with their relics.
 
 Each hero also has their own intro and their own lines at key moments, and their own thoughts voice the story's nudges between quests (Tuft does it for Mira).
 

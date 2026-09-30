@@ -428,6 +428,7 @@ export class GameEngine {
     this.awaitingChapter = false;
     this.introSeen = true;
     if (s.choices && typeof s.choices === 'object') for (const [k, v] of Object.entries(s.choices)) if (v === 'a' || v === 'b') this.choices[k] = v;
+    this.catchUpStory();
     this.repairChain();
     this.foxQueue = Array.isArray(s.foxQueue) ? s.foxQueue.filter(id => this.quests.has(id)) : [];
     if (Array.isArray(s.abandoned)) for (const id of s.abandoned) if (this.quests.get(id)?.status === 'available') this.abandoned.add(id);
@@ -443,6 +444,23 @@ export class GameEngine {
    * The story grew new quests between old ones. A save that is already past such a quest counts it as done; one that
    * reached it just now gets it offered. Quests whose goal changed shape are handed in if the old progress covers it.
    */
+  /**
+   * A save made before a hero's story was rewritten: whatever of the main story lies before the furthest point it
+   * reached, or in a land the hero has already left behind, counts as done, so the story picks up where they are.
+   */
+  private catchUpStory() {
+    const mains = this.world.quests.filter(q => q.main), here = this.world.regions.findIndex(r => r.id === this.regionAt(this.hero.x).id);
+    const order = this.world.regions.map(r => r.id);
+    let last = -1; mains.forEach((q, i) => { if (this.qs(q.id).status !== 'locked' && this.qs(q.id).status !== 'available') last = i; });
+    mains.forEach((q, i) => {
+      const st = this.qs(q.id); if (st.status !== 'locked' && st.status !== 'available') return;
+      if (i < last || order.indexOf(q.region) < here) {
+        st.status = 'done'; st.progress = q.count;
+        // Its relic counts as found, or the land's guardian would stay sealed.
+        if (q.kind === 'key') for (const k of q.keys || []) if (this.keysFound(q.region) < 3 && !this.main.keys.includes(this.keyId(q, k))) this.main.keys.push(this.keyId(q, k));
+      }
+    });
+  }
   private repairChain() {
     for (let changed = true; changed;) {
       changed = false;
@@ -1323,7 +1341,8 @@ export class GameEngine {
     if (q.main) this.tracked = null;
     return true;
   }
-  private keyId(q: QuestDef, i: number) { return `${q.region}:key-${i}`; }
+  /** The relic a key quest wants: the land's own, or one a hero's story hides at the quest's `place`. */
+  private keyId(q: QuestDef, i: number) { return q.hero && q.place ? `${q.id}-key-${i}` : `${q.region}:key-${i}`; }
   private advance(q: QuestDef, by: number) {
     const st = this.qs(q.id); if (st.status !== 'active') return;
     st.progress = Math.min(q.count, st.progress + by); this.touchQuests();
@@ -1896,7 +1915,7 @@ export class GameEngine {
 
   // ───────────────────────────── the intro
   /** A new adventure opens with the hero's intro film and then a short arrival cutscene. */
-  get needsIntro() { return !this.introSeen && this.quests.get('meadow:m1')?.status === 'available' && this.elapsed < 30; }
+  get needsIntro() { const first = this.world.quests.find(q => q.main && !q.requires); return !this.introSeen && !!first && this.quests.get(first.id)?.status === 'available' && this.elapsed < 30; }
   /** After the hero's intro film a short arrival scene is enough; if the film could not play, the full intro cutscene does. */
   startIntro(afterFilm = false) {
     this.introSeen = true;

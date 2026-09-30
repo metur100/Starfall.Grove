@@ -2882,7 +2882,7 @@ export class Renderer {
   private mini = { c: document.createElement('canvas'), frame: document.createElement('canvas'), key: '', frameKey: '', beat: -1, cx: 0, cy: 0 };
   private drawMinimap(ctx: CanvasRenderingContext2D, w: number, sh: number, e: GameEngine) {
     const small = w < 640 || sh < 520, MW = small ? 128 : 190, MH = small ? 96 : 140, span = 2800, S = MW / span;
-    const x0 = w - MW - (small ? 8 : 14), y0 = small ? 54 : 64, h = e.hero, m = this.mini, dpr = Math.max(1, ctx.getTransform().a), PAD = 24;
+    const x0 = w - MW - (small ? 8 : 14), y0 = small ? (this.touch ? 62 : 54) : 64, h = e.hero, m = this.mini, dpr = Math.max(1, ctx.getTransform().a), PAD = 24;
     // The card behind the map, and the key hint under it.
     const frameKey = `${MW}|${MH}|${dpr}|${this.touch}`, FL = 8, FT = 8, FW = MW + 22, FH = MH + 34;
     if (m.frameKey !== frameKey && fontsReady()) {

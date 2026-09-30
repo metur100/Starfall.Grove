@@ -335,6 +335,11 @@ function buildRegion(spec: RegionSpec): RegionPart {
 
   // ── keys, lore, cages, hidden chests, quest items
   spec.keyAt.forEach((pid, i) => { const p = poi(pid), s = spot(p.x, p.y, 20, 160, 30) || { x: p.x, y: p.y + 60 }; obj({ id: `key-${i}`, kind: 'key', x: s.x, y: s.y, name: spec.keyName }); });
+  // A hero's own key quest with a `place` hides its relic somewhere else in that hero's story.
+  for (const q of spec.quests) if (q.kind === 'key' && q.hero && q.place) for (const i of q.keys || []) {
+    const p = poi(q.place), s = spot(p.x, p.y, 20, 160, 30) || spot(p.x, p.y, 20, 600, 30, 0, 200) || { x: p.x, y: p.y + 60 };
+    obj({ id: `${q.id}-key-${i}`, kind: 'key', x: s.x, y: s.y, name: spec.keyName, questId: q.id });
+  }
   spec.lore.forEach((l, i) => { const p = poi(l.at), s = spot(p.x, p.y, p.r * .3, p.r * .9, 30) || { x: p.x + 100, y: p.y }; obj({ id: `lore-${i}`, kind: 'lore', x: s.x, y: s.y, name: l.name, text: l.text }); });
   for (const q of spec.quests) if (q.kind === 'rescue') {
     const p = poi(q.place!), s = spot(p.x, p.y, 60, 200, 50) || spot(p.x, p.y, 60, 800, 50, 0, 200) || { x: p.x + 90, y: p.y + 40 };

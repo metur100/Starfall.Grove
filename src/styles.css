@@ -802,8 +802,20 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .traits i { width: 16px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .12); }
 .traits i.on { background: linear-gradient(90deg, #ffe49a, #f5b54a); box-shadow: 0 0 6px rgba(245, 180, 74, .6); }
 .select-spells { display: flex; gap: 6px; }
-.select-spells span { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--spell) 30%, #1a2240), #0d1224); border: 1px solid color-mix(in srgb, var(--spell) 60%, transparent); }
+.select-spells .spell-chip { position: relative; padding: 0; cursor: pointer; transition: transform .12s, box-shadow .12s; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--spell) 30%, #1a2240), #0d1224); border: 1px solid color-mix(in srgb, var(--spell) 60%, transparent); }
 .select-spells b { font-size: 20px; color: var(--spell); text-shadow: 0 0 10px var(--spell); }
+.select-spells .spell-chip:active { transform: scale(.94); }
+.select-spells .spell-chip.on { box-shadow: 0 0 0 2px var(--spell), 0 0 14px color-mix(in srgb, var(--spell) 60%, transparent); }
+/* What an ability does: a card just above the ability row, over the hero's traits. */
+.select-abilities { position: relative; }
+.ability-card { position: absolute; left: -6px; right: -6px; bottom: calc(100% + 10px); z-index: 4; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--spell) 70%, transparent); background: #120d1c; box-shadow: 0 10px 28px rgba(0, 0, 0, .55); text-align: left; cursor: pointer; animation: pop-in .14s ease-out; }
+.ability-card header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.ability-card header > b { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; color: var(--spell); background: color-mix(in srgb, var(--spell) 18%, #0d1224); }
+.ability-card header span { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ability-card strong { font: 800 15px var(--display); color: #fff3cf; }
+.ability-card em { font: 700 11px var(--ui); font-style: normal; color: var(--spell); }
+.ability-card header i { font-style: normal; color: var(--muted); font-size: 14px; }
+.ability-card p, .select-info .ability-card p { display: block; margin: 0; font-size: 13px; line-height: 1.45; color: #dde2f5; }
 .select-spells small { position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); padding: 0 4px; border-radius: 6px; background: #0b1020; font: 900 8.5px/13px var(--ui); color: var(--muted); white-space: nowrap; }
 .roster { position: absolute; right: max(3vw, 16px); top: 50%; transform: translateY(-50%); z-index: 2; width: min(300px, 25vw); display: flex; flex-direction: column; gap: 10px; }
 .roster-card { display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 10px; border-radius: 18px; border: 1px solid var(--line); background: var(--glass); cursor: pointer; text-align: left; transition: transform .15s, border-color .15s, background .15s, box-shadow .15s; }
@@ -903,12 +915,12 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .select-info h1 { font-size: 28px; margin: 0 0 4px; }
   .select-info p { display: none; }
   .traits { gap: 3px; margin-bottom: 8px; } .traits dt { font-size: 11px; } .traits i { width: 12px; height: 5px; }
-  .select-spells span { width: 34px; height: 34px; border-radius: 10px; } .select-spells b { font-size: 16px; }
+  .select-spells .spell-chip { width: 34px; height: 34px; border-radius: 10px; } .select-spells b { font-size: 16px; }
   .roster { width: 27vw; gap: 6px; }
   .roster-card { padding: 6px 10px 6px 6px; gap: 8px; border-radius: 14px; }
   .roster-card .portrait { width: 36px; height: 36px; font-size: 20px; }
   .rc-text b { font-size: 15px; } .rc-text small { display: none; }
-  .select-foot { bottom: 8px; gap: 3px; } .select-foot .enter { min-height: 46px; font-size: 15px; } .select-foot small { font-size: 10.5px; }
+  .select-foot { bottom: 8px; gap: 3px; } .select-foot .enter { min-width: 0; min-height: 46px; padding: 0 26px; font-size: 15px; white-space: nowrap; } .select-foot small { max-width: 36vw; font-size: 10.5px; white-space: normal; text-align: center; }
   .select-top { padding-top: 8px; } .select-top .btn { min-height: 34px; font-size: 12px; }
   .char-head { gap: 8px; }
   .char-head .portrait { width: 34px; height: 34px; font-size: 19px; }
@@ -1260,9 +1272,11 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
   .title-actions { width: min(420px, 72vw); }
   .title-actions .btn { min-height: 54px; font-size: 18px; }
   .title-page .title-actions { gap: 8px; }
-  .hud-buttons { max-width: none; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; white-space: nowrap; }
-  .hud-buttons .icon-button { width: 30px; height: 30px; padding: 0; border-radius: 8px; font-size: 12px; line-height: 0; display: grid; place-items: center; }
-  .tracker { top: 160px; right: 8px; width: min(220px, 34vw); max-height: 45px; overflow-y: auto; gap: 2px; }
+  /* Big enough to hit with a thumb: 40 px with room between them. The minimap sits below them. */
+  .hud-buttons { max-width: none; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+  .hud-buttons .icon-button { width: 40px; height: 40px; padding: 0; border-radius: 12px; font-size: 18px; line-height: 0; display: grid; place-items: center; }
+  .hud-buttons .journal-button svg { width: 22px; height: 22px; }
+  .tracker { top: 170px; right: 8px; width: min(220px, 34vw); max-height: 45px; overflow-y: auto; gap: 2px; }
   .tracker .trk b { font-size: 10px; }
   .tracker .trk > span { font-size: 9px; }
   .spell.touch.slot-inner { right: 105px; }
