@@ -268,6 +268,17 @@ export class GameEngine {
   exploredVersion = 0;
   moveX = 0; moveY = 0; elapsed = 0; defeated = 0;
   shake = 0; hitStop = 0; slowMo = 0; damageFlash = 0; respawnFade = 0; flash = 0;
+  /** When the last hit-stop began, in play time. */
+  private frozeAt = -99;
+  /**
+   * A hit-stop: the world holds still for a moment on a big hit. In a crowd these came several times a second and the
+   * fight played in slow motion, so there is at most one every .35 s of play, half as long when many creatures fight.
+   */
+  private freeze(t: number) {
+    if (this.elapsed - this.frozeAt < .35) return;
+    this.frozeAt = this.elapsed;
+    this.hitStop = Math.max(this.hitStop, this.combat > .6 ? t * .5 : t);
+  }
   combo = 0; comboTime = 0; combat = 0; tracked: string | null = null;
   /** 0…1, rises quickly while a hostile creature is close: drives the red screen edge. */
   danger = 0;
@@ -793,7 +804,7 @@ export class GameEngine {
       if (e.dead || e.spawnT > 0 || this.chargeHit.has(e) || Math.abs(e.x - h.x) > 90 || Math.abs(e.y - h.y) > 90 || dist(e, h) > e.r + 34) continue;
       this.chargeHit.add(e); this.damageEnemy(e, this.dmg('charge'));
       if (!e.boss) { e.stunT = 1; e.windup = 0; e.lunge = 0; this.knock(e, { x: e.x - h.dashY * 30 - h.dashX * 10, y: e.y + h.dashX * 30 - h.dashY * 10 }, 420); }
-      this.addShake(6); this.hitStop = Math.max(this.hitStop, .04);
+      this.addShake(6); this.freeze(.04);
     }
     if (h.stormT > 0) {
       h.stormT -= dt; h.stormTick -= dt;
@@ -1183,7 +1194,7 @@ export class GameEngine {
       for (const o of this.enemies) if (o !== e && !o.dead && this.canHurt(o) && Math.abs(o.x - e.x) < 220 && dist(o, e) < 170 + o.r) this.damageEnemy(o, dmg * .4);
       this.ring(e.x, e.y, 170, '#ff6b9a', .6); this.ring(e.x, e.y, 90, '#ffffff', .35);
       this.emit(e.x, e.y, 40, ['#ff6b9a', '#2a1838', '#e0c8ff', '#ffffff'], { speed: 360, life: .7, kind: 'star', glow: true, size: 5 });
-      this.flash = Math.max(this.flash, .25); this.addShake(8); this.hitStop = Math.max(this.hitStop, .05); this.play('boom', e);
+      this.flash = Math.max(this.flash, .25); this.addShake(8); this.freeze(.05); this.play('boom', e);
     }
     for (let i = this.storms.length - 1; i >= 0; i--) {
       const s = this.storms[i]; s.t -= dt; s.tick -= dt;
@@ -1212,7 +1223,7 @@ export class GameEngine {
     this.flash = Math.max(this.flash, .25);
     for (const e of this.enemies) if (!e.dead && this.canHurt(e) && dist({ x, y }, e) < 100 + e.r) { this.damageEnemy(e, this.dmg('sunfire')); this.knock(e, { x, y }, e.boss ? 15 : 200); }
     for (const p of this.pods) if (!p.dead && dist({ x, y }, p) < 100) this.breakPod(p);
-    this.addShake(9); this.hitStop = .05; this.play('boom', { x, y });
+    this.addShake(9); this.freeze(.05); this.play('boom', { x, y });
   }
   /** Kael's Shield Wall: a ward that blocks everything, bounces projectiles and shoves foes back. */
   private shieldWall() {
@@ -2328,7 +2339,7 @@ export class GameEngine {
       this.text(e.x, e.y - e.r - 18, crit ? `${amount}!` : `${amount}`, crit ? '#ffd35c' : '#fff3c0', crit ? 24 : 17);
       this.emit(e.x, e.y, crit ? 12 : 7, ['#ffffff', '#fff3c0', this.region(e.region).palette.accent], { speed: 200, life: .35, glow: true, size: 3 });
       this.play(crit ? 'crit' : 'hit', e);
-      if (crit) { this.hitStop = Math.max(this.hitStop, .05); this.addShake(3); }
+      if (crit) { this.freeze(.05); this.addShake(3); }
       return;
     }
     e.hp -= amount; e.hitFlash = .14; e.aggro = true;
@@ -2338,7 +2349,7 @@ export class GameEngine {
     this.text(e.x, e.y - e.r - 18, crit ? `${amount}!` : `${amount}`, crit ? '#ffd35c' : '#fff3c0', crit ? 24 : 17);
     this.emit(e.x, e.y, crit ? 12 : 7, ['#ffffff', '#fff3c0', this.region(e.region).palette.accent], { speed: 200, life: .35, glow: true, size: 3 });
     this.play(crit ? 'crit' : 'hit', e);
-    if (crit) { this.hitStop = Math.max(this.hitStop, .05); this.addShake(3); }
+    if (crit) { this.freeze(.05); this.addShake(3); }
     if (e.hp <= 0) this.killEnemy(e);
   }
   private killEnemy(e: Enemy) {
@@ -2380,7 +2391,7 @@ export class GameEngine {
       else this.notice(`${this.bossName(e)} is defeated!`, 'epic', 'Victory!');
       if (q && this.qs(q.id).status === 'active') this.advance(q, 1);
     } else {
-      this.hitStop = Math.max(this.hitStop, .04); this.addShake(4); this.play('kill', e);
+      this.freeze(.04); this.addShake(4); this.play('kill', e);
       if (!e.summoned && !e.guard) for (const q of this.world.quests) if (q.kind === 'slay' && (q.enemy === 'any' || q.enemy === e.kind) && (q.enemy !== 'any' || e.region === q.region)) this.advance(q, 1);
       if (e.guard && this.guardsLeft(e.guard) === 0) { const q = this.quest(e.guard); if (q?.captive) this.notice(`The guards are down — free ${q.captive.name}!`, 'good', 'Open the cage!'); }
     }
@@ -2420,7 +2431,7 @@ export class GameEngine {
     h.vx += dx / d * 520; h.vy += dy / d * 520;
     this.text(h.x, h.y - 50, `-${dmg}`, '#ff8f7a', 20);
     this.emit(h.x, h.y, 18, ['#ff8f7a', '#ffd1ae', '#ffffff'], { speed: 220, life: .5, glow: true });
-    this.addShake(10); this.hitStop = .08; this.play('hurt');
+    this.addShake(10); this.freeze(.08); this.play('hurt');
     if (h.hp <= 0) { if (this.profile.items.phoenixFeather) this.rebirth(); else this.respawn(); }
   }
   /** The Phoenix Feather burns up and the hero rises again on the spot. */
@@ -3193,7 +3204,7 @@ export class GameEngine {
         this.ring(z.x, z.y, z.r * 1.15, '#ff9a4a', .5); this.ring(z.x, z.y, z.r * .6, '#fff1b8', .3);
         this.emit(z.x, z.y, 50, ['#ffd27a', '#ff9a4a', '#ff5f3d', '#fff1b8'], { speed: 420, life: .8, kind: 'ember', glow: true, size: 6 });
         this.emit(z.x, z.y, 14, 'rgba(70,50,45,.55)', { speed: 110, life: 1.3, kind: 'smoke', size: 22 });
-        this.flash = Math.max(this.flash, .3); this.addShake(12); this.hitStop = Math.max(this.hitStop, .05); this.play('boom', z); break;
+        this.flash = Math.max(this.flash, .3); this.addShake(12); this.freeze(.05); this.play('boom', z); break;
       case 'frostbomb':
         this.ring(z.x, z.y, z.r * 1.1, '#bfe8ff', .6); this.ring(z.x, z.y, z.r * .5, '#ffffff', .35);
         this.emit(z.x, z.y, 44, ['#dff6ff', '#8fd8ff', '#ffffff'], { speed: 360, life: .9, kind: 'shard', glow: true, size: 6, grav: 200 });

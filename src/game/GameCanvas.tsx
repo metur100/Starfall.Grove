@@ -57,7 +57,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // Auto quality starts where it settled last time on this device (or from a guess about it), then follows the
     // measured frame time.
     let quality: GraphicsSettings['quality'] | null = null, tier = 0, ceiling = TIERS.length - 1;
-    let frameSum = 0, calmUntil = 0, lastUp = -1e9, tierSince = 0, saved = '', fpsFrames = 0, fpsSince = 0;
+    let frameSum = 0, calmUntil = 0, lastUp = -1e9, tierSince = 0, saved = '', fpsFrames = 0, fpsSince = 0, fpsWorst = 0;
     const gaps: number[] = [], works: number[] = [];
     // Entering the world, a loading card stays up while the first frames are drawn (but not played) and the renderer
     // bakes the ground, houses and trees around the start: nothing new has to be made during the first steps.
@@ -65,7 +65,14 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // After an automatic change of level the ground and pieces are remade at the new one: frames aren't judged until
     // that is done (and a moment after), and it takes two slow seconds in a row to step down again.
     let settling = false, slowRuns = 0;
-    const changeTier = (to: number, now: number) => { tier = to; applyTier(); renderer.rewarm(); settling = true; slowRuns = 0; calmUntil = now + 4000; tierSince = now; frameSum = 0; gaps.length = works.length = 0; };
+    // A phone that stepped up while walking and then down in a crowded fight would keep doing it, fight after fight,
+    // remaking the ground and every piece at the worst moment. So a level is only tried after a long calm spell away
+    // from fights (and never soon after a step down), and a level that had to be left during a fight is not tried again.
+    let lastDown = -1e9, lastFight = -1e9, fightInWindow = false;
+    // Touch screens that refresh 100+ times a second draw every other one: the same 60 frames a second the game is
+    // made for, at half the work and heat. The rate is measured over the first frames.
+    let hz = 0; const early: number[] = [];
+    const changeTier = (to: number, now: number) => { if (to < tier) lastDown = now; tier = to; applyTier(); renderer.rewarm(); settling = true; slowRuns = 0; calmUntil = now + 4000; tierSince = now; frameSum = 0; gaps.length = works.length = 0; };
     veilRef.current?.classList.remove('gone'); if (barRef.current) barRef.current.style.width = '0%';
     let lastSnap: GameSnapshot | null = null, nearX = '', nearY = '';
     const applyTier = () => {
@@ -82,8 +89,13 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       const g = settings.current.graphics, capped = g.fps === 30;
+      // The screen's rate shows in the quickest of the first frames after loading (slow ones only mean work).
+      if (!hz && last && !warming && !settling) { early.push(now - last); if (early.length >= 40) { early.sort((a, b) => a - b); hz = 1000 / early[8]; } }
       if (capped && last && now - last < 1000 / 30 - 4) return;
-      const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.05, raw); last = now;
+      if (!capped && hz > 100 && settings.current.touch && last && now - last < 1000 / 60 - 3) return;
+      // A late frame doesn't slow the game down: its time is played in steps of at most 50 ms (up to a tenth of a
+      // second; past that the game waits rather than jump). Clamping it to one 50 ms step played fights in slow motion.
+      const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.1, raw); last = now;
       renderer.touch = settings.current.touch;
       renderer.shake = g.shake; renderer.weather = g.weather;
       // Still grass is pasted onto the ground and costs nothing a frame, so only the lowest level thins it out.
@@ -94,7 +106,9 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
         tier = quality === 'auto' ? kept?.tier ?? startTier() : TIER_OF[quality]; ceiling = kept?.ceiling ?? TIERS.length - 1;
         frameSum = 0; gaps.length = works.length = 0; calmUntil = now + 4000; tierSince = now; applyTier();
       }
-      if (!pausedRef.current && !warming) engine.update(dt); else engine.settleFx(dt);
+      if (!pausedRef.current && !warming) { const steps = Math.ceil(dt / .05 - 1e-6) || 1; for (let i = 0; i < steps; i++) engine.update(dt / steps); } else engine.settleFx(dt);
+      if (engine.combat > .15) { lastFight = now; fightInWindow = true; }
+      renderer.fighting = now - lastFight < 3000;
       renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
       // The touch prompt follows the person in reach. Its position is written straight onto the prompt, and only when it
       // moves: set on the stage it would restyle the whole HUD every frame.
@@ -117,7 +131,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       }
       if (settling && renderer.warmup(engine, 4) >= 1) { settling = false; calmUntil = Math.max(calmUntil, now + 2500); }
       if (quality === 'auto' && raw > 0 && raw < .25 && !pausedRef.current && !warming && !settling && now > calmUntil) {
-        frameSum += raw; gaps.push(raw); works.push(busy);
+        frameSum += Math.min(raw, .25); gaps.push(raw); works.push(busy);
         // Judge about a second of play at a time: step down quickly, step up after a calm spell.
         // With the 30 fps cap the frame interval is fixed, so the time spent drawing is what counts.
         if (gaps.length >= 60 || frameSum > 1) {
@@ -130,20 +144,22 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
           const awful = capped ? avg > .06 : avg > .034;
           slowRuns = slow ? slowRuns + 1 : 0;
           if ((slowRuns >= 2 || awful) && tier > 0) {
-            // Dropping right after a step up means that level is too much for this device: stay below it (and remember).
-            if (now - lastUp < 30000) ceiling = tier - 1;
+            // Dropping right after a step up, or in a fight, means that level is too much for this device when it
+            // matters: stay below it (and remember).
+            if (now - lastUp < 30000 || fightInWindow) ceiling = tier - 1;
             changeTier(tier - 1, now);
-          } else if (smooth && tier < ceiling && now - lastUp > 8000) { lastUp = now; changeTier(tier + 1, now); }
+          } else if (smooth && tier < ceiling && now - lastUp > 30000 && now - lastDown > 60000 && now - lastFight > 20000) { lastUp = now; changeTier(tier + 1, now); }
+          fightInWindow = false;
           // A level held for twenty seconds of play is where the next visit starts.
           const key = `${tier}|${ceiling}`;
           if (now - tierSince > 20000 && key !== saved) { saveAutoTier(tier, ceiling); saved = key; }
         }
       }
-      fpsFrames++;
+      fpsFrames++; if (raw < .5) fpsWorst = Math.max(fpsWorst, raw);
       if (now - fpsSince > 500) {
         const el = fpsRef.current;
-        if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · ${TIER_NAMES[tier]}`; }
-        fpsFrames = 0; fpsSince = now;
+        if (el) { el.hidden = !g.showFps; if (g.showFps) el.textContent = `${Math.round(fpsFrames * 1000 / (now - fpsSince))} fps · slowest ${Math.round(fpsWorst * 1000)} ms · ${TIER_NAMES[tier]}`; }
+        fpsFrames = 0; fpsSince = now; fpsWorst = 0;
       }
       // The HUD hears about the game ten times a second (five below full detail: each update restyles and repaints
       // it, which a phone feels in a fight), and only when something it shows has changed. Its bars glide between.

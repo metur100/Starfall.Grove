@@ -448,6 +448,9 @@ export class Renderer {
   /** The chunks around the latest view, and whether a bake of them is waiting for idle time. */
   private ring: { e: GameEngine; c0: number; c1: number; r0: number; r1: number } | null = null;
   private ringQueued = false;
+  /** Set by the game loop during and just after a fight: ground ahead of the view is then baked only when the browser
+   *  really has idle time (or once a second), since a phone's graphics chip feels every bake in a crowded fight. */
+  fighting = false;
   /** A chunk baked at another resolution, or with other grass pasted in than is wanted now. */
   private stale(c: HTMLCanvasElement) { return c.width !== Math.ceil(CHUNK * this.chunkRes) || (this.chunkDecor.get(c) ?? 0) !== this.pasteKeep; }
   private nextRingChunk(): [number, number] | null {
@@ -469,7 +472,7 @@ export class Renderer {
       }
       this.queueRing();
     };
-    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 250 }); else setTimeout(run, 0);
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: this.fighting ? 1000 : 250 }); else setTimeout(run, this.fighting ? 200 : 0);
   }
   private bakeChunk(e: GameEngine, cx: number, cy: number) {
     const res = this.chunkRes, world = e.world, ox = cx * CHUNK, oy = cy * CHUNK, region = regionOf(world, ox + 1), p = region.palette;
