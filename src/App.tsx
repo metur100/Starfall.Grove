@@ -47,6 +47,15 @@ function getSave(hero: HeroId): Save {
     return blankSave();
   } catch { return blankSave(); }
 }
+/** True once a newer version of the game has been downloaded and waits for a restart. */
+function useUpdateReady() { const [ready, setReady] = useState(false); useEffect(() => onUpdateReady(setReady), []); return ready; }
+/** The title's offer to switch to a new version: the whole pill is the button, and it shows that the tap was taken. */
+function UpdatePill() {
+  const [going, setGoing] = useState(false);
+  return <button className="update-pill" disabled={going} onClick={() => { sfx.play('ui'); setGoing(true); void applyUpdate(); }}>
+    <span>✨ A new version is ready</span><b>{going ? 'Restarting…' : 'Restart ↻'}</b>
+  </button>;
+}
 function saveNow(hero: HeroId, data: Save) { try { localStorage.setItem(saveKey(hero), JSON.stringify(data)); } catch { /* local play remains available */ } }
 const levels = (id: RegionId) => `Lv ${WORLDS[id].levels[0]}–${WORLDS[id].levels[1]}`;
 /** What the character select screen shows for each hero. */
@@ -421,6 +430,13 @@ function App() {
   const kl = useKeys();
   /** Keeps the adventure on disk before a backup is written. */
   const flushSave = () => { const e = engineRef.current; if (e && mode === 'play') { saveSession(hero, e.exportSave()); saveProfile(e.profile); } };
+  // A new version can arrive while playing: say so once, and offer the restart in the pause menu (saving first).
+  const update = useUpdateReady(), [restarting, setRestarting] = useState(false), toldUpdate = useRef(false);
+  useEffect(() => {
+    if (!update || toldUpdate.current || (mode !== 'play' && mode !== 'practice')) return;
+    toldUpdate.current = true; notify('A new version of the game is ready. Restart it from the pause menu.', 'good', 'New version: see pause menu');
+  }, [update, mode, notify]);
+  const restartForUpdate = () => { sfx.play('ui'); flushSave(); setRestarting(true); void applyUpdate(); };
 
   return <div className={`app-shell mode-${mode} ${touch ? 'is-touch' : ''}`}>
     {mode === 'title' && <TitleScreen hero={hero} muted={muted} touch={touch} graphics={graphics} settings={settingsOpen} onSettings={setSettingsOpen} onGraphics={changeGraphics} onToggleMute={toggleMute} onPlay={() => { sfx.play('ui'); setMode('select'); }} onTutorial={() => { sfx.play('ui'); setMode('tutorial'); }} onStartOver={startOver} onDeleteAll={deleteAll} />}
@@ -447,7 +463,7 @@ function App() {
             <button className="icon-button" onClick={() => openSheet('bag')} aria-label="Bag" title="Bag and equipment (I)">🎒</button>
             <button className="icon-button" onClick={() => { setMapOpen(true); sfx.play('page'); }} aria-label="World map" title="Map (M)">🗺️</button>
             <button className="icon-button journal-button" onClick={() => toggleJournal('quests')} aria-label="Journal: quests, spellbook and achievements" title={`Journal: quests (${kl('quests')}), spellbook (${kl('spellbook')}), achievements (${kl('achievements')})`}><JournalIcon /></button>
-            <button className="icon-button" onClick={() => { engineRef.current?.setMovement(0, 0); setPaused(true); }} aria-label="Pause" title="Pause (Esc)">❚❚</button>
+            <button className={`icon-button ${update ? 'has-update' : ''}`} onClick={() => { engineRef.current?.setMovement(0, 0); setPaused(true); }} aria-label={update ? 'Pause (a new version is ready)' : 'Pause'} title="Pause (Esc)">❚❚</button>
           </div>
         </div>
         {mode === 'practice' && <button className={`practice-guide-toggle ${practiceGuideOpen ? 'guide-button-on' : ''}`} onClick={() => setPracticeGuideOpen(open => !open)} aria-pressed={practiceGuideOpen} aria-label={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'} title={practiceGuideOpen ? 'Hide spell guide' : 'Show spell guide'}><span>Spell guide</span><i className="guide-toggle-track"><b /></i></button>}
@@ -552,7 +568,8 @@ function App() {
             <span><kbd>{kl('up')}{kl('left')}{kl('down')}{kl('right')}</kbd> Move</span>{HEROES[hero].spells.map((id, i) => <span key={id}><kbd>{kl((['spell1', 'spell2', 'spell3', 'spell4', 'spell5'] as Action[])[i])}</kbd> {SPELLS[id].name}</span>)}<span><kbd>{kl('interact')}</kbd> Talk / use</span>
             <span><kbd>{kl('ride')}</kbd> Ride mount</span><span><kbd>1</kbd>–<kbd>0</kbd> Potions &amp; bombs</span><span><kbd>{kl('spellbook')}</kbd> Spellbook</span><span><kbd>{kl('bag')}</kbd> Bag</span><span><kbd>{kl('quests')}</kbd> Quest log</span><span><kbd>{kl('character')}</kbd> Character</span><span><kbd>{kl('achievements')}</kbd> Achievements</span><span><kbd>{kl('map')}</kbd> Map</span>
           </div>
-          <button className="btn primary" onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
+          {update && <div className="update-row"><span>✨ A new version is ready. Your adventure is saved first.</span><button className="btn primary" disabled={restarting} onClick={restartForUpdate}>{restarting ? 'Restarting…' : 'Restart now ↻'}</button></div>}
+          <button className={`btn ${update ? 'ghost' : 'primary'}`} onClick={() => setPaused(false)}>Resume adventure <b>→</b></button>
           <button className="btn ghost leave-btn" onClick={() => { sfx.play('ui'); leaveToTitle(); }} title="Back to the main menu">⌂ Main menu</button>
           <div className="pause-row">
             <button className="btn ghost" onClick={() => { setSettingsOpen(true); sfx.play('page'); }}>⚙ Settings</button>
@@ -583,12 +600,11 @@ function App() {
 function TitleScreen({ hero, muted, touch, graphics, settings, onSettings, onGraphics, onToggleMute, onPlay, onTutorial, onStartOver, onDeleteAll }: { hero: HeroId; muted: boolean; touch: boolean; graphics: GraphicsSettings; settings: boolean; onSettings: (open: boolean) => void; onGraphics: (g: Partial<GraphicsSettings>) => void; onToggleMute: () => void; onPlay: () => void; onTutorial: () => void; onStartOver: () => void; onDeleteAll: () => void }) {
   const save = getSave(hero), next = LEVEL_ORDER.find(id => !save.done[id]) || LEVEL_ORDER[LEVEL_ORDER.length - 1], last = heroStarted(hero) ? heroSummary(hero) : null;
   const kl = useKeys();
-  const [update, setUpdate] = useState(false);
-  useEffect(() => onUpdateReady(setUpdate), []);
+  const update = useUpdateReady();
   return <main className="menu-page title-page">
     <TitleBackdrop level={next} />
     <header className="title-top">
-      {update && <button className="update-pill" onClick={() => { sfx.play('ui'); applyUpdate(); }}>✨ A new version is ready · <b>Restart</b></button>}
+      {update && <UpdatePill />}
       <div className="title-tools">
         <button className="icon-button" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>{muted ? '🔇' : '🔊'}</button>
         <button className="icon-button" onClick={() => { onSettings(true); sfx.play('page'); }} aria-label="Settings" title="Settings">⚙</button>

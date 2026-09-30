@@ -1103,7 +1103,15 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 /* ───────── Mounts, stable, loot comparison, controls, backups, update notice */
 .mount-button.on { border-color: var(--gold); background: linear-gradient(180deg, rgba(245, 210, 122, .35), rgba(245, 210, 122, .1)); box-shadow: 0 0 18px rgba(245, 210, 122, .45); }
 .update-pill { position: absolute; left: 50%; top: max(14px, env(safe-area-inset-top)); transform: translateX(-50%); z-index: 5; padding: 9px 18px; border-radius: 999px; border: 1px solid var(--gold); background: rgba(20, 24, 52, .9); color: #fff3cf; font: 700 13px var(--ui); cursor: pointer; box-shadow: 0 0 24px rgba(245, 210, 122, .35); white-space: nowrap; }
-.update-pill b { color: var(--gold); }
+.update-pill { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 16px; min-height: 44px; }
+.update-pill b { padding: 7px 14px; border-radius: 999px; background: linear-gradient(180deg, #ffe49a, #f5c04a 60%, #e8a13a); color: #2a1a08; font-weight: 800; }
+.update-pill:active b { transform: translateY(1px); filter: brightness(.95); }
+.update-pill:disabled { cursor: progress; }
+.update-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; padding: 8px 8px 8px 14px; border: 1px solid #c8962e; border-radius: 14px; background: rgba(245, 190, 80, .16); color: #5a3a14; font-weight: 700; font-size: 14px; text-align: left; }
+.pause-panel .update-row .btn.primary { flex: none; width: auto; min-height: 40px; padding: 0 16px; white-space: nowrap; }
+/* A new version waits: a gold dot on the pause button, where the restart is offered. */
+.icon-button.has-update { position: relative; }
+.icon-button.has-update::after { content: ''; position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px #1a1020; }
 .stable { margin-bottom: 14px; }
 .stable > small { display: block; margin-bottom: 8px; font: 800 11px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .stable-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
