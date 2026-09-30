@@ -69,8 +69,9 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // remaking the ground and every piece at the worst moment. So a level is only tried after a long calm spell away
     // from fights (and never soon after a step down), and a level that had to be left during a fight is not tried again.
     let lastDown = -1e9, lastFight = -1e9, fightInWindow = false;
-    // Touch screens that refresh 100+ times a second draw every other one: the same 60 frames a second the game is
-    // made for, at half the work and heat. The rate is measured over the first frames.
+    // Touch screens of 90 and 120 Hz draw every frame (a late frame then costs only a few ms, not a whole 17 ms
+    // one); only the fastest (144 Hz and up) draw every other one, at half the work and heat. The rate is measured
+    // over the first frames.
     let hz = 0; const early: number[] = [];
     const changeTier = (to: number, now: number) => { if (to < tier) lastDown = now; tier = to; applyTier(); renderer.rewarm(); settling = true; slowRuns = 0; calmUntil = now + 4000; tierSince = now; frameSum = 0; gaps.length = works.length = 0; };
     veilRef.current?.classList.remove('gone'); if (barRef.current) barRef.current.style.width = '0%';
@@ -92,7 +93,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       // The screen's rate shows in the quickest of the first frames after loading (slow ones only mean work).
       if (!hz && last && !warming && !settling) { early.push(now - last); if (early.length >= 40) { early.sort((a, b) => a - b); hz = 1000 / early[8]; } }
       if (capped && last && now - last < 1000 / 30 - 4) return;
-      if (!capped && hz > 100 && settings.current.touch && last && now - last < 1000 / 60 - 3) return;
+      if (!capped && hz > 130 && settings.current.touch && last && now - last < 1000 / 60 - 3) return;
       // A late frame doesn't slow the game down: its time is played in steps of at most 50 ms (up to a tenth of a
       // second; past that the game waits rather than jump). Clamping it to one 50 ms step played fights in slow motion.
       const raw = last ? (now - last) / 1000 : 0, dt = Math.min(.1, raw); last = now;

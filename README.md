@@ -282,7 +282,7 @@ Phones and tablets come first: changes are measured in phone and tablet emulatio
   - Quest badges, shop signs, place names, speech bubbles, level tags and damage numbers are painted once and stamped. Below High at most ten damage numbers show at once.
 - **No slow motion:** a frame that comes late is played in steps of at most 50 ms (up to a tenth of a second), so a stutter never slows the game down.
   - Hit-stops (the world holding still on a big hit) come at most every 0.35 s of play, and are half as long when many creatures fight. In a crowd they used to follow one another.
-- **Fast screens:** touch screens that refresh 100 or more times a second are drawn every other refresh, which is 60 frames a second at half the work and heat.
+- **Fast screens:** 90 and 120 Hz touch screens draw every refresh (smoother, and a late frame costs only a few ms); 144 Hz and faster draw every other refresh to save work and heat.
 - **Ground in fights:** during and just after a fight, ground beyond the view is baked only in real idle time (or at most once a second).
 - **Sparks and sounds:** below High, bursts are thinner, fewer sparks live at once and sparks have no glow. The same sound plays at most every 70 ms, with at most 20 voices at once.
 - **Minimap:** the map, fog and markers are redrawn ten times a second into a slightly larger canvas that slides under the window every frame. The hero's arrow is drawn live.
