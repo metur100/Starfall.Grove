@@ -6,7 +6,7 @@
     "skipLibCheck": true, "moduleResolution": "bundler", "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true, "moduleDetection": "force", "noEmit": true,
     "jsx": "react-jsx", "strict": true, "noUnusedLocals": true,
-    "noUnusedParameters": true, "noFallthroughCasesInSwitch": true
+    "noUnusedParameters": true, "noFallthroughCasesInSwitch": true, "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src", "landing"]
 }

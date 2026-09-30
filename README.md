@@ -17,6 +17,15 @@ npm run preview  # preview the build
 
 Every push to `master` deploys to GitHub Pages through `.github/workflows/deploy.yml`.
 
+## Landing page
+
+The website for promoting the game lives in `landing/` and is built together with the game. It is served at `…/Starfall.Grove/landing/` (`npm run dev`, then open `/landing/`). It uses the game's own art: the paper diorama at night behind the title, the five heroes standing together on its front hill (the same rig as in the world), and a copy of the hero select. That copy has the rune pedestal (drag to turn), the traits and abilities, the roster, and each hero's own story and guardians. It also has a **Try the legendary set** button, the hero's intro film, and **Play as**, which opens the game on that hero. Below come the story, the four lands, features, platforms and FAQ.
+
+- `landing/site.json` holds the developer name, contact email, address and country, and the store links. Every page fills `%site.key%` from it at build time. A store badge shows **Soon** until its link is filled in.
+- `privacy.html`, `terms.html`, `support.html` and `imprint.html` are the legal and help pages that store listings need. The privacy policy states what the game really does: saves stay in local storage, and there are no accounts, analytics or ads. Update it if that ever changes.
+- The website is not part of the game. The service worker neither keeps nor answers for `landing/`, and the landing pages get no app manifest, so the game's offline download is unchanged.
+- The moving pieces only draw while they are on screen. On touch screens the cast is re-cut 12 times a second, like the pedestal.
+
 ## The world
 
 The valley is **one continuous world** (38,912 × 6,720 px) made of four lands laid side by side. You walk from one to the next through a gate in the border cliffs. Each land keeps its own look, lighting, weather, music and difficulty:
@@ -326,6 +335,7 @@ Phones and tablets come first: changes are measured in phone and tablet emulatio
 ## Project structure
 
 ```text
+landing/               The website (see Landing page): pages, landing.css, site.json and src/ (cast, hero select)
 src/
   App.tsx              Screens, HUD, banners, dialogue, journal, map overlay, touch controls
   TitleBackdrop.tsx    The paper diorama behind the menus: hills, moon, stars, clouds and the Beacon
