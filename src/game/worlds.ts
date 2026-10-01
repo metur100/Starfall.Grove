@@ -2,9 +2,25 @@ import { buildValley, inPond, type RegionSpec } from './worldgen';
 import { STORY, type StoryQuest } from './story';
 import { HERO_QUESTS } from './heroStory';
 import { HERO_STORIES } from './heroes';
-import type { Captive, NpcLook, Region, RegionId, WorldDefinition } from './types';
+import type { Captive, EnemyKind, NpcLook, Region, RegionId, WorldDefinition } from './types';
 
 export const LEVEL_ORDER: RegionId[] = ['meadow', 'woods', 'summit', 'ember'];
+
+/** Every land has creatures of its own: none of them is met in any other land (guardians aside). */
+export const LAND_KINDS: Record<RegionId, EnemyKind[]> = {
+  meadow: ['gloomling', 'thornling', 'bristleboar', 'sporecap'],
+  woods: ['shadewolf', 'webspinner', 'bogling', 'briarling', 'mirecap', 'marshlight'],
+  summit: ['wisp', 'frostwraith', 'cragGolem', 'snowfang', 'rimeling'],
+  ember: ['emberImp', 'ashScorpion', 'magmaHulk', 'cinderhound', 'pyrewisp'],
+};
+/** A creature called into a land it doesn't live in (a summons, a siege, a cutscene) comes as that land's nearest kin. */
+const KIN: Record<RegionId, Partial<Record<EnemyKind, EnemyKind>>> = {
+  meadow: { bogling: 'gloomling', briarling: 'thornling', mirecap: 'sporecap', marshlight: 'gloomling', webspinner: 'thornling', wisp: 'gloomling', rimeling: 'thornling', snowfang: 'gloomling', cragGolem: 'bristleboar', magmaHulk: 'bristleboar', ashScorpion: 'bristleboar', cinderhound: 'gloomling', pyrewisp: 'gloomling', emberImp: 'thornling', frostwraith: 'thornling' },
+  woods: { gloomling: 'bogling', thornling: 'briarling', sporecap: 'mirecap', bristleboar: 'shadewolf', wisp: 'marshlight', frostwraith: 'briarling', snowfang: 'shadewolf', rimeling: 'briarling', cragGolem: 'webspinner', emberImp: 'briarling', ashScorpion: 'webspinner', magmaHulk: 'webspinner', cinderhound: 'shadewolf', pyrewisp: 'marshlight' },
+  summit: { gloomling: 'rimeling', thornling: 'rimeling', sporecap: 'rimeling', bristleboar: 'snowfang', shadewolf: 'snowfang', webspinner: 'frostwraith', bogling: 'rimeling', briarling: 'rimeling', mirecap: 'rimeling', marshlight: 'wisp', emberImp: 'frostwraith', ashScorpion: 'snowfang', magmaHulk: 'cragGolem', cinderhound: 'snowfang', pyrewisp: 'wisp' },
+  ember: { gloomling: 'cinderhound', thornling: 'pyrewisp', sporecap: 'pyrewisp', bristleboar: 'ashScorpion', shadewolf: 'cinderhound', webspinner: 'ashScorpion', bogling: 'cinderhound', briarling: 'pyrewisp', mirecap: 'pyrewisp', marshlight: 'pyrewisp', wisp: 'pyrewisp', frostwraith: 'emberImp', cragGolem: 'magmaHulk', snowfang: 'cinderhound', rimeling: 'pyrewisp' },
+};
+export const localKind = (kind: EnemyKind, region: RegionId): EnemyKind => LAND_KINDS[region].includes(kind) ? kind : KIN[region][kind] ?? kind;
 
 const look = (robe: string, hat: NpcLook['hat'], extra: Partial<NpcLook> = {}): Partial<NpcLook> => ({ robe, hat, hatColor: extra.hatColor || '#4a5b3e', skin: '#f0c8a2', hair: '#6b3f2a', ...extra });
 const q = (def: StoryQuest) => def;
@@ -14,6 +30,7 @@ const shopLines = {
   smith: ['Bring gold and I’ll make that staff sing.'],
   inn: ['A warm bed and a hot meal. Rest as long as you like.'],
   armorer: ['Fine gear is never cheap. Come back when you have grown — my shelf grows with you.'],
+  stable: ['Nobody rides for free, friend. But every one of my mounts is worth the gold.'],
 };
 
 // ═════════════════════════════ Chapter I · Sunpetal Meadow · levels 1–6
@@ -62,6 +79,7 @@ const meadow: RegionSpec = {
     { id: 'merchant', name: 'Merchant Pell', portrait: '🧪', at: 'city', dx: -120, dy: -130, activity: 'idle', role: 'merchant', look: look('#3f7a6a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions! Get your potions!'] },
     { id: 'smith', name: 'Smith Hilda', portrait: '⚒️', at: 'city', dx: 330, dy: 80, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Clang!'] },
     { id: 'armorer', name: 'Armourer Brisk', portrait: '🛡️', at: 'city', dx: 150, dy: 120, activity: 'idle', role: 'armorer', look: look('#5a4a6a', 'helm', { hatColor: '#b8bcc6' }), lines: shopLines.armorer, barks: ['Only the finest!'] },
+    { id: 'stable', name: 'Stablemaster Wick', portrait: '🐎', at: 'city', dx: -260, dy: 230, activity: 'idle', role: 'stable', look: look('#8a6a3a', 'straw', { hatColor: '#c9a24c', beard: true }), lines: shopLines.stable, barks: ['Sunpetal ponies! Gentle as lambs, quick as rumours.'] },
     { id: 'inn', name: 'Innkeeper Rosa', portrait: '🛏️', at: 'city', dx: -320, dy: 20, activity: 'idle', role: 'inn', look: look('#b07a5a', 'bonnet', { hatColor: '#e0525c' }), lines: shopLines.inn, barks: ['Rooms free for heroes!'] },
     { id: 'ottilie', name: 'Mayor Ottilie', portrait: '👵', at: 'willow', dx: -90, dy: -30, activity: 'idle', look: look('#b07a9a', 'bonnet', { hatColor: '#8a4f6a', hair: '#e8e2d0' }), lines: ['Welcome to Willowmere. Please wipe your boots.'], barks: ['Order, order!'] },
     { id: 'tilly', name: 'Little Tilly', portrait: '👧', at: 'willow', dx: 120, dy: 120, activity: 'play', look: look('#f2a1b8', 'none', { small: true, hair: '#b8743c' }), lines: ['Wanna play tag? You’re it!'], barks: ['Tag!', 'Hee hee!'] },
@@ -133,7 +151,7 @@ const woods: RegionSpec = {
     { id: 'glade', name: 'Moonlit Glade', kind: 'grove', x: 3300, y: 3200, r: 400 },
     { id: 'city', name: 'Lanternmarket', kind: 'city', x: 5400, y: 3600, r: 900 },
     { id: 'pool', name: 'Blackwater Pool', kind: 'lake', x: 4000, y: 5900, r: 520 },
-    { id: 'nest', name: 'Thornling Nest', kind: 'lair', x: 5300, y: 1000, r: 420, pack: ['thornling', 'thornling', 'shadewolf'] },
+    { id: 'nest', name: 'Briarling Nest', kind: 'lair', x: 5300, y: 1000, r: 420, pack: ['briarling', 'briarling', 'shadewolf'] },
     { id: 'lodge', name: 'Trapper’s Lodge', kind: 'camp', x: 7200, y: 5700, r: 340 },
     { id: 'watch', name: 'Owl Watchtower', kind: 'lookout', x: 7400, y: 2300, r: 360 },
     { id: 'spring', name: 'Moss Shrine', kind: 'shrine', x: 6600, y: 700, r: 280 },
@@ -145,7 +163,7 @@ const woods: RegionSpec = {
   links: [['bellhollow', 'city'], ['glade', 'city'], ['watch', 'bell'], ['lodge', 'web'], ['shroomfarm', 'ruins'], ['city', 'gateE'], ['city', 'watch']],
   keyAt: ['shroomfarm', 'nest', 'watch'], keyName: 'Root rune', shrineName: 'Moss Shrine', finaleName: 'Ancient Root Bell',
   trees: [['tree', 7], ['mushroom', 2], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 6], ['fern', 5], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
-  enemyKinds: [['shadewolf', 4], ['webspinner', 3], ['gloomling', 3], ['thornling', 3], ['sporecap', 2], ['wisp', 1]], boss: 'brambleWarden', bossLevel: 13,
+  enemyKinds: [['shadewolf', 4], ['webspinner', 3], ['bogling', 3], ['briarling', 3], ['mirecap', 2], ['marshlight', 1]], boss: 'brambleWarden', bossLevel: 13,
   critters: [['deer', 4], ['rabbit', 3], ['bird', 3], ['frog', 4], ['squirrel', 4], ['duck', 1]],
   villagerNames: ['Moss', 'Tansy', 'Fennick', 'Briar', 'Hazel', 'Oakley', 'Sorrel', 'Wick', 'Ivy', 'Thistle', 'Burr', 'Nettle', 'Rowe', 'Linden', 'Alder', 'Sedge', 'Fern', 'Aspen', 'Bracken', 'Holly', 'Yarrow', 'Robin', 'Clove', 'Mallow'],
   chatter: ['The trees whisper at night. Mostly complaints about the damp.', 'Lanternmarket never sleeps — the lanterns keep it awake.', 'Don’t follow the blue lights into the dark. Trust me.', 'The Old Bell used to ring every dawn. The birds miss it.', 'Glowcaps taste like starlight and socks.', 'The owls at the watchtower see everything. Terrible gossips.', 'Shadewolves never hunt alone. If you see one, there are three.', 'A girl in black walked past my door last night. The lantern went out.', 'Webspinner silk is lovely for scarves. Getting it is less lovely.'],
@@ -163,6 +181,7 @@ const woods: RegionSpec = {
     { id: 'merchant', name: 'Merchant Quill', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions and tonics!'] },
     { id: 'smith', name: 'Smith Garron', portrait: '⚒️', at: 'city', dx: 330, dy: -60, activity: 'hammer', role: 'smith', look: look('#5a3a2a', 'cap', { hatColor: '#2a1a14', beard: true }), lines: shopLines.smith, barks: ['Clang! Clang!'] },
     { id: 'armorer', name: 'Armourer Vale', portrait: '🛡️', at: 'city', dx: 200, dy: 40, activity: 'idle', role: 'armorer', look: look('#3f5a4a', 'helm', { hatColor: '#8a9a7a', beard: true }), lines: shopLines.armorer, barks: ['Rootsteel, fresh from the forge!'] },
+    { id: 'stable', name: 'Stablemaster Fern', portrait: '🐎', at: 'city', dx: -240, dy: 220, activity: 'idle', role: 'stable', look: look('#4a6a3a', 'hood', { hatColor: '#3f5a2a' }), lines: shopLines.stable, barks: ['A stag knows every root on the road. Mind the antlers.'] },
     { id: 'inn', name: 'Innkeeper Bree', portrait: '🛏️', at: 'city', dx: -330, dy: 40, activity: 'idle', role: 'inn', look: look('#8a6a4a', 'bonnet', { hatColor: '#6f9a5c' }), lines: shopLines.inn, barks: ['Warm soup inside!'] },
     { id: 'ysolde', name: 'Trapper Ysolde', portrait: '🏹', at: 'lodge', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a' }), lines: ['Quiet feet catch more than loud ones.'], barks: ['Shh.'] },
     { id: 'ivo', name: 'Scout Ivo', portrait: '💂', at: 'watch', dx: -60, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a' }), lines: ['From the tower I see every lantern in the woods.'], barks: ['All clear… for now.'] },
@@ -175,8 +194,8 @@ const woods: RegionSpec = {
       text: { offer: ['My moon moths fled to the Moonlit Glade. Without them the lantern tree won’t catch.', 'Five of them, please.'], progress: ['The Moonlit Glade lies north of here.'], complete: ['They’re home! Listen to them hum.', 'Take this bark-woven vest.'], after: ['The lantern tree glows again.'] } }),
     q({ id: 'satchel', title: 'Nutkin’s Satchel', giver: 'nutkin', kind: 'collect', count: 1, near: 'pool', item: 'Courier satchel', icon: 'bundle', summary: 'Find Nutkin’s satchel near Blackwater Pool.', reward: { xp: 100, regen: .8 },
       text: { offer: ['I lost my satchel near Blackwater Pool! Don’t tell Pip.', 'Red strap, very loud buckle.'], progress: ['Blackwater Pool is south-east of here.'], complete: ['My satchel! The acorn cakes survived!', 'Have one — your magic flows faster.'], after: ['Nutkin delivers, always.'] } }),
-    q({ id: 'timber', title: 'Clear the Timber Road', giver: 'forester', kind: 'slay', count: 6, enemy: 'thornling', summary: 'Defeat thornlings.', reward: { xp: 130 },
-      text: { offer: ['Thornlings shoot at my cart every time I haul logs.', 'Six fewer thornlings would make my week.'], progress: ['Thornlings hide in thick brush.'], complete: ['The road’s clear! My cart thanks you.'], after: ['Timber flows again.'] } }),
+    q({ id: 'timber', title: 'Clear the Timber Road', giver: 'forester', kind: 'slay', count: 6, enemy: 'briarling', summary: 'Defeat briarlings.', reward: { xp: 130 },
+      text: { offer: ['Briarlings shoot at my cart every time I haul logs.', 'Six fewer briarlings would make my week.'], progress: ['Briarlings hide in thick brush.'], complete: ['The road’s clear! My cart thanks you.'], after: ['Timber flows again.'] } }),
     q({ id: 'oil', title: 'Lantern Oil for the Lodge', giver: 'fenn', kind: 'deliver', count: 1, to: 'ysolde', item: 'Lantern oil', summary: 'Bring lantern oil to Trapper Ysolde at the lodge.', reward: { xp: 110 },
       text: { offer: ['Trapper Ysolde’s lodge has gone dark.', 'Carry this oil to her — south-east of the city.'], progress: ['Trapper’s Lodge is south-east.'], complete: [], after: ['Every lantern lit.'], deliver: ['Oil! Fenn remembered me.', 'The lodge will shine tonight. Thank you.'] } }),
     q({ id: 'glowcaps', title: 'Glowcap Stew', giver: 'nana', kind: 'collect', count: 6, near: 'shroomfarm', item: 'Glowcap', icon: 'mushroom', summary: 'Pick glowcaps around Glowcap Farm.', reward: { xp: 130, mana: 12 },
@@ -203,7 +222,7 @@ const woods: RegionSpec = {
   lore: [
     { at: 'ruins', name: 'Root-carved stone', text: ['“The roots were here before the woods. They will be here after. Speak kindly to them.”'] },
     { at: 'glade', name: 'Moonstone', text: ['“Once a year the moon comes down to drink from this glade. Leave it a little water.”'] },
-    { at: 'nest', name: 'Scratched stone', text: ['“Thornlings are born from brambles that were never loved. Sing to a bramble, and it may flower instead.”'] },
+    { at: 'nest', name: 'Scratched stone', text: ['“Briarlings are born from brambles that were never loved. Sing to a bramble, and it may flower instead.”'] },
     { at: 'bell', name: 'Bell-stone', text: ['“The Bramble Warden wears the thorns so the Bell will not. It guards, and it grieves.”'] },
     { at: 'watch', name: 'Tower stone', text: ['“Built by owls, finished by people. The owls still claim credit.”'] },
     { at: 'web', name: 'Charred page', text: ['A torn page in Sable’s hand: “Every night the shadow burns. Umbra whispers that it can stop it. I just have to put the lights out.”'] },
@@ -232,7 +251,7 @@ const summit: RegionSpec = {
     { id: 'crystal', name: 'Crystal Hollow', kind: 'ruins', x: 1300, y: 1200, r: 400 },
     { id: 'tarn', name: 'Mirrorsky Tarn', kind: 'lake', x: 3600, y: 2400, r: 540 },
     { id: 'bloom', name: 'Starbloom Grove', kind: 'grove', x: 3400, y: 600, r: 380 },
-    { id: 'city', name: 'Skyhold', kind: 'city', x: 5400, y: 4200, r: 900 },
+    { id: 'city', name: 'Cloudcrest', kind: 'city', x: 5400, y: 4200, r: 900 },
     { id: 'terrace', name: 'Goatherd’s Terrace', kind: 'farm', x: 3700, y: 6000, r: 440 },
     { id: 'pass', name: 'Silver Pass Camp', kind: 'camp', x: 5800, y: 1600, r: 340 },
     { id: 'frostfang', name: 'Frostfang Crag', kind: 'lair', x: 6700, y: 2700, r: 420, pack: ['cragGolem', 'frostwraith', 'frostwraith'] },
@@ -246,10 +265,10 @@ const summit: RegionSpec = {
   links: [['hamlet', 'tarn'], ['terrace', 'city'], ['pass', 'spire'], ['city', 'altar'], ['crystal', 'bloom'], ['altar', 'cradle'], ['city', 'frostfang'], ['altar', 'gateE']],
   keyAt: ['crystal', 'frostfang', 'spire'], keyName: 'Star shard', shrineName: 'Star Altar', finaleName: 'Star Cradle',
   trees: [['pine', 7], ['crystal', 2], ['rock', 3]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 2], ['flower', 2]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
-  enemyKinds: [['wisp', 4], ['frostwraith', 4], ['cragGolem', 2], ['shadewolf', 2], ['thornling', 1]], boss: 'hollowStar', bossLevel: 19,
+  enemyKinds: [['wisp', 4], ['frostwraith', 4], ['cragGolem', 2], ['snowfang', 2], ['rimeling', 2]], boss: 'hollowStar', bossLevel: 19,
   critters: [['goat', 6], ['bird', 3], ['rabbit', 3], ['duck', 1]],
   villagerNames: ['Frost', 'Astra', 'Corin', 'Vesper', 'Lumi', 'Soren', 'Nyx', 'Halden', 'Skye', 'Elna', 'Birk', 'Selka', 'Tarn', 'Isolde', 'Rune', 'Kestrel', 'Sölve', 'Brisa', 'Eira', 'Haldor', 'Tove'],
-  chatter: ['Up here the stars are close enough to hear.', 'Skyhold’s monks haven’t slept since the star went hollow.', 'Goats are the only ones who like this wind.', 'If the void wisps sing, don’t sing back.', 'The observatory lens once saw a comet sneeze.', 'Crag golems are just rocks that got angry. Very, very angry.', 'The Cradle glows black at night now. Nobody goes near it.', 'I heard the old wizard from the Rift is in the infirmary. Lucky man.'],
+  chatter: ['Up here the stars are close enough to hear.', 'Cloudcrest’s monks haven’t slept since the star went hollow.', 'Goats are the only ones who like this wind.', 'If the void wisps sing, don’t sing back.', 'The observatory lens once saw a comet sneeze.', 'Crag golems are just rocks that got angry. Very, very angry.', 'The Cradle glows black at night now. Nobody goes near it.', 'I heard the old wizard from the Rift is in the infirmary. Lucky man.'],
   barks: ['Brr!', 'Mind the ice.', 'Clear skies tonight.', 'The star is so dark…', 'Stay warm!'],
   npcs: [
     { id: 'guide', name: 'Sky-warden Ilsa', portrait: '🧝‍♀️', at: 'lookout', dx: -40, dy: -60, activity: 'idle', role: 'guide', look: look('#6c78b8', 'hood', { hatColor: '#3f4a8a' }), lines: [], barks: ['The Cradle waits.'] },
@@ -260,7 +279,7 @@ const summit: RegionSpec = {
     { id: 'kiri', name: 'Little Kiri', portrait: '👧', at: 'hamlet', dx: 120, dy: 200, activity: 'play', look: look('#8ee8ff', 'none', { small: true, hair: '#d9c08a' }), lines: ['Snowball fight! You can’t dodge forever!'], barks: ['Snowball!'] },
     { id: 'toma', name: 'Logger Toma', portrait: '🪓', at: 'hamlet', dx: -330, dy: -260, activity: 'chop', look: look('#5a4a6a', 'cap', { hatColor: '#3a2a4a', beard: true }), lines: ['Frostpine burns bright. Worth the climb.'], barks: ['Timber!'] },
     { id: 'ren', name: 'Pilgrim Ren', portrait: '🧳', at: 'hamlet', to: 'observatory', activity: 'travel', look: look('#b07a9a', 'scarf', { hatColor: '#8a4f6a' }), lines: ['I walk to the observatory and back, every day, for luck.'], barks: ['One more step…'] },
-    { id: 'corvin', name: 'Abbot Corvin', portrait: '🧙', at: 'city', dx: -60, dy: -200, activity: 'idle', look: look('#e8e2d0', 'hood', { hatColor: '#c9a24c', beard: true, hair: '#e8e2d0' }), lines: ['Skyhold has stood a thousand winters. It will stand one more.'], barks: ['Blessings.'] },
+    { id: 'corvin', name: 'Abbot Corvin', portrait: '🧙', at: 'city', dx: -60, dy: -200, activity: 'idle', look: look('#e8e2d0', 'hood', { hatColor: '#c9a24c', beard: true, hair: '#e8e2d0' }), lines: ['Cloudcrest has stood a thousand winters. It will stand one more.'], barks: ['Blessings.'] },
     { id: 'sella', name: 'Monk Sella', portrait: '🧘', at: 'city', dx: 200, dy: 150, activity: 'sweep', look: look('#c9a24c', 'hood', { hatColor: '#a8844a' }), lines: ['We pray for the star every hour.'], barks: ['Peace be with you.'] },
     { id: 'sable2', name: 'Sable', portrait: '🌑', at: 'gateE', dx: -150, dy: -90, activity: 'idle', after: 'm19', until: 'm20', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['The ice is Umbra’s. It knows my shadow. That’s why it can be broken by it.'], barks: ['Orrin is late. He is always late.'] },
     { id: 'orrin2', name: 'Master Orrin', portrait: '🧙‍♂️', at: 'gateE', dx: -190, dy: 60, activity: 'idle', after: 'm20', look: look('#5b5480', 'wizard', { hatColor: '#3f3a70', beard: true, hair: '#e8e2d0' }), lines: ['Go on. The Wastes are waiting, and so is the last light.', 'Sable and I will hold this gate. Nothing follows you through it.'], barks: ['Go, and be careful.'] },
@@ -270,6 +289,7 @@ const summit: RegionSpec = {
     { id: 'merchant', name: 'Merchant Sol', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#4a4a8a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Warming tonics!'] },
     { id: 'smith', name: 'Master-smith Ingrid', portrait: '⚒️', at: 'city', dx: 340, dy: -80, activity: 'hammer', role: 'smith', look: look('#5a4a5a', 'cap', { hatColor: '#2a2a3a' }), lines: shopLines.smith, barks: ['Starsteel!'] },
     { id: 'armorer', name: 'Armourer Sigrun', portrait: '🛡️', at: 'city', dx: 160, dy: -150, activity: 'idle', role: 'armorer', look: look('#4a4a7a', 'helm', { hatColor: '#c9cfe8' }), lines: shopLines.armorer, barks: ['Starsilver, for those who can pay.'] },
+    { id: 'stable', name: 'Stablemaster Odda', portrait: '🐎', at: 'city', dx: -250, dy: 210, activity: 'idle', role: 'stable', look: look('#5a6a8a', 'scarf', { hatColor: '#c9cfe8', hair: '#e8e2d0' }), lines: shopLines.stable, barks: ['My wolves are gentle. Mostly. Don’t pull their ears.'] },
     { id: 'inn', name: 'Innkeeper Mott', portrait: '🛏️', at: 'city', dx: -340, dy: -40, activity: 'idle', role: 'inn', look: look('#7a6a9a', 'hood', { hatColor: '#5a4a7a', beard: true }), lines: shopLines.inn, barks: ['Hot cocoa by the fire!'] },
     { id: 'dov', name: 'Quartermaster Dov', portrait: '💂', at: 'pass', dx: 80, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a', beard: true }), lines: ['Nobody crosses the pass without my say-so. Except wisps. They don’t ask.'], barks: ['Halt! Oh, it’s you.'] },
     { id: 'sable', name: 'Sable', portrait: '🌑', at: 'spire', dx: -120, dy: 90, activity: 'idle', after: 'm15', until: 'm19', look: look('#2a2438', 'hood', { hatColor: '#1a1428', hair: '#1a1a24' }), lines: ['I remember lighting lanterns with him. Before the shadow hurt.'], barks: ['…'] },
@@ -285,15 +305,15 @@ const summit: RegionSpec = {
     q({ id: 'herd', title: 'Wisps in the Herd', giver: 'brun', kind: 'slay', count: 8, enemy: 'wisp', summary: 'Defeat void wisps.', reward: { xp: 130 },
       text: { offer: ['Void wisps spook my goats right off the cliffs!', 'Eight of them, and the herd can graze in peace.'], progress: ['Wisps dart side to side. Spark finds them for you.'], complete: ['The goats are grazing again! Have some goat cheese. It’s… strong.'], after: ['Maaa!'] } }),
     q({ id: 'sunniva', title: 'Lost on the Crag', giver: 'brun', kind: 'rescue', count: 1, place: 'frostfang', guards: 5, summary: 'Free herd-girl Sunniva on Frostfang Crag.', captive: person('Sunniva', '👧', { robe: '#a0785a', small: true, hair: '#d9c08a', hat: 'scarf', hatColor: '#8a3b2f' }), reward: { xp: 150, hearts: 1 },
-      text: { offer: ['My daughter Sunniva chased a lost kid up Frostfang Crag.', 'The golems have her boxed in! Please, Mira!'], progress: ['Frostfang Crag is north-east of Skyhold.'], deliver: ['I found the baby goat! Then the rocks stood up…', 'Thank you, thank you! I’m never climbing anything ever again. Probably.'], complete: ['Sunniva! My girl!', 'Mira, the whole herd is yours to ride. Well — the nice ones.'], after: ['Maaa!'] } }),
+      text: { offer: ['My daughter Sunniva chased a lost kid up Frostfang Crag.', 'The golems have her boxed in! Please, Mira!'], progress: ['Frostfang Crag is north-east of Cloudcrest.'], deliver: ['I found the baby goat! Then the rocks stood up…', 'Thank you, thank you! I’m never climbing anything ever again. Probably.'], complete: ['Sunniva! My girl!', 'Mira, the whole herd is yours to ride. Well — the nice ones.'], after: ['Maaa!'] } }),
     q({ id: 'scroll', title: 'A Prayer for the Pass', giver: 'sella', kind: 'deliver', count: 1, to: 'dov', item: 'Prayer scroll', summary: 'Bring Sella’s prayer scroll to Quartermaster Dov.', reward: { xp: 110 },
-      text: { offer: ['The guards at Silver Pass have lost hope.', 'Please bring this prayer scroll to Quartermaster Dov.'], progress: ['Silver Pass Camp is north of the city.'], complete: [], after: ['May the star return.'], deliver: ['A prayer from Skyhold? Hm. It does help, actually.', 'Thank you, Mira.'] } }),
+      text: { offer: ['The guards at Silver Pass have lost hope.', 'Please bring this prayer scroll to Quartermaster Dov.'], progress: ['Silver Pass Camp is north of the city.'], complete: [], after: ['May the star return.'], deliver: ['A prayer from Cloudcrest? Hm. It does help, actually.', 'Thank you, Mira.'] } }),
     q({ id: 'frostbloom', title: 'Frostbloom Tonic', giver: 'aune', kind: 'collect', count: 6, near: 'bloom', item: 'Frostbloom', icon: 'flower', summary: 'Pick frostbloom in the Starbloom Grove.', reward: { xp: 130, mana: 14 },
       text: { offer: ['Frostblooms make the best tonic against the cold.', 'Six from the Starbloom Grove, far north.'], progress: ['They sparkle like frost on petals.'], complete: ['A tonic fit for a hero.'], after: ['Warm hands, warm heart.'] } }),
     q({ id: 'wall', title: 'Wraiths at the Wall', giver: 'dov', kind: 'slay', count: 6, enemy: 'frostwraith', summary: 'Defeat frost wraiths.', reward: { xp: 160, hearts: 1 },
       text: { offer: ['Frost wraiths drift over the wall every night and freeze my guards solid.', 'Six of them, please.'], progress: ['Wraiths blink close, then throw ice. Keep moving.'], complete: ['Six! You fight like a whole squad.', 'Take my old starsilver guard.'], after: ['The wall holds.'] } }),
     q({ id: 'altar', title: 'The Pilgrim’s Path', giver: 'ren', kind: 'visit', count: 1, place: 'altar', summary: 'Visit the Star Altar in the east.', reward: { xp: 120 },
-      text: { offer: ['I’ve walked to the observatory a thousand times, but never to the Star Altar.', 'Would you go for me? Tell me if it still shines.'], progress: ['The Star Altar lies east of Skyhold.'], complete: ['It shines? Then I will walk there tomorrow.'], after: ['One more step, and another.'] } }),
+      text: { offer: ['I’ve walked to the observatory a thousand times, but never to the Star Altar.', 'Would you go for me? Tell me if it still shines.'], progress: ['The Star Altar lies east of Cloudcrest.'], complete: ['It shines? Then I will walk there tomorrow.'], after: ['One more step, and another.'] } }),
     q({ id: 'kite', title: 'Kiri’s Star Kite', giver: 'kiri', kind: 'collect', count: 1, near: 'terrace', item: 'Star kite', icon: 'toy', summary: 'Find Kiri’s kite near the Goatherd’s Terrace.', reward: { xp: 100 },
       text: { offer: ['The wind stole my star kite!', 'It flew toward the goats. They might be eating it!'], progress: ['It has a long sparkly tail!'], complete: ['My kite! Only a little goat-nibbled!'], after: ['Wheee!'] } }),
     q({ id: 'astrid', title: 'Kiri’s Big Sister', giver: 'kiri', kind: 'rescue', count: 1, place: 'crystal', guards: 5, summary: 'Free Astrid in Crystal Hollow.', captive: person('Astrid', '👩', { robe: '#8ee8ff', hair: '#d9c08a', hat: 'bonnet', hatColor: '#6c78b8' }), reward: { xp: 160, gold: 100 },
@@ -301,9 +321,9 @@ const summit: RegionSpec = {
     q({ id: 'chips', title: 'Starsilver Chips', giver: 'orla', kind: 'collect', count: 5, near: 'spire', item: 'Crystal chip', icon: 'gem', summary: 'Gather crystal chips around the Broken Spire.', reward: { xp: 140, mana: 12 },
       text: { offer: ['Starsilver needs crystal chips from the Broken Spire.', 'Five should do. Watch for wisps up there.'], progress: ['They glow violet. Hard to miss.'], complete: ['Perfect chips! I forged you a charm.'], after: ['Tink! That’s the sound of progress.'] } }),
     q({ id: 'rockslide', title: 'Rockslide Road', giver: 'toma', kind: 'slay', count: 4, enemy: 'cragGolem', summary: 'Break crag golems blocking the roads.', reward: { xp: 170, gold: 80 },
-      text: { offer: ['Crag golems keep sitting down in the middle of my logging road. Then they don’t get up.', 'Break four. I’ll pay in good silver.'], progress: ['Golems roam the heights around Skyhold.'], complete: ['The road’s open! Here’s your silver, as promised.'], after: ['Timber rolls again.'] } }),
+      text: { offer: ['Crag golems keep sitting down in the middle of my logging road. Then they don’t get up.', 'Break four. I’ll pay in good silver.'], progress: ['Golems roam the heights around Cloudcrest.'], complete: ['The road’s open! Here’s your silver, as promised.'], after: ['Timber rolls again.'] } }),
     q({ id: 'polish', title: 'Lens Polish', giver: 'vale', kind: 'collect', count: 4, near: 'frostfang', item: 'Frost crystal', icon: 'gem', summary: 'Gather frost crystals on Frostfang Crag.', reward: { xp: 140, mana: 10 },
-      text: { offer: ['Frost crystals make the finest lens polish in the world.', 'Four from Frostfang Crag. Mind the golems.'], progress: ['Frostfang Crag is north-east of Skyhold.'], complete: ['Oh, look how the lens gleams! I can see the rings of the moon.'], after: ['Clear skies.'] } }),
+      text: { offer: ['Frost crystals make the finest lens polish in the world.', 'Four from Frostfang Crag. Mind the golems.'], progress: ['Frostfang Crag is north-east of Cloudcrest.'], complete: ['Oh, look how the lens gleams! I can see the rings of the moon.'], after: ['Clear skies.'] } }),
   ],
   lore: [
     { at: 'crystal', name: 'Crystal tablet', text: ['“The crystals grow where starlight pools. Each hums the note of the star that made it.”'] },
@@ -349,7 +369,7 @@ const ember: RegionSpec = {
   links: [['kiln', 'city'], ['city', 'caravan'], ['city', 'foundry'], ['mere', 'watch'], ['obsidian', 'mere'], ['foundry', 'forge'], ['spring', 'caravan'], ['city', 'spring']],
   keyAt: ['obsidian', 'nest', 'foundry'], keyName: 'Ember core', shrineName: 'Phoenix Spring', finaleName: 'Dawn Forge',
   trees: [['deadtree', 5], ['rock', 4], ['crystal', 1]], decorKinds: [['pebble', 5], ['grass', 3], ['shard', 2], ['flower', 1]], decorColors: ['#ff9a3d', '#ffd27a', '#ff5f3d', '#c9a26e'],
-  enemyKinds: [['emberImp', 4], ['ashScorpion', 4], ['magmaHulk', 2], ['shadewolf', 1], ['wisp', 1]], boss: 'cinderTyrant', bossLevel: 25,
+  enemyKinds: [['emberImp', 4], ['ashScorpion', 4], ['magmaHulk', 2], ['cinderhound', 2], ['pyrewisp', 2]], boss: 'cinderTyrant', bossLevel: 25,
   critters: [['bird', 4], ['rabbit', 3], ['goat', 2], ['frog', 1]],
   villagerNames: ['Ash', 'Brenna', 'Cinder', 'Dax', 'Emberly', 'Faro', 'Garnet', 'Hale', 'Ione', 'Jasper', 'Kilna', 'Loam', 'Marl', 'Nell', 'Onyx', 'Pyra', 'Quill', 'Rust', 'Sienna', 'Tinder', 'Umber', 'Vesta', 'Linnet'],
   chatter: ['The wind here tastes of salt and smoke.', 'Brasshaven’s bells are made from melted-down swords. Peace, they say, sounds better.', 'When the sand bulges, run. That’s all anyone needs to know about scorpions.', 'The Dawn Forge lit the sunrise for a thousand years. Now the mornings come up grey.', 'Glass from Kilnhollow sells for gold in every city of the valley.', 'I once saw a phoenix drink from the spring. Or a very orange chicken.', 'Magma hulks are just rocks that got too hot to be calm.', 'The Tyrant used to be the Forge’s keeper. Then he fell in love with the fire.'],
@@ -365,6 +385,7 @@ const ember: RegionSpec = {
     { id: 'merchant', name: 'Merchant Zafir', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Cooling tonics!'] },
     { id: 'smith', name: 'Smith Brona', portrait: '⚒️', at: 'city', dx: 340, dy: -60, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Firesteel!'] },
     { id: 'armorer', name: 'Armourer Kess', portrait: '🛡️', at: 'city', dx: 160, dy: -250, activity: 'idle', role: 'armorer', look: look('#4a3a3a', 'helm', { hatColor: '#8a5a3a' }), lines: shopLines.armorer, barks: ['Obsidian plate, fresh from the forge!'] },
+    { id: 'stable', name: 'Stablemaster Rook', portrait: '🐎', at: 'city', dx: -250, dy: 200, activity: 'idle', role: 'stable', look: look('#5a3a2a', 'cap', { hatColor: '#3a2a24', beard: true }), lines: shopLines.stable, barks: ['Drakes love the heat. Feed them coal, never fingers.'] },
     { id: 'inn', name: 'Innkeeper Dusk', portrait: '🛏️', at: 'city', dx: -330, dy: -40, activity: 'idle', role: 'inn', look: look('#7a5a4a', 'hood', { hatColor: '#5a3a2a' }), lines: shopLines.inn, barks: ['Cool rooms, cold drinks!'] },
     { id: 'seer', name: 'Ember-seer Ilyana', portrait: '🔮', at: 'watch', dx: -60, dy: 60, activity: 'idle', look: look('#8a3a5a', 'hood', { hatColor: '#5a2a3a', hair: '#e8e2d0' }), lines: ['The flames show me the future. Mostly they show me more flames.'], barks: ['I saw you coming.'] },
     { id: 'zara', name: 'Hunter Zara', portrait: '🏹', at: 'caravan', dx: 80, dy: 60, activity: 'idle', look: look('#8a6a4a', 'hood', { hatColor: '#5a4a2a' }), lines: ['In the wastes, the hunter who drinks most wins.'], barks: ['Quiet feet.'] },

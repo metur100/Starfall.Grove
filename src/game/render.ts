@@ -1,12 +1,21 @@
-import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Trap, type Well } from './engine';
+import { EXPLORE_CELL, type Critter, type Enemy, type GameEngine, type Hazard, type Npc, type Particle, type Pet, type Well } from './engine';
 import { MOUNTS } from './mounts';
 import { SPELLS } from './spells';
 import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
-import { REGION_W, fbm } from './worldgen';
+import { REGION_W, fbm, riverX } from './worldgen';
 import type { BossLook, BossVariant } from './bosses';
-import type { Captive, Decor, ItemIcon, Obstacle, Palette, Point, Poi, Region, WorldDefinition, WorldObject } from './types';
+import type { Captive, Decor, ItemIcon, Obstacle, Palette, Point, Poi, Region, River, WorldDefinition, WorldObject } from './types';
+
+/** Traces a river's band, `w` either side of its centre line, between two heights (as a path to fill or clip). */
+function riverBand(g: CanvasRenderingContext2D, rv: River, w: number, y0: number, y1: number, dx = 0, dy = 0) {
+  const step = 30, a = Math.floor(y0 / step) * step, b = Math.ceil(y1 / step) * step;
+  g.beginPath();
+  for (let y = a; y <= b; y += step) { const x = riverX(rv, y) - w + Math.sin(y * .031) * 4; if (y === a) g.moveTo(x + dx, y + dy); else g.lineTo(x + dx, y + dy); }
+  for (let y = b; y >= a; y -= step) g.lineTo(riverX(rv, y) + w + Math.cos(y * .027) * 4 + dx, y + dy);
+  g.closePath();
+}
 import { BOSS, Cutter, INK, PAPER, SCENERY, SCENERY_LIVE, SMALL, SMALL_STICKER, STICKER, grainPattern, type Baked, type Box, type CutStyle } from './art/cutout';
 import { DECOR_BOX, paintDecor, paving, sheet, strip, type Blob } from './art/ground';
 import { hash, mix, rrect } from './art/color';
@@ -63,7 +72,7 @@ function enrage(c: string, k: number) {
   if (k < .06) return c;
   const q = Math.round(k * 8) / 8, key = c + q;
   let v = tintCache.get(key);
-  if (!v) { const n = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), red = [255, 64, 52], m = q * .6; v = `rgb(${n.map((x, i) => Math.round(x + (red[i] - x) * m)).join(',')})`; tintCache.set(key, v); }
+  if (!v) { const n = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), red = [255, 46, 36], m = q * .82; v = `rgb(${n.map((x, i) => Math.round(x + (red[i] - x) * m)).join(',')})`; tintCache.set(key, v); }
   return v;
 }
 const glowCache = new Map<string, HTMLCanvasElement>();
@@ -169,6 +178,24 @@ const ENEMY_REACH: Partial<Record<Enemy['kind'], [number, number, number, number
   bristleboar: [-1.56, -1.17, 1.43, 1.02], sporecap: [-1.4, -1.31, 1.38, 1.16], shadewolf: [-1.97, -1.2, 1.7, 1.09],
   webspinner: [-1.81, -1.26, 1.81, 1.27], frostwraith: [-1.81, -2.64, 1.79, 1.2], cragGolem: [-1.28, -1.21, 1.27, .98],
   emberImp: [-1.9, -2.73, 1.92, .77], ashScorpion: [-1.78, -1.3, 1.31, 1.05], magmaHulk: [-1.62, -1.34, 1.77, .98],
+  bogling: [-1.79, -2.31, 1.24, .91], briarling: [-1.58, -1.63, 1.56, 1.37], rimeling: [-1.58, -1.63, 1.56, 1.37], mirecap: [-1.4, -1.31, 1.38, 1.16],
+  marshlight: [-1.3, -2.75, 1.29, 2.06], pyrewisp: [-1.3, -2.75, 1.29, 2.06], snowfang: [-1.97, -1.2, 1.7, 1.09], cinderhound: [-1.97, -1.2, 1.7, 1.09],
+};
+/**
+ * The colours of each land's own creatures, drawn with the body of the kind they take after (ENEMY_AI): boglings and
+ * mirecaps in swamp greens and teals, briarlings in dark rose bramble, snowfangs and rimelings in snow and ice,
+ * cinderhounds in soot and ember, marsh lights and pyre wisps glowing green and orange. `mark` adds a detail of their own.
+ */
+type Skin = { body: string; elite: string; trim: string; glow: string; eye?: string; mark?: 'leaf' | 'frost' | 'ember' };
+const SKIN: Partial<Record<Enemy['kind'], Skin>> = {
+  bogling: { body: '#5f8a4a', elite: '#3f6a3a', trim: '#40603a', glow: '#c9ff7a', mark: 'leaf' },
+  briarling: { body: '#8a3a4a', elite: '#6a2a3a', trim: '#4a2a3a', glow: '#ff8fb0', eye: '#e0a0b0' },
+  rimeling: { body: '#bfe8ff', elite: '#9fc8f0', trim: '#7fb0e0', glow: '#dff6ff', eye: '#ffffff', mark: 'frost' },
+  mirecap: { body: '#3f9aa0', elite: '#2a6a8a', trim: '#d8e8e0', glow: '#9ff0e8' },
+  snowfang: { body: '#dfe8f4', elite: '#b8c8e0', trim: '#9fb8d8', glow: '#5a8fe0', mark: 'frost' },
+  cinderhound: { body: '#3a2a26', elite: '#2a1a18', trim: '#ff7a3d', glow: '#ffb347', mark: 'ember' },
+  marshlight: { body: '#8fe0a0', elite: '#c9ff7a', trim: '#4fb070', glow: '#7fe08a' },
+  pyrewisp: { body: '#ffa040', elite: '#ff4d4d', trim: '#c8501e', glow: '#ff8a3d' },
 };
 const reachBox = (reach: [number, number, number, number] | undefined, R: number): Box => {
   if (!reach) return [-R * 3.2, -R * 4.2, R * 6.4, R * 5.6];
@@ -371,7 +398,6 @@ export class Renderer {
     this.drawDecor(ctx, e, view);
     this.drawPlaceNames(ctx, e, view);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
-    for (const tr of e.traps) this.drawTrap(ctx, tr);
     for (const w of e.wells) this.drawWell(ctx, w);
     this.drawChargeLines(ctx, e);
 
@@ -379,7 +405,7 @@ export class Renderer {
     const m = 140, x0 = camX - m, x1 = camX + vw + m, y0 = camY - m, y1 = camY + vh + 260;
     const inView = (x: number, y: number) => x > x0 && x < x1 && y > y0 && y < y1;
     for (const o of e.obstacleGrid.rect(x0 - 60, y0, x1 + 60, y1)) draws.push({ y: o.y + (o.h || o.r * .5), run: () => this.drawObstacle(ctx, o, e) });
-    for (const o of world.objects) if (inView(o.x, o.y) && o.kind !== 'well' && o.kind !== 'campfire' && o.kind !== 'fountain') { if (e.isVisible(o)) draws.push({ y: o.y + 10, run: () => this.drawObject(ctx, o, e) }); }
+    for (const o of world.objects) if (inView(o.x, o.y) && o.kind !== 'well' && o.kind !== 'campfire' && o.kind !== 'fountain') { if (e.isVisible(o)) draws.push({ y: o.kind === 'barrier' && o.variant === 'bridge' && world.rivers.length ? o.y - 60 : o.y + 10, run: () => this.drawObject(ctx, o, e) }); }
     for (const p of e.pods) if (!p.dead && inView(p.x, p.y)) draws.push({ y: p.y + 12, run: () => this.drawPod(ctx, p.x, p.y, e) });
     for (const n of e.npcs) if (inView(n.x, n.y) && e.npcVisible(n)) draws.push({ y: n.y + 22, run: () => this.drawNpc(ctx, n, e) });
     for (const c of e.critters) if (inView(c.x, c.y)) draws.push({ y: c.y + (c.state === 'fly' ? 400 : 6), run: () => this.drawCritter(ctx, c, e) });
@@ -414,7 +440,7 @@ export class Renderer {
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
     // Where the touch "Talk" button goes: just above the head of whoever (or whatever) is in reach.
     const nr = this.near;
-    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
+    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'stable' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
     else this.nearScreen = null;
     // Story scenes at night darken even the sunny meadow, so lamps and fires glow.
     const dark = Math.max(this.darkAt(world, camX + vw / 2), e.cineDark);
@@ -526,6 +552,17 @@ export class Renderer {
       ellipse(g, pond.x - pond.r * .06, pond.y - pond.r * .05, pond.r * .86, pond.r * .47, p.water);
       ellipse(g, pond.x - pond.r * .16, pond.y - pond.r * .12, pond.r * .5, pond.r * .24, mix(p.water, '#ffffff', .12));
     }
+    // River beds: a band of water with paper banks, running the whole height of the valley.
+    for (const rv of world.rivers) {
+      if (Math.abs(riverX(rv, oy + CHUNK / 2) - (ox + CHUNK / 2)) > CHUNK + rv.hw + 160) continue;
+      const rp = regionOf(world, rv.pts[0].x).palette, shore = mix(rp.path, rp.ground, .3), y0 = oy - 60, y1 = oy + CHUNK + 60;
+      riverBand(g, rv, rv.hw + 24, y0, y1, 5, 7); g.fillStyle = mix(rp.ground, INK, .2); g.fill();
+      riverBand(g, rv, rv.hw + 20, y0, y1); g.fillStyle = mix(shore, '#fffbea', .3); g.fill();
+      riverBand(g, rv, rv.hw + 16, y0, y1); g.fillStyle = shore; g.fill();
+      riverBand(g, rv, rv.hw, y0, y1); g.fillStyle = rp.waterDeep; g.fill();
+      riverBand(g, rv, rv.hw * .8, y0, y1, -6); g.fillStyle = rp.water; g.fill();
+      riverBand(g, rv, rv.hw * .3, y0, y1, -14); g.fillStyle = mix(rp.water, '#ffffff', .1); g.fill();
+    }
     // Pebbles, clover and crops: tiny pieces pasted flat.
     for (const d of this.bakedDecor.rect(ox - 20, oy - 20, ox + CHUNK + 20, oy + CHUNK + 20)) {
       if (d.kind === 'pebble') { const rx = 4.5 + d.seed * 3, ry = 2.8 + d.seed * 1.5; ellipse(g, d.x + 1.5, d.y + 2, rx, ry, mix(p.ground, INK, .3)); ellipse(g, d.x, d.y, rx, ry, shade(p.rock, .15)); ellipse(g, d.x - .8, d.y - 1, rx * .55, ry * .5, 'rgba(255,255,245,.45)'); }
@@ -588,6 +625,24 @@ export class Renderer {
   }
   private drawWater(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     const t = this.time;
+    // Rivers flow south: pale streaks drift down the current, with a sparkle now and then.
+    for (const rv of e.world.rivers) {
+      if (Math.abs(riverX(rv, v.y + v.h / 2) - (v.x + v.w / 2)) > v.w / 2 + rv.hw + 300) continue;
+      ctx.save(); riverBand(ctx, rv, rv.hw * .96, v.y - 60, v.y + v.h + 60); ctx.clip();
+      const step = 52, off = (t * 70) % step;
+      ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let y = Math.floor((v.y - 80) / step) * step + off; y < v.y + v.h + 80; y += step) {
+        const k = Math.round((y - off) / step);
+        for (const lane of [-.6, -.15, .35, .7]) { const x = riverX(rv, y) + lane * rv.hw + Math.sin(k * 1.7 + lane * 5) * 12, len = 16 + ((k * 7 + lane * 10) % 3 + 3) % 3 * 8; ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 4, y + len / 2, x, y + len); }
+      }
+      ctx.stroke();
+      if (this.quality > .5) for (let i = 0; i < 10; i++) {
+        const a = Math.max(0, Math.sin(t * 2.4 + i * 1.9)), y = v.y + ((i * 173 + t * 40) % (v.h + 100)) - 50, x = riverX(rv, y) + Math.sin(i * 7.3) * rv.hw * .7;
+        if (a > .4) { ctx.fillStyle = `rgba(255,255,255,${a * .7})`; star(ctx, x, y, 2 + a * 2.5); ctx.fill(); }
+      }
+      ctx.restore();
+    }
     for (const [pi, pond] of e.world.ponds.entries()) {
       if (pond.x + pond.r < v.x - 40 || pond.x - pond.r > v.x + v.w + 40 || pond.y + pond.r < v.y - 40 || pond.y - pond.r > v.y + v.h + 40) continue;
       const reg = regionOf(e.world, pond.x), summit = reg.ambient === 'stars', lava = reg.ambient === 'embers', p = reg.palette;
@@ -1149,6 +1204,7 @@ export class Renderer {
   private drawBarrier(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
     const x = o.x, y = o.y, t = this.time, open = e.barrierOpen(o), v = o.variant || 'bridge', H = 215;
     if (v === 'bridge') {
+      if (e.world.rivers.length) { this.drawRiverBridge(ctx, x, y, open); return; }
       // The gorge, with a river far below.
       ctx.fillStyle = '#2a2420'; ctx.beginPath(); ctx.moveTo(x - 58, y - H); for (let i = 0; i <= 10; i++) ctx.lineTo(x - 58 + Math.sin(i * 1.7) * 8, y - H + i * H * .2); ctx.lineTo(x + 58, y + H); for (let i = 10; i >= 0; i--) ctx.lineTo(x + 58 + Math.cos(i * 1.3) * 8, y - H + i * H * .2); ctx.closePath(); ctx.fill();
       const g = ctx.createLinearGradient(x - 40, 0, x + 40, 0); g.addColorStop(0, '#1e3a44'); g.addColorStop(.5, '#3d7f8f'); g.addColorStop(1, '#1e3a44');
@@ -1180,6 +1236,26 @@ export class Renderer {
       ctx.beginPath(); for (let i = 0; i < 6; i++) { const yy = y - H + 40 + i * 64; ctx.moveTo(x - 30, yy); ctx.lineTo(x - 4, yy + 20); ctx.lineTo(x + 24, yy + 6); } ctx.stroke();
       glow(ctx, x, y, 180, '#6a7fd6', .3); this.lights.push({ x, y, r: 260, color: '#8ea0ff', a: .6 });
     }
+  }
+  /** The Gloomwater Bridge across the river: broken stumps on both banks until it is rebuilt, then a plank deck with rails. */
+  private drawRiverBridge(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean) {
+    const L = 128, t = this.time;
+    if (open) {
+      shadow(ctx, x, y + 46, L + 10, 12, .3);
+      for (let i = 0; i < 15; i++) { const px = x - L + i * (L * 2 / 15); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 76, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 3, '#c9a06a'); }
+      for (const sy of [-40, 38]) {
+        ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - L - 4, y + sy - 22); ctx.quadraticCurveTo(x, y + sy - 6, x + L + 4, y + sy - 22); ctx.stroke();
+        for (const px of [-L - 4, -L / 2, 0, L / 2, L + 4]) rect(ctx, x + px - 4, y + sy - 30, 8, 30, '#6f5337');
+      }
+      return;
+    }
+    // Stumps of the old bridge on either bank, and a few planks bobbing in the current.
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) rect(ctx, x + side * (L - 14 - i * 16) - 8, y - 36, 15, 72, i % 2 ? '#8a5a34' : '#6f4a2a');
+      for (const sy of [-40, 38]) rect(ctx, x + side * (L + 2) - 5, y + sy - 30, 10, 32, '#6f5337');
+      for (let i = 0; i < 2; i++) { ctx.save(); ctx.translate(x + side * (L - 72 - i * 10), y - 18 + i * 34); ctx.rotate(side * (.7 + i * .3)); rect(ctx, -4, 0, 8, 30 - i * 6, '#6f4a2a'); ctx.restore(); }
+    }
+    for (let i = 0; i < 3; i++) { const fy = y - 60 + ((t * 40 + i * 90) % 220), fx = x - 30 + i * 26; ctx.save(); ctx.translate(fx, fy); ctx.rotate(i * 1.3 + Math.sin(t + i) * .2); rect(ctx, -12, -3, 24, 7, '#8a5a34'); ctx.restore(); }
   }
   private drawMeteors(ctx: CanvasRenderingContext2D, e: GameEngine) {
     for (const m of e.meteors) {
@@ -1275,7 +1351,7 @@ export class Renderer {
     else if (dark) this.lights.push({ x, y, r: 90, a: .6 });
     const mark = e.npcMarker(n), top = y - 70 * s;
     if (mark) this.questTag(ctx, x, top + Math.abs(Math.sin(t * 3.4)) * -7, mark.mark, mark.main ? MAIN_COLOR : SIDE_COLOR);
-    else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'inn') this.shopTag(ctx, x, top, n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : n.role === 'armorer' ? '⛨' : '☾');
+    else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn') this.shopTag(ctx, x, top, n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : n.role === 'armorer' ? '⛨' : n.role === 'stable' ? '♞' : '☾');
     this.drawQuestPersonMark(ctx, n, 72 * s);
     const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 46, n.name, reg.palette.accent);
   }
@@ -1479,8 +1555,8 @@ export class Renderer {
     if (key !== this.lookCache.key) this.lookCache = { key, look: lookOf(eq) };
     return this.lookCache.look;
   }
-  /** Giant's Brew grows the hero from the feet up; a Smoke Bomb leaves them half see-through, Stealth turns Riven into
-   *  a faint shimmer in the air, and Lyra's Ice Block closes over her. */
+  /** Giant's Brew grows the hero from the feet up; a Smoke Pouch leaves them half see-through, Nightveil turns Riven into
+   *  a faint shimmer in the air, and Lyra's Glacier Shell closes over her. */
   private drawHeroScaled(ctx: CanvasRenderingContext2D, e: GameEngine) {
     const h = e.hero, t = this.time;
     this.drawHeroFx(ctx, e, false);
@@ -1623,18 +1699,6 @@ export class Renderer {
     if (p.spirit && Math.random() < .2) this.pushAmbient({ x: p.x + rand(-10, 10), y: p.y - 10, vx: rand(-10, 10), vy: rand(-30, -10), life: .6, max: .6, size: 1.8, rot: 0, vr: 0, kind: 'mote', color: '#b9f2c9', phase: 0 });
     if (p.spirit) this.lights.push({ x: p.x, y: p.y, r: 80, color: '#9fe8b0', a: .7 });
   }
-  /** A Snare Trap: iron jaws half-hidden in leaves, snapping shut when sprung. */
-  private drawTrap(ctx: CanvasRenderingContext2D, tr: Trap) {
-    const k = tr.sprung ? Math.min(1, tr.t / .7) : Math.min(1, tr.t * 2), shut = tr.sprung ? 1 : 0;
-    ctx.save(); ctx.globalAlpha = k; ctx.translate(tr.x, tr.y); ctx.scale(1, .55);
-    ctx.strokeStyle = 'rgba(185,226,122,.55)'; ctx.lineWidth = 2; ctx.setLineDash([5, 6]); ctx.lineDashOffset = -this.time * 20; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle = '#6a6a74'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.stroke();
-    ctx.fillStyle = '#b8bcc8';
-    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, r0 = 18, r1 = 18 - 9 * (1 - shut * .9); ctx.beginPath(); ctx.moveTo(Math.cos(a - .15) * r0, Math.sin(a - .15) * r0); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a + .15) * r0, Math.sin(a + .15) * r0); ctx.fill(); }
-    circle(ctx, 0, 0, 4, '#8a6a4a');
-    for (let i = 0; i < 4; i++) ellipse(ctx, Math.cos(i * 1.7) * 22, Math.sin(i * 1.7) * 14, 6, 3, i % 2 ? '#6f9a4a' : '#a3c46a', i);
-    ctx.restore();
-  }
   /** The mount under the hero: a pony, boar, stag, wolf, drake or unicorn, drawn side-on at the hero's feet. */
   private drawMount(ctx: CanvasRenderingContext2D, e: GameEngine, front: boolean) {
     const id = e.mountId; if (!id) return;
@@ -1701,11 +1765,21 @@ export class Renderer {
       ctx.beginPath(); ctx.arc(0, 0, en.r * 1.25, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
     }
     const bv = en.boss ? e.bossVariant(en) : null;
-    if (en.windup > 0 && !en.boss && (en.kind === 'gloomling' || en.kind === 'shadewolf')) {
+    if (en.windup > 0 && !en.boss && (en.ai === 'gloomling' || en.ai === 'shadewolf')) {
       // The ground they are about to lunge across, marked in red ink.
-      const r = en.kind === 'shadewolf' ? 115 : 80; ctx.save(); ctx.translate(en.x, en.y); ctx.scale(1, .62); ctx.fillStyle = 'rgba(224,70,56,.14)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(190,40,30,.75)'; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+      const r = en.ai === 'shadewolf' ? 115 : 80; ctx.save(); ctx.translate(en.x, en.y); ctx.scale(1, .62); ctx.fillStyle = 'rgba(224,70,56,.14)'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.strokeStyle = 'rgba(190,40,30,.75)'; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]); ctx.restore();
     }
-    if (en.rage > .15) glow(ctx, en.x, en.y + (en.kind === 'wisp' || en.kind === 'frostwraith' ? -10 : -en.r * .15), en.r * (en.boss ? 2 : 2.5), '#ff3b2e', (bv ? .18 : .5) * en.rage * (.85 + Math.sin(t * 9) * .15));
+    if (en.rage > .15) {
+      // A creature that is after the hero glows red and stands in a pulsing red ring, so it is plain who is fighting you.
+      const pulse = .85 + Math.sin(t * 9) * .15, k = en.rage * pulse;
+      glow(ctx, en.x, en.y + (en.ai === 'wisp' || en.ai === 'frostwraith' ? -10 : -en.r * .15), en.r * (en.boss ? 2.2 : 2.9), '#ff2a1e', (bv ? .3 : .85) * k);
+      if (!en.boss && en.burrowT <= 0) {
+        ctx.save(); ctx.translate(en.x, en.y + en.r * .62); ctx.scale(1, .42);
+        ctx.fillStyle = `rgba(255,40,30,${.16 * k})`; ctx.beginPath(); ctx.arc(0, 0, en.r * 1.35, 0, TAU); ctx.fill();
+        ctx.strokeStyle = `rgba(255,50,36,${.9 * k})`; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.arc(0, 0, en.r * (1.25 + Math.sin(t * 6) * .06), 0, TAU); ctx.stroke();
+        ctx.restore();
+      }
+    }
     const R = en.r * (en.boss ? 1.25 : 1) * Math.max(1, spawn), box = reachBox(bv ? undefined : ENEMY_REACH[en.kind], R);
     const a0 = ctx.globalAlpha; if (en.stunT > 0) ctx.globalAlpha = a0 * .85;
     this.living(ctx, en, en.x, en.y, box, en.boss ? BOSS : STICKER, ctx => {
@@ -1715,7 +1789,7 @@ export class Renderer {
     const trem = en.windup > 0 ? Math.sin(t * 60) * 1.5 : 0;
     const base = sc !== 1 ? { ...en, r: en.r / sc } : en;
     if (bv) this.drawBossForm(ctx, en, t, look, flash, bv, e);
-    else switch (en.kind) {
+    else switch (en.ai) {
       case 'gloomling': this.drawGloomling(ctx, base, t, look, flash, trem); break;
       case 'thornling': this.drawThornling(ctx, base, t, look, flash, trem); break;
       case 'wisp': this.drawWisp(ctx, base, t, look, flash); break;
@@ -1758,7 +1832,8 @@ export class Renderer {
     }
     if (en.boss && !e.bossUnlocked(en)) this.drawSeal(ctx, en, t, e);
     if (bv) this.lights.push({ x: en.x, y: en.y - en.r * .4, r: 300, color: bv.look.glow, a: .75 });
-    else if (en.kind === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: '#a78bfa', a: .8 });
+    else if (en.ai === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: SKIN[en.kind]?.glow || '#a78bfa', a: .8 });
+    else if (en.kind === 'cinderhound') this.lights.push({ x: en.x, y: en.y - 6, r: 80, color: '#ff8a3d', a: .6 });
     if (bv) { /* lit above */ } else if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
     if (!bv && (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant')) this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
@@ -1826,21 +1901,24 @@ export class Renderer {
     const r = en.r, swell = en.windup > 0 ? 1 + (1 - en.windup / .9) * .35 : 1 + Math.sin(t * 3) * .03, hop = en.aggro ? Math.abs(Math.sin(t * 5)) * 3 : 0;
     shadow(ctx, 0, r * .8, r, r * .35);
     ctx.translate(trem, -hop);
-    ellipse(ctx, 0, r * .35, r * .5, r * .55, flash ? '#fff' : '#efe4c8');
+    const sk = SKIN[en.kind];
+    ellipse(ctx, 0, r * .35, r * .5, r * .55, flash ? '#fff' : sk?.trim || '#efe4c8');
     for (const s of [-1, 1]) ellipse(ctx, s * r * .22, r * .85, r * .18, r * .1, '#c9b89a');
     this.eyes(ctx, 0, r * .3, r * .2, r * .13, look, t, en.aggro);
     ctx.save(); ctx.scale(swell, swell);
-    const cap = flash ? '#fff' : enrage(en.elite ? '#7a3aa0' : '#c8503a', en.rage);
+    const cap = flash ? '#fff' : enrage(sk ? (en.elite ? sk.elite : sk.body) : en.elite ? '#7a3aa0' : '#c8503a', en.rage);
     ctx.fillStyle = cap; ctx.beginPath(); ctx.ellipse(0, -r * .1, r * 1.1, r * .8, 0, Math.PI, TAU); ctx.quadraticCurveTo(0, r * .2, -r * 1.1, -r * .1); ctx.fill();
-    for (let i = 0; i < 6; i++) circle(ctx, Math.cos(i * 1.1 + 3.4) * r * .65, -r * .4 + Math.sin(i * 1.1 + 3.4) * r * .25, r * (.1 + (i % 2) * .05), 'rgba(235,255,190,.85)');
+    for (let i = 0; i < 6; i++) circle(ctx, Math.cos(i * 1.1 + 3.4) * r * .65, -r * .4 + Math.sin(i * 1.1 + 3.4) * r * .25, r * (.1 + (i % 2) * .05), sk ? 'rgba(200,255,250,.9)' : 'rgba(235,255,190,.85)');
     ctx.restore();
-    if (en.windup > 0 || Math.random() < .08) this.pushAmbient({ x: en.x + rand(-r, r), y: en.y - r * .5, vx: rand(-10, 10), vy: rand(-30, -10), life: .9, max: .9, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: '#b9e27a', phase: 0 });
+    if (en.windup > 0 || Math.random() < .08) this.pushAmbient({ x: en.x + rand(-r, r), y: en.y - r * .5, vx: rand(-10, 10), vy: rand(-30, -10), life: .9, max: .9, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: sk?.glow || '#b9e27a', phase: 0 });
+    if (sk) glow(ctx, 0, -r * .3, r * 1.4, sk.glow, .3);
   }
   private drawWolf(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
     const r = en.r, dir = look.x >= 0 ? 1 : -1, run = Math.sin(t * (en.aggro ? 18 : 6)), lunge = en.lunge > 0;
     shadow(ctx, 0, r * .75, r * 1.2, r * .38);
     ctx.translate(trem, lunge ? -4 : 0); ctx.scale(dir, 1); if (lunge) ctx.rotate(-.15);
-    const fur = flash ? '#fff' : enrage(en.elite ? '#2a2a44' : '#4a4e6a', en.rage);
+    const sk = SKIN[en.kind];
+    const fur = flash ? '#fff' : enrage(sk ? (en.elite ? sk.elite : sk.body) : en.elite ? '#2a2a44' : '#4a4e6a', en.rage);
     ctx.strokeStyle = fur; ctx.lineWidth = 5; ctx.lineCap = 'round';
     for (const [lx, ph] of [[-.6, 1], [-.3, -1], [.35, -1], [.62, 1]] as Array<[number, number]>) { ctx.beginPath(); ctx.moveTo(lx * r, r * .2); ctx.lineTo(lx * r + run * ph * 6, r * .74); ctx.stroke(); }
     ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-r * .9, -r * .1); ctx.quadraticCurveTo(-r * 1.4, -r * .5 + Math.sin(t * 7) * 5, -r * 1.55, -r * .1); ctx.stroke();
@@ -1848,7 +1926,9 @@ export class Renderer {
     ellipse(ctx, r * .85, -r * .3, r * .42, r * .34, fur);
     ctx.fillStyle = fur; ctx.beginPath(); ctx.moveTo(r * 1.05, -r * .35); ctx.lineTo(r * 1.5, -r * .18); ctx.lineTo(r * 1.05, -r * .08); ctx.fill();
     for (const ex of [.62, .9]) { ctx.beginPath(); ctx.moveTo(r * ex - 5, -r * .55); ctx.lineTo(r * ex, -r * .95); ctx.lineTo(r * ex + 5, -r * .55); ctx.fill(); }
-    const eye = en.windup > 0 || lunge ? '#ff5a4a' : '#9fe8ff';
+    if (sk) { ctx.strokeStyle = sk.trim; ctx.lineWidth = 2.4; for (let i = 0; i < 4; i++) { const sx = -r * .55 + i * r * .3; ctx.beginPath(); ctx.moveTo(sx, -r * .48); ctx.lineTo(sx + r * .12, -r * .2); ctx.stroke(); } }
+    if (sk?.mark === 'ember') glow(ctx, 0, -r * .2, r * 1.3, '#ff7a3d', .35);
+    const eye = en.windup > 0 || lunge ? '#ff5a4a' : sk?.glow || '#9fe8ff';
     circle(ctx, r * 1.02, -r * .38, 2.8, eye); glow(ctx, r * 1.02, -r * .38, 10, eye, .8);
     if (lunge || en.windup > 0) { ctx.fillStyle = '#fff'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(r * (1.12 + i * .1), -r * .17); ctx.lineTo(r * (1.16 + i * .1), -r * .06); ctx.lineTo(r * (1.2 + i * .1), -r * .17); ctx.fill(); } }
   }
@@ -2028,37 +2108,42 @@ export class Renderer {
     const r = en.r, hop = en.aggro ? Math.abs(Math.sin(t * 6)) * 7 : Math.abs(Math.sin(t * 3)) * 3, swell = en.windup > 0 ? 1.15 : 1, lunge = en.lunge > 0 ? 1.2 : 1;
     shadow(ctx, 0, r * .8, r * (1.1 - hop * .02), r * .4);
     ctx.translate(trem, -hop); ctx.scale(swell * lunge, swell / lunge * (1 + Math.sin(t * 12) * .04));
-    ctx.fillStyle = flash ? '#fff' : enrage(en.elite ? '#5a3a8a' : '#6d5fc0', en.rage); ctx.beginPath(); ctx.moveTo(-r, r * .1); ctx.bezierCurveTo(-r, -r * 1.2, r, -r * 1.2, r, r * .1);
+    const sk = SKIN[en.kind];
+    ctx.fillStyle = flash ? '#fff' : enrage(sk ? (en.elite ? sk.elite : sk.body) : en.elite ? '#5a3a8a' : '#6d5fc0', en.rage); ctx.beginPath(); ctx.moveTo(-r, r * .1); ctx.bezierCurveTo(-r, -r * 1.2, r, -r * 1.2, r, r * .1);
     for (let i = 0; i <= 4; i++) { const px = r - i * r * .5; ctx.quadraticCurveTo(px - r * .25, r * (.75 + Math.sin(t * 8 + i) * .12), px - r * .5, r * .55); }
     ctx.closePath(); ctx.fill();
     ellipse(ctx, -r * .3, -r * .45, r * .35, r * .25, 'rgba(255,255,255,.18)');
-    ctx.strokeStyle = '#6e5fb8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -r * .85); ctx.quadraticCurveTo(Math.sin(t * 3) * 6, -r * 1.3, Math.sin(t * 3) * 8, -r * 1.45); ctx.stroke();
-    circle(ctx, Math.sin(t * 3) * 8, -r * 1.45, 3.5, '#ffd35c'); glow(ctx, Math.sin(t * 3) * 8, -r * 1.45, 12, '#ffd35c', .8);
+    ctx.strokeStyle = sk?.trim || '#6e5fb8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -r * .85); ctx.quadraticCurveTo(Math.sin(t * 3) * 6, -r * 1.3, Math.sin(t * 3) * 8, -r * 1.45); ctx.stroke();
+    const lamp = sk?.glow || '#ffd35c'; circle(ctx, Math.sin(t * 3) * 8, -r * 1.45, 3.5, lamp); glow(ctx, Math.sin(t * 3) * 8, -r * 1.45, 12, lamp, .8);
+    if (sk?.mark === 'leaf') { ctx.fillStyle = '#7fb85a'; ctx.beginPath(); ctx.ellipse(-r * .45, -r * .7, r * .38, r * .16, -.5, 0, TAU); ctx.fill(); ctx.strokeStyle = '#40603a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-r * .75, -r * .52); ctx.lineTo(-r * .15, -r * .88); ctx.stroke(); }
     this.eyes(ctx, 0, -r * .2, r * .34, r * .24, look, t, en.aggro, en.windup > 0 ? '#ffb4a8' : undefined);
   }
   private drawThornling(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
     const r = en.r, sway = Math.sin(t * 2) * .15;
     shadow(ctx, 0, r * .7, r * 1.2, r * .4);
-    for (let i = -1; i <= 1; i++) { ctx.save(); ctx.translate(0, r * .45); ctx.rotate(i * .9 + sway * (i || 1)); ellipse(ctx, 0, -r * .1, r * .28, r * .8, '#5d8a3a'); ctx.restore(); }
+    const sk = SKIN[en.kind];
+    for (let i = -1; i <= 1; i++) { ctx.save(); ctx.translate(0, r * .45); ctx.rotate(i * .9 + sway * (i || 1)); ellipse(ctx, 0, -r * .1, r * .28, r * .8, sk?.trim || '#5d8a3a'); ctx.restore(); }
     ctx.translate(trem, 0);
-    ctx.fillStyle = flash ? '#fff' : enrage(en.elite ? '#7a8a3a' : '#8aab52', en.rage); ctx.beginPath(); ctx.ellipse(0, -r * .1, r * .9, r * .85, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = flash ? '#fff' : enrage(sk ? (en.elite ? sk.elite : sk.body) : en.elite ? '#7a8a3a' : '#8aab52', en.rage); ctx.beginPath(); ctx.ellipse(0, -r * .1, r * .9, r * .85, 0, 0, TAU); ctx.fill();
     ellipse(ctx, -r * .3, -r * .45, r * .35, r * .22, 'rgba(255,255,255,.2)');
-    ctx.fillStyle = '#e6d9a0';
+    ctx.fillStyle = sk?.eye || '#e6d9a0';
     for (let i = 0; i < 7; i++) { const a = -Math.PI + (i / 6) * Math.PI + sway * .3; ctx.beginPath(); ctx.moveTo(Math.cos(a - .15) * r * .8, -r * .1 + Math.sin(a - .15) * r * .8); ctx.lineTo(Math.cos(a) * r * 1.35, -r * .1 + Math.sin(a) * r * 1.3); ctx.lineTo(Math.cos(a + .15) * r * .8, -r * .1 + Math.sin(a + .15) * r * .8); ctx.fill(); }
     this.eyes(ctx, 0, -r * .3, r * .32, r * .2, look, t, true);
     const open = en.windup > 0 ? .5 + Math.sin(t * 30) * .2 : .15;
     ellipse(ctx, 0, r * .25, r * .3, r * open, '#2a1f1b');
-    if (en.windup > 0) glow(ctx, 0, r * .25, 22, '#b6df91', .8);
+    if (en.windup > 0) glow(ctx, 0, r * .25, 22, sk?.glow || '#b6df91', .8);
+    if (sk?.mark === 'frost') glow(ctx, 0, -r * .2, r * 1.6, '#dff6ff', .35);
   }
   private drawWisp(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
     const r = en.r, fl = Math.sin(t * 10) * 2;
     ctx.translate(0, Math.sin(t * 3) * 6 - 10);
     shadow(ctx, 0, r * 2, r * .8, r * .3, .18);
-    glow(ctx, 0, 0, r * 3.5, en.elite ? '#ff6b9a' : '#8a6ff0', .6);
+    const sk = SKIN[en.kind], green = en.kind === 'marshlight', fire = en.kind === 'pyrewisp';
+    glow(ctx, 0, 0, r * 3.5, sk ? (en.elite ? sk.elite : sk.glow) : en.elite ? '#ff6b9a' : '#8a6ff0', .6);
     ctx.globalCompositeOperation = 'lighter';
-    for (let i = 5; i >= 0; i--) circle(ctx, Math.sin(t * 6 - i * .7) * i * 1.6, i * r * .38, r * (1 - i * .14), `rgba(${120 + i * 10},${140 - i * 10},255,${.35 - i * .04})`);
+    for (let i = 5; i >= 0; i--) circle(ctx, Math.sin(t * 6 - i * .7) * i * 1.6, i * r * .38, r * (1 - i * .14), green ? `rgba(${100 + i * 10},${220 - i * 10},140,${.35 - i * .04})` : fire ? `rgba(255,${140 - i * 12},60,${.35 - i * .04})` : `rgba(${120 + i * 10},${140 - i * 10},255,${.35 - i * .04})`);
     ctx.globalCompositeOperation = 'source-over';
-    const g = ctx.createRadialGradient(0, -2, 1, 0, 0, r); g.addColorStop(0, flash ? '#fff' : '#f1ecff'); g.addColorStop(.6, flash ? '#fff' : enrage('#9f8cff', en.rage)); g.addColorStop(1, 'rgba(90,70,200,.2)');
+    const g = ctx.createRadialGradient(0, -2, 1, 0, 0, r); g.addColorStop(0, flash ? '#fff' : green ? '#efffe8' : fire ? '#fff1d0' : '#f1ecff'); g.addColorStop(.6, flash ? '#fff' : enrage(sk?.body || '#9f8cff', en.rage)); g.addColorStop(1, green ? 'rgba(60,160,90,.2)' : fire ? 'rgba(200,80,30,.2)' : 'rgba(90,70,200,.2)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, -r * 1.5 + fl); ctx.quadraticCurveTo(r * 1.1, -r * .3, r * .8, r * .3); ctx.arc(0, r * .2, r * .82, 0, Math.PI); ctx.quadraticCurveTo(-r * 1.1, -r * .3, 0, -r * 1.5 + fl); ctx.fill();
     circle(ctx, -r * .3 + look.x * 2, 0, 2.6, '#1d1540'); circle(ctx, r * .3 + look.x * 2, 0, 2.6, '#1d1540');
     if (en.windup > 0) glow(ctx, 0, 0, r * 2.5, '#ffffff', .6);
@@ -2954,6 +3039,11 @@ function worldMapCanvas(world: WorldDefinition) {
     m.strokeStyle = alpha(MAP_INK, .45); m.lineWidth = .8;
     for (let i = -1; i <= 1; i++) { const y = pd.y * S + i * pd.r * S * .22, x = pd.x * S - pd.r * S * .3; m.beginPath(); m.moveTo(x, y); m.quadraticCurveTo(x + pd.r * S * .15, y - 2, x + pd.r * S * .3, y); m.quadraticCurveTo(x + pd.r * S * .45, y + 2, x + pd.r * S * .6, y); m.stroke(); }
   }
+  for (const rv of world.rivers) {
+    const p = regionOf(world, rv.pts[0].x).palette;
+    m.save(); m.scale(S, S); riverBand(m, rv, rv.hw * 1.15, 0, world.height); m.restore();
+    m.fillStyle = mix(p.water, MAP_PAPER, .25); m.fill(); m.strokeStyle = MAP_INK; m.lineWidth = 1.2; m.stroke();
+  }
   // Roads as dashed ink.
   m.setLineDash([4, 3]); m.lineWidth = 2;
   for (const r of world.roads) { m.strokeStyle = alpha(shade(regionOf(world, r[0].x).palette.pathEdge, -.35), .85); m.beginPath(); r.forEach((pt, i) => i ? m.lineTo(pt.x * S, pt.y * S) : m.moveTo(pt.x * S, pt.y * S)); m.stroke(); }
@@ -3009,7 +3099,7 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'cage') { const q = P(o); glow(ctx, q.x, q.y, 9 * size, '#ff6b5b', .7); dot(o, 2.8, e.quest(o.questId!)?.main ? MAIN_COLOR : SIDE_COLOR); }
     else if (o.kind === 'campfire' || o.kind === 'fountain') dot(o, 2, o.kind === 'fountain' ? '#9fd8ff' : '#ffb347');
   }
-  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
+  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.heroic) { const q = P(en); glow(ctx, q.x, q.y, 8 * size, '#c98aff', .55 + Math.sin(t * 4) * .25); dot(en, 2.8, '#e8a0ff'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const mt = e.mainTarget(); if (mt && inside(mt) && size > 1) { const q = P(mt); ctx.strokeStyle = MAIN_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (6 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }

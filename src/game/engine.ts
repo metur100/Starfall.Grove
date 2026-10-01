@@ -4,18 +4,18 @@ import { ITEMS, ITEM_ORDER, rollItem } from './items';
 import { RARITY, SLOT_ORDER, armouryStock, makeGear, rollRarity, seeded, sellPrice } from './gear';
 import { BAG_SIZE, HP_UNIT, MAX_LEVEL, MAX_RANK, armorAt, bagUsed, gearOf, healthAt, loadProfile, manaAt, powerAt, practiceProfile, rankOf, regenAt, saveProfile, starsOf, upgradeCost, xpToNext, type Profile } from './progression';
 import { HEROES, MAX_STARS, SPELLS, SPELL_UPGRADES, starCost, starLevel, upgradeText } from './spells';
-import { MOUNTS, MOUNT_ORDER, mountFor } from './mounts';
+import { MOUNTS, MOUNT_ORDER } from './mounts';
 import { TRAILS, trailFor } from './trails';
 import { keyLabel, keyOf, spellKey } from './keys';
 import { Grid } from './spatial';
-import { REGION_W, RoadIndex, inPond } from './worldgen';
-import { getWorld } from './worlds';
+import { REGION_W, RoadIndex, inPond, riverX } from './worldgen';
+import { getWorld, localKind } from './worlds';
 import { questsForHero, worldForHero } from './heroWorld';
 import { cineFor, type CineFx, type Shot } from './cutscenes';
 import { bossVariant, type BossAction, type BossShot, type BossVariant } from './bosses';
 import type {
   CineState, CritterKind, EngineEvent, NpcLook, GearItem, GearSlot, HeroId, EnemyKind, EnemySeed, GameSnapshot, ItemId, MainQuest, MiniGame, MountId, NoticeTone, TrailId, NpcDef, Obstacle, Point, Poi,
-  QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
+  QuestDef, QuestOffer, QuestRow, QuestState, Rarity, Region, RegionId, River, ShopGear, SpellId, SpellRank, UpgradeId, WorldDefinition, WorldObject,
 } from './types';
 
 export type Hero = {
@@ -48,11 +48,11 @@ export type Enemy = EnemySeed & {
   heroT: number; enraged: boolean;
   /** Siege attackers march on `raid`; creatures from a cutscene vanish when it ends. */
   raid?: Point; cineOnly?: boolean;
+  /** The kind it fights like (its own kind, or the kin it takes after: see ENEMY_AI). */
+  ai: EnemyKind;
 };
 /** Fenn, Wren's wolf, and the spirit wolves of Call of the Wild (`life` counts down; Fenn's is endless). */
 export type Pet = { x: number; y: number; face: number; target: Enemy | null; cd: number; bite: number; leapT: number; walk: number; spirit: boolean; life: number; moving: boolean };
-/** Wren's Snare Trap: `t` is the time left; once sprung it snaps shut and fades. */
-export type Trap = { x: number; y: number; t: number; sprung: boolean };
 export type Npc = NpcDef & { homeX: number; homeY: number; tx: number; ty: number; moving: boolean; faceX: number; waitT: number; routeI: number; routeDir: number; workT: number; bark: string; barkT: number; barkCd: number; walkT: number; poiName: string;
   /** Quest people: whose quest they belong to, drawn as a wolf (a pale spirit one), too scared to walk, and a thief's stamina. */
   quest?: string; beast?: boolean; spirit?: boolean; scared?: boolean; tireT?: number; restT?: number; ang?: number };
@@ -66,7 +66,9 @@ type Cine = { id: string; shots: Shot[]; i: number; t: number; dur: number; cutT
 type Siege = { q: QuestDef; ward: WorldObject; wave: number; waveT: number; hp: number; spawned: boolean; raiders: Enemy[] };
 export type Projectile = { x: number; y: number; vx: number; vy: number; life: number; r: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'spark' | 'sunfire' | 'thorn' | 'void' | 'web' | 'ice' | 'frost' | 'knife' | 'fire' | 'arrow'; targetId?: string; crit?: boolean; spin: number;
   /** Arrows pass through this many more creatures; `passed` are the ones already hit. */
-  pierce?: number; passed?: Enemy[] };
+  pierce?: number; passed?: Enemy[];
+  /** Hawk Leap's arrows pin what they hit to the ground for this many seconds. */
+  pin?: number };
 export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning' | 'lava' | 'frostnova' | 'blizzard' | 'mark'; fromX: number; fromY: number };
 /** Riven's Death Mark on a creature, and Lyra's Blizzard over a patch of ground. */
 export type Mark = { e: Enemy; t: number; max: number; mul: number };
@@ -97,6 +99,9 @@ export type EngineSave = {
   abandoned?: string[];
   /** Columns of the explore grid when saved: the valley grew a fourth land, so older fog maps are re-laid row by row. */
   exploreCols?: number;
+  /** Creatures defeated and not yet back, with the moment (ms since 1970) each fell: leaving and coming straight back
+   *  doesn't bring them back early. */
+  slain?: Record<string, number>;
 };
 type Near = { kind: 'object'; o: WorldObject } | { kind: 'npc'; n: Npc };
 
@@ -145,11 +150,25 @@ const ENEMY_STATS: Record<EnemyKind, { hp: number; r: number; speed: number; nam
   emberImp: { hp: 36, r: 17, speed: 140, name: 'Ember imp', xp: 24, dmg: .95 },
   ashScorpion: { hp: 58, r: 22, speed: 105, name: 'Ash scorpion', xp: 27, dmg: 1.15 },
   magmaHulk: { hp: 140, r: 34, speed: 55, name: 'Magma hulk', xp: 46, dmg: 1.5 },
+  bogling: { hp: 34, r: 20, speed: 120, name: 'Bogling', xp: 18, dmg: 1 },
+  briarling: { hp: 46, r: 22, speed: 62, name: 'Briarling', xp: 20, dmg: .95 },
+  mirecap: { hp: 50, r: 21, speed: 48, name: 'Mirecap', xp: 20, dmg: .95 },
+  marshlight: { hp: 34, r: 16, speed: 150, name: 'Marsh light', xp: 20, dmg: .9 },
+  snowfang: { hp: 46, r: 22, speed: 180, name: 'Snowfang', xp: 24, dmg: 1.05 },
+  rimeling: { hp: 50, r: 22, speed: 62, name: 'Rimeling', xp: 24, dmg: 1 },
+  cinderhound: { hp: 52, r: 22, speed: 185, name: 'Cinderhound', xp: 27, dmg: 1.1 },
+  pyrewisp: { hp: 40, r: 16, speed: 155, name: 'Pyre wisp', xp: 25, dmg: .95 },
   mossback: { hp: 2600, r: 46, speed: 78, name: 'Mossback', xp: 700, dmg: 1 },
   brambleWarden: { hp: 6500, r: 46, speed: 88, name: 'Bramble Warden', xp: 1100, dmg: 1 },
   hollowStar: { hp: 12000, r: 42, speed: 96, name: 'The Hollow Star', xp: 1800, dmg: 1 },
   cinderTyrant: { hp: 21000, r: 50, speed: 96, name: 'Pyrrhus', xp: 2800, dmg: 1 },
   eclipse: { hp: 42000, r: 60, speed: 92, name: 'Umbra', xp: 5000, dmg: 1 },
+};
+/** Each land's own creatures fight like a kind from another land (a bogling like a gloomling, a snowfang like a
+ *  shadewolf); everything else fights as itself. */
+export const ENEMY_AI: Partial<Record<EnemyKind, EnemyKind>> = {
+  bogling: 'gloomling', briarling: 'thornling', mirecap: 'sporecap', marshlight: 'wisp',
+  snowfang: 'shadewolf', rimeling: 'thornling', cinderhound: 'shadewolf', pyrewisp: 'wisp',
 };
 const hpMul = (level: number) => 1.5 * (1 + .3 * (level - 1));
 /** Damage of one ordinary creature hit at a level, in health points. */
@@ -162,13 +181,15 @@ const BOSS_PATTERNS: Record<string, BossAction[][]> = {
   eclipse: [['slam', 'nova', 'boulders', 'roots', 'charge'], ['spiral', 'meteors', 'blink', 'slam', 'nova', 'roots'], ['meteors', 'spiral', 'charge', 'boulders', 'blink', 'nova', 'roots', 'slam']],
 };
 const SUMMONS: Record<string, EnemyKind[]> = {
-  mossback: ['gloomling', 'bristleboar'], brambleWarden: ['thornling', 'shadewolf'], hollowStar: ['wisp', 'frostwraith'], cinderTyrant: ['emberImp', 'ashScorpion'],
+  mossback: ['gloomling', 'bristleboar'], brambleWarden: ['briarling', 'shadewolf'], hollowStar: ['wisp', 'frostwraith'], cinderTyrant: ['emberImp', 'ashScorpion'],
   eclipse: ['gloomling', 'bristleboar', 'shadewolf', 'webspinner', 'wisp', 'frostwraith', 'emberImp', 'ashScorpion'],
 };
 const KILL_COLORS: Partial<Record<EnemyKind, string[]>> = {
   gloomling: ['#8c7ce0', '#c9b6ff', '#ffffff'], thornling: ['#9fd46b', '#e8ffb0', '#5fae4f'], wisp: ['#8ee8ff', '#c9b6ff', '#ffffff'],
   bristleboar: ['#a8744a', '#e8c09a', '#ffffff'], sporecap: ['#b9e27a', '#e0735a', '#fff1b8'], shadewolf: ['#5a5a7a', '#a0a0c8', '#ffffff'],
   webspinner: ['#6a4a7a', '#e8e0f0', '#b6df91'], frostwraith: ['#bfe8ff', '#8ee8ff', '#ffffff'], cragGolem: ['#8a8fa8', '#c8cce0', '#8ee8ff'],
+  bogling: ['#5f8a4a', '#b9e27a', '#ffffff'], briarling: ['#8a3a4a', '#e0a0b0', '#4a2a3a'], mirecap: ['#3f9aa0', '#9ff0e8', '#ffffff'], marshlight: ['#9ff0a0', '#d8ffd0', '#ffffff'],
+  snowfang: ['#e8f0fa', '#9fb8d8', '#ffffff'], rimeling: ['#bfe8ff', '#ffffff', '#7fb0e0'], cinderhound: ['#3a2a26', '#ff7a3d', '#ffd27a'], pyrewisp: ['#ffb347', '#ff6b3d', '#fff1b8'],
   emberImp: ['#ffb347', '#ff6b3d', '#fff1b8'], ashScorpion: ['#c9a26e', '#8a5a3a', '#ffd27a'], magmaHulk: ['#ff7a3d', '#5a3a30', '#ffd27a'], cinderTyrant: ['#ff9a3d', '#ff5f3d', '#fff1b8', '#3a2a26'],
   eclipse: ['#1a1030', '#c9b6ff', '#ff6b9a', '#ffffff'],
 };
@@ -238,9 +259,8 @@ export class GameEngine {
   readonly wells: Well[] = [];
   /** Riven: seconds left of Stealth, and whether the next stab is a sure critical hit (after a Shadowstep). */
   stealthT = 0; nextCrit = false;
-  /** Wren: Fenn and any spirit wolves, her traps, seconds left of Call of the Wild, and what Fenn has been told to do. */
+  /** Wren: Fenn and any spirit wolves, seconds left of Howl of the Pack, and what Fenn has been told to do. */
   readonly pets: Pet[] = [];
-  readonly traps: Trap[] = [];
   wildT = 0; petMode: PetMode = 'attack';
   /** Seconds until Fenn can pounce again when he is sent in. */
   private pounceCd = 0;
@@ -352,7 +372,7 @@ export class GameEngine {
     const practiceWorld: WorldDefinition = {
       ...base, width: 2400, height: 1800, spawn: { x: 650, y: 900 }, enemies: practiceSeeds,
       obstacles: base.obstacles.filter(o => o.x < 2400 && o.y < 1800), decor: base.decor.filter(o => o.x < 2400 && o.y < 1800), ponds: base.ponds.filter(o => o.x < 2400 && o.y < 1800),
-      npcs: [], critters: [], pods: [], objects: [], quests: [], pois: [], roads: [],
+      npcs: [], critters: [], pods: [], objects: [], quests: [], pois: [], roads: [], rivers: [],
     };
     this.world = practice ? practiceWorld : { ...base, ...worldForHero(base, heroId, quests), spawn: startFor(base, heroId), quests }; this.eventHandler = onEvent; this.checkpoint = { ...this.world.spawn };
     this.profile = practice ? practiceProfile(heroId) : loadProfile(heroId);
@@ -414,9 +434,11 @@ export class GameEngine {
     }
   }
   private makeEnemy(seed: EnemySeed, summoned = false): Enemy {
+    // A creature called into a land it doesn't live in comes as that land's own kin.
+    if (!seed.boss && !this.practice) { const k = localKind(seed.kind, seed.region); if (k !== seed.kind) seed = { ...seed, kind: k }; }
     const s = ENEMY_STATS[seed.kind];
     const hp = seed.boss ? s.hp : Math.round(s.hp * hpMul(seed.level) * (seed.heroic ? 9 : seed.elite ? 2.6 : 1));
-    return { ...seed, heroT: rand(3, 5), enraged: false, hp, maxHp: hp, r: s.r * (seed.heroic ? 1.6 : seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: rand(0, 6.28), summoned, rage: 0, stunT: 0, blinkT: rand(3, 6), chillT: 0, frozenT: 0, burrowT: 0 };
+    return { ...seed, heroT: rand(3, 5), enraged: false, hp, maxHp: hp, r: s.r * (seed.heroic ? 1.6 : seed.elite ? 1.3 : 1), dead: false, deadT: 0, cd: rand(1, 2.5), windup: 0, hitFlash: 0, kx: 0, ky: 0, homeX: seed.x, homeY: seed.y, wanderX: seed.x, wanderY: seed.y, wanderT: rand(0, 3), aggro: summoned, spawnT: summoned ? .6 : 0, phase: 1, action: null, actionT: 0, actionStep: 0, pattern: 0, summons: 0, chargeX: 0, chargeY: 0, lunge: 0, angle: rand(0, 6.28), summoned, rage: 0, stunT: 0, blinkT: rand(3, 6), chillT: 0, frozenT: 0, burrowT: 0, ai: ENEMY_AI[seed.kind] || seed.kind };
   }
   setEventHandler(handler: (event: EngineEvent) => void) { this.eventHandler = handler; }
 
@@ -452,6 +474,15 @@ export class GameEngine {
     const broken = new Set(Array.isArray(s.brokenPods) ? s.brokenPods : []);
     for (const p of this.pods) if (broken.has(p.id)) p.dead = true;
     for (const e of this.enemies) if (e.boss && this.main.bosses.includes(e.id)) { e.dead = true; e.hp = 0; }
+    // Creatures still waiting to come back. The clock keeps running while the game is closed.
+    if (s.slain && typeof s.slain === 'object') {
+      const now = Date.now();
+      for (const e of this.enemies) {
+        const at = Number(s.slain[e.id]); if (e.boss || !Number.isFinite(at)) continue;
+        const gone = Math.max(0, (now - at) / 1000);
+        if (gone < (e.heroic ? HEROIC_RESPAWN : RESPAWN_TIME)) { e.dead = true; e.hp = 0; e.deadT = gone; }
+      }
+    }
     for (const q of this.world.quests) if (q.kind === 'rescue' && this.qs(q.id).status === 'active') this.spawnGuards(q);
     const final = this.world.quests.find(q => q.boss?.endsWith(':final'));
     if (final && this.qs(final.id).status === 'active' && !this.main.bosses.includes(final.boss!)) this.spawnFinal(false);
@@ -515,10 +546,17 @@ export class GameEngine {
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
       brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], secrets: [...this.secrets], tracked: this.tracked,
       chapterStart: { ...this.chapterStart }, awaiting: false, foxQueue: [...this.foxQueue], exploreCols: this.exploreCols,
+      slain: this.slainNow(),
       choices: { ...this.choices }, abandoned: [...this.abandoned], escorts: this.npcs.filter(n => n.role === 'follower' && n.quest).map(n => ({ id: n.quest!, x: n.x, y: n.y })),
     };
   }
 
+  /** Ordinary creatures lying defeated, and when they fell in real time. */
+  private slainNow() {
+    const now = Date.now(), out: Record<string, number> = {};
+    for (const e of this.enemies) if (e.dead && !e.boss && !e.summoned && !e.guard && !e.cineOnly) out[e.id] = Math.round(now - e.deadT * 1000);
+    return out;
+  }
   // ───────────────────────────── helpers
   private persistProfile(profile: Profile) { if (!this.practice) saveProfile(profile); }
   private notice(text: string, tone: NoticeTone = 'info', short?: string) { this.eventHandler({ type: 'notice', text, tone, short }); }
@@ -613,8 +651,6 @@ export class GameEngine {
       a.got[d.id] = Date.now(); this.profileDirty = true;
       if (!silent) {
         this.eventHandler({ type: 'achievement', id: d.id, name: d.name, description: d.description, icon: d.icon, points: d.points }); this.play('learn');
-        const m = mountFor(d.id);
-        if (m) this.news.push({ text: `New mount: ${MOUNTS[m].name}! Press ${keyLabel(keyOf('ride'))} (or the saddle button) to ride.`, short: `New mount: ${MOUNTS[m].name}`, t: 4.5 });
         const tr = trailFor(d.id);
         if (tr) this.news.push({ text: `New trail: ${TRAILS[tr].name}! Choose it in the stable (Achievements tab).`, short: `New trail: ${TRAILS[tr].name}`, t: 5 });
       }
@@ -715,7 +751,7 @@ export class GameEngine {
     else if (id === 'stealth') this.enterStealth();
     else if (id === 'deathmark' && !this.deathmark()) { h.mana += info.cost; h.cds[id] = 0; }
     else if (id === 'volley') this.volley();
-    else if (id === 'snare') this.snare();
+    else if (id === 'leap') this.hawkLeap();
     else if (id === 'wildcall') this.wildcall();
   }
   /** Starts casting a spell with a cast time. Its magic is spent, and its cooldown starts, when it goes off. */
@@ -750,7 +786,7 @@ export class GameEngine {
   private noMagic() { this.play('nope'); this.notice(`Not enough ${HEROES[this.heroId].resource.toLowerCase()}! Break glow pods and defeat creatures to win some back, or drink a potion.`, 'warn', `No ${HEROES[this.heroId].resource.toLowerCase()}`); }
   /** A spell that needs a foe was pressed with none in reach: nothing happens and nothing is spent. */
   private noTarget(what: string) { this.play('nope'); this.notice(`No foe in reach to ${what}.`, 'warn', 'No target'); }
-  private frozenNotice() { this.play('nope'); this.notice('You are frozen in your Ice Block. Press Ice Block again to break free.', 'warn', 'Frozen in ice'); }
+  private frozenNotice() { this.play('nope'); this.notice('You are frozen in your Glacier Shell. Press Glacier Shell again to break free.', 'warn', 'Frozen in ice'); }
   /** A toggle that is on: Lyra in her Ice Block, Riven in stealth, Fenn held back at Wren's heel. */
   spellActive(id: SpellId) { return id === 'iceBlock' ? this.hero.iceT > 0 : id === 'stealth' ? this.stealthT > 0 : id === 'command' ? this.petMode === 'passive' : false; }
   private attack() {
@@ -914,7 +950,7 @@ export class GameEngine {
   }
   // ───────────────────────────── Riven's abilities
   /** Out of Stealth, the first strike is an ambush for triple damage (and brings Riven out of the shadows). */
-  private ambush() { if (this.stealthT <= 0) return 1; this.endStealth(); this.text(this.hero.x, this.hero.y - 70, 'Ambush!', '#e0c8ff', 18); return 3; }
+  private ambush() { if (this.stealthT <= 0) return 1; this.endStealth(); this.text(this.hero.x, this.hero.y - 70, 'Veil strike!', '#e0c8ff', 18); return 3; }
   /** Two quick dagger thrusts at up to two foes in front. Critical hits deal triple damage. */
   private stab() {
     const h = this.hero; if (h.cds.stab > 0) return;
@@ -963,7 +999,7 @@ export class GameEngine {
     const h = this.hero; this.stealthT = 15; h.cds.stealth = 0;
     this.loseHero();
     this.emit(h.x, h.y, 34, ['rgba(60,50,80,.7)', 'rgba(150,140,180,.6)', 'rgba(220,210,240,.5)'], { speed: 200, life: 1.3, kind: 'smoke', size: 22, drag: 2 });
-    this.text(h.x, h.y - 70, 'Stealth', '#c9b6ff', 16); this.play('dash');
+    this.text(h.x, h.y - 70, 'Nightveil', '#c9b6ff', 16); this.play('dash');
   }
   endStealth() {
     if (this.stealthT <= 0) return;
@@ -1041,12 +1077,22 @@ export class GameEngine {
     for (let i = 0; i < 7; i++) { const o = a + (i - 3) * .14, crit = Math.random() < this.critChance; this.arrowShot(Math.cos(o), Math.sin(o), this.dmg('volley') * (crit ? 2 : 1), crit, 0, .6); }
     h.castTime = .3; this.addShake(2); this.play('thornShot');
   }
-  private snare() {
-    const h = this.hero;
-    if (this.traps.filter(t => !t.sprung).length >= 3) this.traps.splice(this.traps.findIndex(t => !t.sprung), 1);
-    this.traps.push({ x: h.x, y: h.y + 12, t: 20, sprung: false });
-    this.emit(h.x, h.y + 12, 12, ['#b9e27a', '#8a6a4a', '#ffffff'], { speed: 90, life: .5, kind: 'leaf', size: 5 });
-    h.castTime = .3; this.play('pickup');
+  /**
+   * Hawk Leap: Wren vaults away from the nearest foe (or the way she is moving) and looses three arrows at it in mid-air.
+   * Nothing can hurt her during the leap, and every creature an arrow hits is pinned to the ground.
+   */
+  private hawkLeap() {
+    const h = this.hero, t = this.nearestTarget(560, true) as Enemy | null;
+    let dx = this.moveX, dy = this.moveY;
+    if (Math.hypot(dx, dy) < .1) { if (t) { dx = h.x - t.x; dy = h.y - t.y; } else { dx = -h.faceX; dy = -h.faceY; } }
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    h.dashX = dx; h.dashY = dy; h.dashTime = .3; h.charging = false; h.slowT = 0; h.ghostT = Math.max(h.ghostT, .45);
+    let a = Math.atan2(-dy, -dx);
+    if (t) { a = Math.atan2(t.y - h.y, t.x - h.x); this.petFocus = t; }
+    h.faceX = Math.cos(a); h.faceY = Math.sin(a);
+    for (let i = -1; i <= 1; i++) { const o = a + i * .12, crit = Math.random() < this.critChance; this.arrowShot(Math.cos(o), Math.sin(o), this.dmg('leap') * (crit ? 2 : 1), crit, 0, .7); this.projectiles[this.projectiles.length - 1].pin = 1.5; }
+    this.emit(h.x, h.y + 12, 16, ['#b9e27a', '#e8d49a', '#ffffff'], { speed: 180, life: .45, kind: 'leaf', size: 5, angle: Math.atan2(-dy, -dx), spread: 1.6 });
+    h.castTime = .3; this.play('dash'); this.play('thornShot');
   }
   private wildcall() {
     const h = this.hero, t = this.durationOf('wildcall', 8);
@@ -1056,7 +1102,7 @@ export class GameEngine {
     this.ring(h.x, h.y, 140, '#9fe8b0', .6); this.emit(h.x, h.y, 30, ['#9fe8b0', '#e6ffe9', '#ffffff'], { speed: 220, life: .8, kind: 'star', glow: true });
     this.flash = Math.max(this.flash, .15); this.play('roar');
   }
-  /** Fenn follows Wren, runs at whatever she shoots (or anything attacking her) and bites; traps wait for a foot.
+  /** Fenn follows Wren, runs at whatever she shoots (or anything attacking her) and bites.
    *  Told to stay passive, he and the spirit wolves keep to her heel and attack nothing. */
   private updatePets(dt: number) {
     const h = this.hero, passive = this.petMode === 'passive';
@@ -1097,17 +1143,6 @@ export class GameEngine {
         if (!e.boss) this.knock(e, p, 60);
       }
     }
-    for (let i = this.traps.length - 1; i >= 0; i--) {
-      const t = this.traps[i]; t.t -= dt;
-      if (t.t <= 0) { swapRemove(this.traps, i); continue; }
-      if (t.sprung) continue;
-      const hit = this.enemies.find(e => !e.dead && e.spawnT <= 0 && e.burrowT <= 0 && this.canHurt(e) && Math.abs(e.x - t.x) < 90 && Math.abs(e.y - t.y) < 90 && dist(e, t) < e.r + 34);
-      if (!hit) continue;
-      t.sprung = true; t.t = .7;
-      for (const e of this.enemies) if (!e.dead && this.canHurt(e) && e.burrowT <= 0 && dist(e, t) < 90 + e.r) { this.damageEnemy(e, this.dmg('snare')); e.stunT = Math.max(e.stunT, e.boss ? .9 : 3); e.windup = 0; e.lunge = 0; e.kx = e.ky = 0; }
-      this.ring(t.x, t.y, 100, '#b9e27a', .5); this.emit(t.x, t.y, 20, ['#b9e27a', '#8a6a4a', '#ffffff'], { speed: 220, life: .5, kind: 'shard', size: 4, grav: 300 });
-      this.addShake(4); this.play('slam', t);
-    }
   }
 
   // ───────────────────────────── mini-games and trails
@@ -1141,7 +1176,24 @@ export class GameEngine {
   get trail(): TrailId | null { const t = this.profile.trail; return t && this.trailUnlocked(t) ? t : null; }
 
   // ───────────────────────────── mounts
-  mountUnlocked(id: MountId) { return this.practice || !!this.profile.ach.got[MOUNTS[id].ach]; }
+  /** Mounts are owned: bought from a stable master or won in battle. */
+  mountUnlocked(id: MountId) { return this.practice || this.profile.mounts.includes(id); }
+  /** A stable master's price for a mount, and why it can't be bought yet (null when it can). */
+  mountOffer(id: MountId) {
+    const m = MOUNTS[id], owned = this.mountUnlocked(id), price = m.price || 0;
+    const why = owned ? 'Owned' : !price ? 'Not for sale' : this.profile.level < (m.level || 1) ? `Lv ${m.level}` : this.profile.gold < price ? 'Not enough gold' : null;
+    return { price, owned, why };
+  }
+  buyMount(id: MountId) {
+    const o = this.mountOffer(id); if (o.why) { this.play('nope'); return false; }
+    this.profile.gold -= o.price; this.gainMount(id, false); return true;
+  }
+  /** A new mount for this hero: it is ridden from now on (until another is chosen in the stable). */
+  private gainMount(id: MountId, won: boolean) {
+    const p = this.profile; if (p.mounts.includes(id)) return;
+    p.mounts.push(id); p.mount = id; this.persistProfile(p); this.play('learn');
+    this.notice(`${won ? 'Won in battle' : 'Bought'}: ${MOUNTS[id].name}! Press ${keyLabel(keyOf('ride'))} (or the saddle button) to ride.`, 'epic', `New mount: ${MOUNTS[id].name}`);
+  }
   /** The mount the hero rides: the one chosen in the stable, or the fastest one earned. */
   get mountId(): MountId | null {
     const p = this.profile.mount;
@@ -1163,7 +1215,7 @@ export class GameEngine {
     if (this.riding) return this.dismount();
     const id = this.mountId, h = this.hero;
     if (h.iceT > 0) return this.frozenNotice();
-    if (!id) { this.play('nope'); this.notice('You have no mount yet. The first one is earned by discovering 10 places (the Wanderer achievement).', 'warn', 'No mount yet'); return; }
+    if (!id) { this.play('nope'); this.notice('You have no mount yet. Buy one from the stable master in any city, or win one from a heroic creature.', 'warn', 'No mount yet'); return; }
     if (this.inCombat()) { this.play('nope'); this.notice('You can’t call your mount in combat. Win the fight or get away first.', 'warn', 'In combat'); return; }
     this.riding = true; this.mountFx = 0;
     this.emit(h.x, h.y + 10, 24, [MOUNTS[id].mane, MOUNTS[id].body, '#ffffff'], { speed: 180, life: .6, kind: 'smoke', size: 10 });
@@ -1181,10 +1233,10 @@ export class GameEngine {
   private updateSpells(dt: number) {
     const h = this.hero;
     h.ghostT = Math.max(0, h.ghostT - dt);
-    if (this.pets.length || this.traps.length) this.updatePets(dt);
+    if (this.pets.length) this.updatePets(dt);
     if (this.riding) this.mountFx = Math.min(1, this.mountFx + dt * 4);
     if (this.stealthT > 0) {
-      if (this.stealthT <= dt) { this.endStealth(); this.notice('You step out of the shadows.', 'info', 'Stealth ended'); }
+      if (this.stealthT <= dt) { this.endStealth(); this.notice('You step out of the shadows.', 'info', 'Veil ended'); }
       else { this.stealthT -= dt; if (Math.random() < dt * 10) this.emit(h.x + rand(-16, 16), h.y + rand(-24, 14), 1, 'rgba(150,130,200,.5)', { speed: 20, life: .6, kind: 'smoke', size: 7, grav: -20 }); }
     }
     if (h.iceT > 0) {
@@ -1929,11 +1981,30 @@ export class GameEngine {
 
   // ───────────────────────────── gates between the lands
   barrierOpen(o: WorldObject) { const st = this.quests.get(o.questId!)?.status; if (st === 'done') return true; const q = this.quest(o.questId!); return q?.kind === 'build' && st === 'ready'; }
+  /** Standing on a river's bridge, and the bridge is whole. */
+  onBridge(rv: River, p: Point) {
+    if (Math.abs(p.y - rv.bridgeY) > 44) return false;
+    const o = this.barriers.find(b => b.id === rv.barrier);
+    return !o || this.barrierOpen(o);
+  }
+  /** Which bank of each river the hero is on, so a Frost Step or a leap can't hop over the water. */
+  private banks: Array<{ side: number; x: number }> = [];
+  private keepBanks() {
+    const h = this.hero;
+    this.world.rivers.forEach((rv, i) => {
+      const cx = riverX(rv, h.y), side = h.x < cx ? -1 : 1, b = this.banks[i];
+      if (b && side !== b.side && Math.abs(h.x - b.x) < 600 && !this.onBridge(rv, h)) { h.x = cx + b.side * (rv.hw + 18); h.vx = 0; }
+      else this.banks[i] = { side, x: h.x };
+      if (this.banks[i]) this.banks[i].x = h.x;
+    });
+  }
   private blockBarriers() {
     const h = this.hero;
+    this.keepBanks();
     for (const o of this.barriers) {
-      if (Math.abs(h.y - o.y) > 230 || h.x < o.x - 70 || h.x > o.x + 40 || this.barrierOpen(o)) continue;
-      h.x = o.x - 70; h.vx = Math.min(0, h.vx);
+      const river = o.variant === 'bridge' && this.world.rivers.length > 0;
+      if (Math.abs(h.y - o.y) > 230 || h.x < o.x - (river ? 150 : 70) || h.x > o.x + 40 || this.barrierOpen(o)) continue;
+      if (!river) { h.x = o.x - 70; h.vx = Math.min(0, h.vx); }
       if (this.elapsed - this.barrierNoticeT > 4) { this.barrierNoticeT = this.elapsed; this.notice(BARRIER_TEXT[o.variant || 'bridge'], 'warn', 'The way is blocked'); }
     }
   }
@@ -2318,7 +2389,7 @@ export class GameEngine {
     const ready = this.world.quests.find(q => this.qs(q.id).status === 'ready' && this.reportTo(q) === n.id);
     if (ready) return this.finish(ready, n, this.tx(ready).complete);
     const offer = this.offerFrom(n); if (offer) return this.offerQuest(offer, n);
-    if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
+    if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
@@ -2416,11 +2487,13 @@ export class GameEngine {
       this.dropGear(e.x, e.y, e.level, Math.random() < .5 ? 'rare' : 'uncommon');
       for (const o of this.enemies) if (o.summoned && !o.dead && o.id.startsWith(`hsum-${e.id}-`)) this.killEnemy(o);
       this.notice(`${e.heroic} is defeated! Heroic loot spills out.`, 'epic', 'Heroic victory!');
+      this.dropMounts('heroic');
       this.flash = Math.max(this.flash, .5); this.slowMo = Math.max(this.slowMo, .6); this.addShake(12); this.ring(e.x, e.y, 200, '#e8a0ff', .9); this.play('bossDie');
     }
     else if (!e.summoned && (e.elite ? Math.random() < .35 : Math.random() < .045 * grey)) { const r = rollRarity(Math.random, e.elite ? .4 : 0); this.dropGear(e.x, e.y, e.level, e.elite && r === 'common' ? 'uncommon' : r); }
-    if (e.kind === 'sporecap') this.addHazard(e.x, e.y, 110, .7, 'spore', e, hitAt(e.level) * .8, e.level);
+    if (e.ai === 'sporecap') this.addHazard(e.x, e.y, 110, .7, 'spore', e, hitAt(e.level) * .8, e.level);
     if (e.boss) {
+      if (e.kind === 'eclipse') this.dropMounts('eclipse');
       this.main.bosses.push(e.id); this.slowMo = 1.4;
       this.statMax(`boss:${e.kind}`, 1); if (this.cleanFight) this.statMax('flawless', 1); this.cleanFight = false;
       this.flash = 1; this.addShake(22); this.play('bossDie');
@@ -2436,6 +2509,10 @@ export class GameEngine {
       if (e.guard && this.guardsLeft(e.guard) === 0) { const q = this.quest(e.guard); if (q?.captive) this.notice(`The guards are down — free ${q.captive.name}!`, 'good', 'Open the cage!'); }
     }
     this.gainXp(xp, e.x, e.y);
+  }
+  /** Mounts that only drop: each one the foe can drop, by its chance, if the hero hasn't got it yet. */
+  private dropMounts(from: string) {
+    for (const id of MOUNT_ORDER) { const m = MOUNTS[id]; if (m.drop === from && !this.mountUnlocked(id) && Math.random() < (m.chance ?? 1)) this.gainMount(id, true); }
   }
   private spawnOrb(x: number, y: number, kind: Orb['kind'], value = 0) { const a = rand(0, 6.28), v = rand(120, 300); this.orbs.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, kind, age: 0, value }); }
   private breakPod(p: Pod) {
@@ -2492,16 +2569,18 @@ export class GameEngine {
     this.respawnFade = 1; this.clearThreats = true; this.cleanFight = false; this.bump('deaths');
     this.marks.length = 0; this.storms.length = 0; this.wells.length = 0; this.stealthT = 0; this.riding = false;
     h.iceT = 0; h.orbitT = 0; h.orbitN = 0;
-    this.traps.length = 0; this.wildT = 0; this.petFocus = null; this.work = null;
+    this.wildT = 0; this.petFocus = null; this.work = null;
     if (this.siege) this.failSiege('You fell, and the attackers overran the defence.');
     for (const n of this.npcs) if (n.role === 'follower') { n.x = h.x + 50; n.y = h.y + 24; }
     for (let i = this.pets.length - 1; i >= 0; i--) { const p = this.pets[i]; if (p.spirit) swapRemove(this.pets, i); else { p.x = h.x - 40; p.y = h.y + 16; p.target = null; p.leapT = 0; } }
     for (const e of this.enemies) {
       if (e.dead) continue;
       if (e.summoned) { e.dead = true; continue; }
-      e.aggro = false; e.x = e.homeX; e.y = e.homeY; e.cd = 2; e.windup = 0; e.action = null; e.lunge = 0;
-      if (e.heroic) { e.hp = e.maxHp; e.enraged = false; e.heroT = 4; }
-      if (e.boss) e.hp = Math.min(e.maxHp, e.hp + Math.round(e.maxHp * .25));
+      // Every creature and guardian still standing is back at full health: a fight lost is a fight started over.
+      e.aggro = false; e.x = e.homeX; e.y = e.homeY; e.cd = 2; e.windup = 0; e.action = null; e.lunge = 0; e.hp = e.maxHp;
+      e.stunT = 0; e.chillT = 0; e.frozenT = 0; e.burrowT = 0; e.rage = 0;
+      if (e.heroic) { e.enraged = false; e.heroT = 4; }
+      if (e.boss) { e.phase = 1; e.pattern = 0; e.actionStep = 0; e.summons = 0; }
     }
     this.bossIntroShown.clear();
     this.notice(`${HEROES[this.heroId].name} wakes at the last resting place.${lost ? ` ${lost} gold was lost.` : ''} Quest progress is safe.`, 'warn', lost ? `Defeated · −${lost} gold` : 'Defeated');
@@ -2584,6 +2663,12 @@ export class GameEngine {
           else { const ox = o.w + pad - Math.abs(p.x - o.x), oy = hh + pad - Math.abs(p.y - o.y); if (ox < oy) p.x += Math.sign(p.x - o.x || 1) * ox; else p.y += Math.sign(p.y - o.y || 1) * oy; }
         }
       } else this.pushOut(p, o.x, o.y, o.r + pad);
+    }
+    // A river can only be crossed on its bridge, once the bridge is mended.
+    for (const rv of this.world.rivers) {
+      if (Math.abs(p.x - rv.pts[0].x) > rv.hw + 240 + pad) continue;
+      const cx = riverX(rv, p.y), d = p.x - cx, lim = rv.hw + pad * .6;
+      if (Math.abs(d) < lim && !this.onBridge(rv, p)) p.x = cx + Math.sign(d || -1) * lim;
     }
     for (const pond of this.world.ponds) {
       if (Math.abs(p.x - pond.x) > pond.r + 60 || Math.abs(p.y - pond.y) > pond.r + 60) continue;
@@ -2674,7 +2759,7 @@ export class GameEngine {
       this.enemyAct(e, edt, d);
       if (e.heroic) this.heroicAct(e, edt, d);
       const hit = hitAt(e.level) * ENEMY_STATS[e.kind].dmg;
-      if (d < e.r + 16 && e.kind !== 'thornling' && e.kind !== 'sporecap' && e.kind !== 'emberImp' && e.burrowT <= 0) this.hurt(hit * (e.kind === 'bristleboar' && e.lunge > 0 ? 1.5 : e.kind === 'webspinner' && h.slowT > 0 ? 1 : .6), e, e.level);
+      if (d < e.r + 16 && e.ai !== 'thornling' && e.ai !== 'sporecap' && e.ai !== 'emberImp' && e.burrowT <= 0) this.hurt(hit * (e.kind === 'bristleboar' && e.lunge > 0 ? 1.5 : e.kind === 'webspinner' && h.slowT > 0 ? 1 : .6), e, e.level);
     }
     this.combat += (clamp(threats / 4, 0, 1) - this.combat) * Math.min(1, dt * 1.5);
     this.danger += (Number(near) - this.danger) * Math.min(1, dt * (near ? 5 : 2));
@@ -2682,7 +2767,7 @@ export class GameEngine {
   /** Each creature fights its own way. */
   private enemyAct(e: Enemy, dt: number, d: number) {
     const h = this.hero, dx = (h.x - e.x) / Math.max(1, d), dy = (h.y - e.y) / Math.max(1, d), sp = ENEMY_STATS[e.kind].speed * (e.elite ? 1.1 : 1), hit = hitAt(e.level) * ENEMY_STATS[e.kind].dmg;
-    switch (e.kind) {
+    switch (e.ai) {
       case 'gloomling': {
         if (e.windup > 0) {
           e.windup -= dt;
@@ -2842,7 +2927,7 @@ export class GameEngine {
     if (e.wanderT <= 0) { e.wanderT = rand(1.5, 4); const a = rand(0, 6.28), r = rand(0, 110); e.wanderX = e.homeX + Math.cos(a) * r; e.wanderY = e.homeY + Math.sin(a) * r; }
     const dx = e.wanderX - e.x, dy = e.wanderY - e.y, d = Math.hypot(dx, dy);
     if (d > 6) { e.x += dx / d * 40 * dt; e.y += dy / d * 40 * dt; }
-    if (e.kind === 'wisp' || e.kind === 'frostwraith' || e.kind === 'emberImp') e.angle += dt * 2;
+    if (e.ai === 'wisp' || e.ai === 'frostwraith' || e.ai === 'emberImp') e.angle += dt * 2;
   }
   private enemyShot(e: Enemy, angle: number, speed: number, kind: BossShot, damage: number) {
     this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 2.6, r: kind === 'void' || kind === 'web' || kind === 'fire' ? 9 : 7, damage, level: e.level, owner: 'enemy', kind, spin: angle });
@@ -3167,7 +3252,7 @@ export class GameEngine {
         for (const e of this.enemies) {
           if (e.dead || e.spawnT > 0 || e.burrowT > 0 || Math.abs(e.x - p.x) > 90 || Math.abs(e.y - p.y) > 90 || dist(p, e) > e.r + p.r || p.passed?.includes(e)) continue;
           if (p.kind === 'sunfire') this.explodeSunfire(p.x, p.y);
-          else { this.damageEnemy(e, p.damage, p.crit); if (!e.boss) this.knock(e, { x: p.x - p.vx, y: p.y - p.vy }, 90); if (p.kind === 'frost') e.chillT = Math.max(e.chillT, 2); }
+          else { this.damageEnemy(e, p.damage, p.crit); if (!e.boss) this.knock(e, { x: p.x - p.vx, y: p.y - p.vy }, 90); if (p.kind === 'frost') e.chillT = Math.max(e.chillT, 2); if (p.pin && !e.dead) { e.stunT = Math.max(e.stunT, e.boss ? p.pin * .4 : p.pin); e.windup = 0; e.lunge = 0; e.kx = e.ky = 0; this.ring(e.x, e.y + e.r * .5, 34, '#b9e27a', .35); } }
           // A piercing arrow flies on through the first creature.
           if (p.pierce) { p.pierce--; p.passed!.push(e); p.damage *= .7; break; }
           hit = true; break;
@@ -3331,6 +3416,7 @@ export class GameEngine {
     const h = this.hero;
     let water = 0, fire = 0;
     for (const p of this.world.ponds) { if (Math.abs(h.x - p.x) > p.r + 500) continue; const e = Math.hypot((h.x - p.x) / p.r, (h.y - p.y) / (p.r * .58)); const d = (e - 1) * p.r; water = Math.max(water, clamp(1 - d / 420, 0, 1)); }
+    for (const rv of this.world.rivers) { const d = Math.abs(h.x - riverX(rv, h.y)) - rv.hw; if (d < 500) water = Math.max(water, clamp(1 - d / 420, 0, 1)); }
     for (const c of this.campfires) if (Math.abs(h.x - c.x) < 500) fire = Math.max(fire, clamp(1 - dist(h, c) / 420, 0, 1));
     ambience.setProximity(water, fire);
   }
@@ -3468,7 +3554,7 @@ export class GameEngine {
   }
   private nearAction(n: Npc) {
     if (this.npcMarker(n)) return 'Talk';
-    return n.role === 'merchant' || n.role === 'armorer' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
+    return n.role === 'merchant' || n.role === 'armorer' || n.role === 'stable' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
   }
   snapshot(): GameSnapshot {
     const index = new Map<string, Npc>(); for (const n of this.npcs) if (!index.has(n.id)) index.set(n.id, n);

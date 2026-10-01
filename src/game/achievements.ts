@@ -26,7 +26,7 @@ export const ACHIEVEMENTS: AchDef[] = [
 
   a('Combat', 'k1', 'First Blood', 'Defeat your first creature.', '⚔', 5, 'kills', 1),
   a('Combat', 'k50', 'Monster Hunter', 'Defeat 50 creatures.', '⚔', 10, 'kills', 50),
-  a('Combat', 'k250', 'Scourge of the Wilds', 'Defeat 250 creatures.', '⚔', 25, 'kills', 250),
+  a('Combat', 'k250', 'Terror of the Wilds', 'Defeat 250 creatures.', '⚔', 25, 'kills', 250),
   a('Combat', 'k1000', 'Legend of the Hunt', 'Defeat 1000 creatures.', '⚔', 50, 'kills', 1000),
   a('Combat', 'e10', 'Elite Hunter', 'Defeat 10 gold-starred elites.', '★', 10, 'elites', 10),
   a('Combat', 'e50', 'Champion Slayer', 'Defeat 50 gold-starred elites.', '★', 25, 'elites', 50),

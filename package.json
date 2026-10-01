@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "check:stories": "esbuild scripts/check-stories.ts --bundle --platform=node --log-level=warning --outfile=node_modules/.cache/check-stories.cjs && node node_modules/.cache/check-stories.cjs"
+    "check:stories": "esbuild scripts/check-stories.ts --bundle --platform=node --log-level=warning --outfile=node_modules/.cache/check-stories.cjs && node node_modules/.cache/check-stories.cjs",
+    "check:kinds": "esbuild scripts/check-kinds.ts --bundle --platform=node --log-level=warning --outfile=node_modules/.cache/check-kinds.cjs && node node_modules/.cache/check-kinds.cjs"
   },
   "dependencies": {
     "@fontsource/cinzel": "^5.3.0",

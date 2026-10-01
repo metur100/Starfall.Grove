@@ -15,7 +15,7 @@ import { sfx } from './game/audio';
 import { music } from './game/music';
 import { ACTIONS, RESERVED, actionOf, bindKey, getKeys, keyLabel, onKeysChange, resetKeys, spellSlot, type Action } from './game/keys';
 import { exportBackup, readBackup, restoreBackup, type Backup } from './game/backup';
-import { MOUNTS, MOUNT_ORDER } from './game/mounts';
+import { MOUNTS, MOUNT_ORDER, STABLE_STOCK } from './game/mounts';
 import { applyUpdate, onUpdateReady } from './pwa';
 import type { EngineEvent, GameSnapshot, HeroId, ItemId, NoticeTone, QuestOffer, QuestRow, RegionId, ShopKind, SpellId, SpellState } from './game/types';
 import CharacterScreen, { ScoreLine, StatLines, type SheetTab } from './ui/CharacterScreen';
@@ -450,6 +450,7 @@ function App() {
     {(mode === 'play' || mode === 'practice') && <main className={`play-page theme-${region} hero-${hero} ${cine || film ? 'cine-on' : ''}`}>
       <section className="game-stage">
         <GameCanvas hero={hero} runKey={runKey} paused={isGamePaused} graphics={graphics} touch={touch} practice={mode === 'practice'} onReady={onReady} onSnapshot={onSnapshot} onEvent={onEvent} />
+        {!cine && !film && <button className="minimap-hit" onClick={() => { engineRef.current?.setMovement(0, 0); setMapOpen(true); sfx.play('page'); }} aria-label="Open the world map" title="World map (M)" />}
 
         <div className="hud-top">
           <Vitals snapshot={snapshot} onProfile={onProfile} />
@@ -796,16 +797,18 @@ const PotionButton = memo(function PotionButton({ id, count, onUse, touch, quick
   </button>;
 });
 
-/** Merchants sell potions and bombs and buy loot; smiths forge the three permanent upgrades; armourers sell costly equipment. */
+/** Merchants sell potions and bombs and buy loot; smiths forge the three permanent upgrades; armourers sell costly
+ *  equipment and buy spare gear; stable masters sell mounts. */
 function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: GameSnapshot; engine: GameEngine; onClose: () => void }) {
   const [, setTick] = useState(0);
   const [tab, setTab] = useState<'buy' | 'sell'>('buy');
   const gold = snapshot.gold, refresh = () => setTick(t => t + 1);
   const junk = snapshot.gear.filter(g => g.rarity === 'common' || g.rarity === 'uncommon');
   return <aside className="side-panel shop-panel">
-    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : shop.kind === 'armorer' ? 'Armoury' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
-    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy anything you don’t need — gear, potions, the lot.”' : shop.kind === 'armorer' ? '“Fine gear, fine prices. My best pieces wait until you have grown into them.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
+    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : shop.kind === 'armorer' ? 'Armoury' : shop.kind === 'stable' ? 'Stable' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
+    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy anything you don’t need — gear, potions, the lot.”' : shop.kind === 'armorer' ? '“Fine gear, fine prices. My best pieces wait until you have grown into them. I’ll take your spare pieces off your hands, too.”' : shop.kind === 'stable' ? '“Nobody rides for free. Every one of these is worth the gold, and yours for good.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
     {shop.kind === 'merchant' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell <small>{snapshot.gear.length + snapshot.items.filter(i => i.count > 0).length}</small></button></div>}
+    {shop.kind === 'armorer' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell <small>{snapshot.gear.length}</small></button></div>}
     <div className="bag-list">
       {shop.kind === 'merchant' && tab === 'buy' && ITEM_ORDER.map(id => {
         const info = ITEMS[id], have = snapshot.items.find(i => i.id === id)?.count ?? 0;
@@ -829,7 +832,16 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
           <button className="btn ghost price" onClick={() => { engine.sellGear(g.uid); refresh(); }}><i className="coin" />{sellPrice(g)}</button>
         </div>)}
       </>}
-      {shop.kind === 'armorer' && <>
+      {shop.kind === 'armorer' && tab === 'sell' && <>
+        {!snapshot.gear.length && <p className="panel-note">No spare gear in your bag. Worn pieces are never sold.</p>}
+        {junk.length > 1 && <button className="btn ghost" onClick={() => { for (const g of junk) engine.sellGear(g.uid); refresh(); }}>Sell all common &amp; uncommon · <i className="coin" />{junk.reduce((n, g) => n + sellPrice(g), 0)}</button>}
+        {[...snapshot.gear].sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity)).map(g => { const worn = snapshot.equipped[g.slot]; return <div key={g.uid} className="bag-item" style={{ '--c': RARITY[g.rarity].color } as CSSProperties}>
+          <span className="bag-icon"><GearIcon slot={g.slot} item={g} size={30} /></span>
+          <div><strong style={{ color: RARITY[g.rarity].color }}>{g.name}</strong><em>{RARITY[g.rarity].name} {SLOT_NAMES[g.slot].toLowerCase()} · item level {g.ilvl}</em><ScoreLine item={g} against={worn} /></div>
+          <button className="btn ghost price" onClick={() => { engine.sellGear(g.uid); refresh(); }}><i className="coin" />{sellPrice(g)}</button>
+        </div>; })}
+      </>}
+      {shop.kind === 'armorer' && tab === 'buy' && <>
         {engine.armoury().map(({ item: g, price, needLevel, sold }) => {
           const worn = snapshot.equipped[g.slot], up = !worn || gearScore(g) > gearScore(worn);
           const why = sold ? 'Sold' : snapshot.level < needLevel ? `Lv ${needLevel}` : '';
@@ -840,6 +852,17 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
           </div>;
         })}
         <p className="panel-note">New pieces arrive every time you reach a new level.</p>
+      </>}
+      {shop.kind === 'stable' && <>
+        {STABLE_STOCK.map(id => {
+          const m = MOUNTS[id], o = engine.mountOffer(id);
+          return <div key={id} className={`bag-item stable-item ${o.owned ? 'sold' : ''}`} style={{ '--c': m.glow || '#ffd35c' } as CSSProperties}>
+            <span className="bag-icon"><b className="up-icon">{m.icon}</b></span>
+            <div><strong>{m.name}</strong><em>+{Math.round((m.speed - 1) * 100)}% speed when riding{m.level ? ` · from level ${m.level}` : ''}</em></div>
+            <button className="btn ghost price" disabled={!!o.why} onClick={() => { if (engine.buyMount(id)) refresh(); }}>{o.owned ? 'Owned' : o.why && o.why.startsWith('Lv') ? <>🔒 {o.why}</> : <><i className="coin" />{o.price}</>}</button>
+          </div>;
+        })}
+        <p className="panel-note">The {MOUNT_ORDER.filter(id => !MOUNTS[id].price).map(id => MOUNTS[id].name).join(' and the ')} can’t be bought: they are won in battle.</p>
       </>}
       {shop.kind === 'smith' && UPGRADE_ORDER.map(id => {
         const info = UPGRADES[id], rank = engine.upgradeRank(id), cost = upgradeCost(rank), maxed = rank >= MAX_RANK;
@@ -913,7 +936,7 @@ function Journal({ snapshot, engine, achievements, touch, initial, onClose, onTr
   </aside>;
 }
 
-/** The stable: every mount, earned ones to choose from and locked ones with the achievement that earns them. */
+/** The stable: every mount, owned ones to choose from and the rest with where to get them. */
 function Stable({ engine, current }: { engine: GameEngine; current: string | null }) {
   const [, set] = useState(0);
   const got = MOUNT_ORDER.filter(id => engine.mountUnlocked(id)).length;

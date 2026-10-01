@@ -21,7 +21,7 @@ import { look, own, person, type HeroStory } from './kit';
 // III · Starfall Summit: at the Silver Pass the wraith host marches under the Frost Marshal, a wraith wearing the helm
 //     Briarthorn threw down. Kael finds a shard for the astronomer, asks the tarn about the helm, holds the pass, lights
 //     the Warden fires, is knighted by Brin, forgives a boy who ran (and finds the shard he hid beside), frees the
-//     banner-keeper of Skyhold and re-founds the order. The new Wardens melt Umbra’s black ice with three fires of starlight.
+//     banner-keeper of Cloudcrest and re-founds the order. The new Wardens melt Umbra’s black ice with three fires of starlight.
 // IV · The Ember Wastes: Pyrrhus, the forge-keeper the Wardens forgot, built the Iron Colossus from their melted swords
 //     and wanted Aldric for its heart. Kael follows the black knight’s smoking prints, reads the Forge’s mark on his
 //     gauntlet, frees old Pyke, finds Aldric at Ashfall Watch, holds the line for him, walks him to the Phoenix Spring,
@@ -149,7 +149,7 @@ export const KAEL: HeroStory = {
     q({ id: 'kael18', title: 'The Knight Who Spared Pim', giver: 'thessaly', kind: 'talk', count: 1, to: 'pim', summary: 'Ask Little Pim in Lanternmarket about the black knight.', reward: { xp: 110, gold: 30 },
       text: { offer: ['Go easy on him. He’s only seven, and he has told the story to every cat in the market.'], progress: ['Little Pim plays by the stalls in Lanternmarket.'], complete: [], after: ['Pim practises “holding the line” on the market geese.'],
         deliver: ['You’re blue like him! Are you a knight too? Can I hold your sword? No? Okay.', 'The wolf fog got me at Blackwater Pool. Then the black knight came and the wolves ran away. His armour was cold like snow.', 'He said, “Hold the line, little one.” And then he said, “Tell the squire: Tobb. The tower.” What’s a Tobb?'] } }),
-    q({ id: 'kael7', title: 'Old Tobb', giver: 'pim', kind: 'escort', count: 1, from: 'watch', place: 'city', turnIn: 'thessaly', who: TOBB, ambush: ['shadewolf', 'webspinner', 'thornling'], cine: { done: 'kael-tobb-tale' }, summary: 'Walk Old Tobb, the last Warden of the woods, from the Owl Watchtower to Warden Thessaly in Lanternmarket.', reward: { xp: 230, hearts: 1 },
+    q({ id: 'kael7', title: 'Old Tobb', giver: 'pim', kind: 'escort', count: 1, from: 'watch', place: 'city', turnIn: 'thessaly', who: TOBB, ambush: ['shadewolf', 'webspinner', 'briarling'], cine: { done: 'kael-tobb-tale' }, summary: 'Walk Old Tobb, the last Warden of the woods, from the Owl Watchtower to Warden Thessaly in Lanternmarket.', reward: { xp: 230, hearts: 1 },
       text: { offer: ['The tower? The Owl Watchtower! There’s an old man up there who shouts at owls. His name is Tobb! That’s a Tobb!', 'He never comes down, because the woods are full of wolves. Will you go and get him? Bring him to Thessaly!'],
         progress: ['Walk Old Tobb from the Owl Watchtower, far to the north-east, to Lanternmarket. Keep the wolves off him.'], arrive: ['Lanternmarket. Smells like it always did. Burnt sugar and wet dog.'],
         complete: ['He’s talking. The owls say he hasn’t talked in years. Sit with him a while, Kael.'], after: ['Tobb tells the same story twice a night now.'] } }),
@@ -169,8 +169,8 @@ export const KAEL: HeroStory = {
         progress: ['The rune glows somewhere around Trapper’s Lodge. Then go to Bellhollow, far to the west.'],
         complete: ['Three runes singing, and a blue cloak at my door. I have been praying for one for sixty years.', 'The Bell did not stop, Warden. It is being strangled by a knight made of roots and old green armour: Ser Briarthorn, the last of the Thornhold Wardens.', 'He ran from his oath, and the roots hid him. Now something has fed him shadow. And tonight his roots are coming for Bellhollow.'],
         after: ['The Bell is patient. So am I.'] } }),
-    q({ id: 'kael19', title: 'Roots at the Door', giver: 'bellkeeper', kind: 'defend', count: 3, place: 'bellhollow', waves: [4, 5, 5], foes: ['thornling', 'sporecap', 'webspinner'], ward: 'The Bellkeeper’s door', cine: { start: 'kael-roots-rise' }, summary: 'Hold the Bellkeeper’s door in Bellhollow against three waves of Briarthorn’s creatures.', reward: { xp: 260, hearts: 1 },
-      text: { offer: ['Here they come. Thornlings, sporecaps, spinners, all of them his.', 'Hold my door, Warden. The Bell’s old rope hangs inside. If they cut it, nobody will ever ring the Bell again.'],
+    q({ id: 'kael19', title: 'Roots at the Door', giver: 'bellkeeper', kind: 'defend', count: 3, place: 'bellhollow', waves: [4, 5, 5], foes: ['briarling', 'mirecap', 'webspinner'], ward: 'The Bellkeeper’s door', cine: { start: 'kael-roots-rise' }, summary: 'Hold the Bellkeeper’s door in Bellhollow against three waves of Briarthorn’s creatures.', reward: { xp: 260, hearts: 1 },
+      text: { offer: ['Here they come. Briarlings, mirecaps, spinners, all of them his.', 'Hold my door, Warden. The Bell’s old rope hangs inside. If they cut it, nobody will ever ring the Bell again.'],
         progress: ['Stand by the Bellkeeper’s door and break every wave.'],
         complete: ['You stood like a Thornhold Warden. I saw the last of them do it when I was a boy.', 'Now go to the Old Bell, in the far north-east. Briarthorn sits on it like a crow on a fence.', 'He was a Warden once, lad. Remember that, whatever he does.'],
         after: ['The door is scratched to ribbons. I’m keeping it that way.'] } }),
@@ -204,7 +204,7 @@ export const KAEL: HeroStory = {
     q({ id: 'kael62', title: 'The Water Remembers', giver: 'vale', kind: 'visit', count: 1, place: 'tarn', auto: true, cine: { done: 'tarn-vision' }, summary: 'Climb to Mirrorsky Tarn and ask it about the captain’s helm.', reward: { xp: 100 },
       text: { offer: ['Mirrorsky Tarn is north-east of here, past Frostpine Hamlet. Kneel at the edge and ask your question out loud. It likes good manners.'], progress: ['Mirrorsky Tarn lies north-east of the Old Observatory.'],
         complete: ['(You kneel at the edge of Mirrorsky Tarn and ask it, out loud, about the helm. The water goes as still as glass.)'], after: [] } }),
-    q({ id: 'kael63', title: 'Two Squires’ Pass', giver: 'dov', kind: 'defend', count: 3, place: 'pass', waves: [4, 5, 6], foes: ['wisp', 'frostwraith', 'shadewolf'], ward: 'Silver Pass barricade', cine: { start: 'pass-siege' }, summary: 'Hold the Silver Pass barricade beside Dov’s soldiers against three waves of the wraith host.', reward: { xp: 190 },
+    q({ id: 'kael63', title: 'Two Squires’ Pass', giver: 'dov', kind: 'defend', count: 3, place: 'pass', waves: [4, 5, 6], foes: ['wisp', 'frostwraith', 'snowfang'], ward: 'Silver Pass barricade', cine: { start: 'pass-siege' }, summary: 'Hold the Silver Pass barricade beside Dov’s soldiers against three waves of the wraith host.', reward: { xp: 190 },
       text: { offer: ['A blue cloak? Tonight? Well, the stars have a sense of humour.', 'Here they come. Wisps first, then the wraiths, marching in step. They learned that from somebody.', 'Two squires held this pass once. Let’s see if a squire and my lads can do it again.'],
         progress: ['Stand by the barricade and break every wave.'],
         complete: ['The pass holds! My lads have never seen anything like it.', 'Hear that? They’re singing the old Warden song. None of them knows the words, so they’re making them up.'],
@@ -227,14 +227,14 @@ export const KAEL: HeroStory = {
         after: ['Ferris polishes the Warden fires every morning. Nobody asked him to.'] } }),
     q({ id: 'kael64', title: 'What Ferris Found', giver: 'dov', kind: 'key', count: 1, keys: [1], place: 'bloom', turnIn: 'kael-brin', summary: 'Take the star shard Ferris hid beside in the Starbloom Grove, then bring it to Warden Brin at the pass.', reward: { xp: 150 },
       text: { offer: ['The Starbloom Grove, west of the pass. The lad says the shard’s under the biggest bloom, humming like a kettle.', 'Bring it to Brin. She’s been sorting your shields and she’s bored.'], progress: ['The Starbloom Grove lies west of Silver Pass. Brin waits at the pass.'],
-        complete: ['Two shards! And not a scratch on you. Well, a few scratches.', 'Listen. The monks of Skyhold have kept the Wardens’ last banner for thirty years. It’s time somebody asked for it back.'],
+        complete: ['Two shards! And not a scratch on you. Well, a few scratches.', 'Listen. The monks of Cloudcrest have kept the Wardens’ last banner for thirty years. It’s time somebody asked for it back.'],
         after: ['Two shards and a Warden. Good week.'] } }),
-    q({ id: 'kael30', title: 'The Banner of Skyhold', giver: 'kael-brin', kind: 'talk', count: 1, to: 'corvin', summary: 'Meet Abbot Corvin in Skyhold, the city south of the pass.', reward: { xp: 80 },
-      text: { offer: ['Skyhold is the great city south of here. Abbot Corvin leads the monks.', 'When the order broke up, the Wardens left their last banner with Skyhold. Go and hear what the Abbot wants for it.'], progress: ['Skyhold lies south of Silver Pass.'], complete: [], after: [],
+    q({ id: 'kael30', title: 'The Banner of Cloudcrest', giver: 'kael-brin', kind: 'talk', count: 1, to: 'corvin', summary: 'Meet Abbot Corvin in Cloudcrest, the city south of the pass.', reward: { xp: 80 },
+      text: { offer: ['Cloudcrest is the great city south of here. Abbot Corvin leads the monks.', 'When the order broke up, the Wardens left their last banner with Cloudcrest. Go and hear what the Abbot wants for it.'], progress: ['Cloudcrest lies south of Silver Pass.'], complete: [], after: [],
         deliver: ['A Warden in my hall. We have kept your banner folded for thirty years, waiting for someone to ask for it.', 'Its keeper, Brother Ansel, was taken by the wraiths three nights ago. They dragged him to the Star Altar, east of the city.', 'Bring him home, and the banner is yours.'] } }),
-    q({ id: 'kael65', title: 'The Banner-keeper’s Cage', giver: 'corvin', kind: 'rescue', count: 1, place: 'altar', guards: 5, escort: true, turnIn: 'corvin', captive: ANSEL, cine: { done: 'kael-banner' }, summary: 'Free Brother Ansel, keeper of the Wardens’ banner, from the wraiths at the Star Altar and bring him home to Skyhold.', reward: { xp: 180, hearts: 1 },
+    q({ id: 'kael65', title: 'The Banner-keeper’s Cage', giver: 'corvin', kind: 'rescue', count: 1, place: 'altar', guards: 5, escort: true, turnIn: 'corvin', captive: ANSEL, cine: { done: 'kael-banner' }, summary: 'Free Brother Ansel, keeper of the Wardens’ banner, from the wraiths at the Star Altar and bring him home to Cloudcrest.', reward: { xp: 180, hearts: 1 },
       text: { offer: ['The wraiths hold him at the Star Altar. They seem to like him there. He prays very loudly.', 'Ansel is old, and not very brave. He will be very glad to see you. Bring him home, Warden.'],
-        progress: ['The Star Altar lies east of Skyhold. Break the guards, open the cage, and bring Ansel home.'], arrive: ['Skyhold! My own cold bed! I will never complain about it again.'],
+        progress: ['The Star Altar lies east of Cloudcrest. Break the guards, open the cage, and bring Ansel home.'], arrive: ['Cloudcrest! My own cold bed! I will never complain about it again.'],
         deliver: ['A blue cloak… oh, thank the stars. I thought I would die in a cage.', 'Their captain came to look at me. It wore a Warden captain’s helm, and it called out the old muster calls in a dead man’s voice, like a joke.', 'Get me home, please. My knees are made of ice.'],
         complete: ['Ansel is home, and talking the novices’ ears off. The banner is yours, Ser Kael.', 'He says the wraiths guard the last shard at the Broken Spire. Goatherd Brun knows a goat path up there. His terrace is south-west of the city.'],
         after: ['The banner hangs in the hall again, waiting for you.'] } }),
@@ -252,8 +252,8 @@ export const KAEL: HeroStory = {
         progress: ['Frost wraiths blink close and throw ice. Keep moving, and keep your shield up.'],
         complete: ['Eight! The ranks are broken. It’s only the Marshal now, and whatever it has left.', 'Tobb and Aldric held this pass against that thing for a whole night. You get to finish it.'],
         after: ['The host is scattered. I can hear it sulking in the wind.'] } }),
-    q({ id: 'kael67', title: 'Fires at the Frozen Gate', giver: 'kael-brin', kind: 'activate', count: 3, near: 'gateE', switches: 'brazier', order: ['Dov’s fire', 'Ilsa’s fire', 'Ferris’s fire'], auto: true, summary: 'Light three Warden fires at the Eastern Gate from the Star-lamp of Skyhold, one for each new Warden, and melt Umbra’s black ice.', reward: { xp: 340, hearts: 1 },
-      text: { offer: ['Umbra fled east and sealed the gate behind it with black ice. Corvin says only starfire will melt it. So he gave us this.', '(Brin holds up the Star-lamp of Skyhold. Inside it, a sliver of the star burns white.)', 'Three fires by the gate, lit from the lamp. Dov, Ilsa and young Ferris have sworn to stand by one each. Light them, Ser Kael. Your order is waiting.'],
+    q({ id: 'kael67', title: 'Fires at the Frozen Gate', giver: 'kael-brin', kind: 'activate', count: 3, near: 'gateE', switches: 'brazier', order: ['Dov’s fire', 'Ilsa’s fire', 'Ferris’s fire'], auto: true, summary: 'Light three Warden fires at the Eastern Gate from the Star-lamp of Cloudcrest, one for each new Warden, and melt Umbra’s black ice.', reward: { xp: 340, hearts: 1 },
+      text: { offer: ['Umbra fled east and sealed the gate behind it with black ice. Corvin says only starfire will melt it. So he gave us this.', '(Brin holds up the Star-lamp of Cloudcrest. Inside it, a sliver of the star burns white.)', 'Three fires by the gate, lit from the lamp. Dov, Ilsa and young Ferris have sworn to stand by one each. Light them, Ser Kael. Your order is waiting.'],
         progress: ['Light the three Warden fires by the Eastern Gate, far to the south-east.'],
         complete: ['(The third fire roars up white. Dov, Ilsa and Ferris raise their shields around it, and the black ice begins to groan.)'], after: [] } }),
     ],
@@ -307,7 +307,7 @@ export const KAEL: HeroStory = {
         a: { label: 'Offer him your hand', lines: ['(Aldric looks at your hand for a long moment. Then he grips it, and the black drains out of his armour like water.)', 'Hold the line where I cannot… you did, didn’t you? Then hold it one more time. Here it comes.'], reward: { regen: .6 } },
         b: { label: 'Raise his shield against the dark', lines: ['(You set the mended shield between Aldric and the shadow. It breaks against the oak like a wave on a rock.)', 'Hilda’s rivets. Ha! But it isn’t done with me, lad. Here it comes.'], reward: { item: 'phoenixFeather' } },
       } }),
-    q({ id: 'kael37', title: 'Hold the Line', giver: 'aldric', kind: 'defend', count: 3, place: 'watch', waves: [4, 5, 6], foes: ['emberImp', 'ashScorpion', 'wisp'], ward: 'Ser Aldric', cine: { start: 'kael-shadow-returns' }, summary: 'Hold the line at Ashfall Watch while the shadow tries to take Ser Aldric back.', reward: { xp: 250, hearts: 1 },
+    q({ id: 'kael37', title: 'Hold the Line', giver: 'aldric', kind: 'defend', count: 3, place: 'watch', waves: [4, 5, 6], foes: ['emberImp', 'ashScorpion', 'pyrewisp'], ward: 'Ser Aldric', cine: { start: 'kael-shadow-returns' }, summary: 'Hold the line at Ashfall Watch while the shadow tries to take Ser Aldric back.', reward: { xp: 250, hearts: 1 },
       text: { offer: ['The shadow is sending everything it has left. It wants me back inside that armour.', 'I can’t fight it, lad. It’s in my arms, my legs. All I can do is kneel, and not go.', 'So you hold the line. Where I can’t.'],
         progress: ['Stay by Ser Aldric and break every wave before it reaches him.'],
         complete: ['It’s quiet. It’s gone quiet in my head, Kael, for the first time since the Rise.', 'You held. Nine Wardens fell on that hill, and you held for every one of them.', 'There’s one more shadow left in me. The Phoenix Spring could burn it out. Walk with me? My legs are still learning.'],
@@ -384,7 +384,7 @@ export const KAEL: HeroStory = {
     meadow: {
       sealed: 'The Hollow Bulwark stands locked behind its tower shield. Bring the three sun-crystals home first.',
       pickupKey: 'Sun-crystal brought home! {n}/3',
-      tip: 'When the Bulwark lowers its head, it charges: step aside. Shield Wall (learned at level 3) bounces its knives straight back.',
+      tip: 'When the Bulwark lowers its head, it charges: step aside. Bulwark (learned at level 3) bounces its knives straight back.',
       finale: { locked: ['The Beacon is cold. The Wardens’ three sun-crystals must come home before its guard will stir.'], guarded: ['The Hollow Bulwark stands before the Beacon: nine Wardens’ armour, and maybe Aldric’s. Break it to relight the Beacon.'],
         done: ['You lay the three sun-crystals in the Beacon. Gold light roars up and sweeps across the valley.', 'Nine dented helms lie in the grass where the Bulwark fell. You count them twice. None of them is Aldric’s.', 'He wasn’t in there. Wherever the shadow took him, he is still out there.'] },
       victory: { title: 'The Beacon shines again.', text: 'The Wardens’ fire burns on the Rise once more. Aldric was not among the fallen, and the road east leads into Whisperroot Woods, where a black knight walks.' },
@@ -402,7 +402,7 @@ export const KAEL: HeroStory = {
     summit: {
       sealed: 'The Frost Marshal waits behind a wall of black ice. Gather the three star shards first.',
       pickupKey: 'Star shard gathered. {n}/3',
-      tip: 'The Marshal’s blizzards slow you: step out of the frost circles. Raise Shield Wall when it throws a volley, and the ice flies back at it.',
+      tip: 'The Marshal’s blizzards slow you: step out of the frost circles. Raise your Bulwark when it throws a volley, and the ice flies back at it.',
       finale: { locked: ['The Cradle is cold. Three star shards are needed.'], guarded: ['The Frost Marshal holds the Cradle, in a Warden captain’s helm. Defeat it!'],
         done: ['You lay the three shards in the Cradle. The star remembers its light and rises, whole, into the sky.', 'In the snow lies an old Warden captain’s helm, cracked through. Briarthorn’s. You tie it to your belt. Tobb will want to see it.', 'But a thread of black smoke tears loose from the star and streaks east, toward the Ember Wastes. Umbra is running.'] },
       victory: { title: 'The Wardens hold the pass.', text: 'The star is home, the Wardens have a banner again, and Kael is a Warden in his own right. But Umbra fled east into the Ember Wastes, and so did the black knight.' },
@@ -411,7 +411,7 @@ export const KAEL: HeroStory = {
     ember: {
       sealed: 'The Iron Colossus sleeps in a shell of cooling iron. Recover the three ember cores first.',
       pickupKey: 'Ember core recovered. {n}/3',
-      tip: 'The Colossus slams the earth: step out of the glowing circles. When it charges, step aside and let it hit the rocks. Bladestorm halves the harm you take.',
+      tip: 'The Colossus slams the earth: step out of the glowing circles. When it charges, step aside and let it hit the rocks. Steel Cyclone halves the harm you take.',
       finale: { locked: ['The Dawn Forge is cold. Three ember cores are needed to wake it.'], guarded: ['Umbra stands before the Forge in the shape of a black knight. Hold the line!'],
         done: ['You set the three ember cores into the Dawn Forge. Its fire roars up, white and gold, and a new dawn spills across the wastes.', 'Umbra’s last shadow burns away like morning mist. It asked you to step aside. You didn’t.', 'Beside you, Ser Aldric takes off his helm and laughs. Far to the west, the Star, the Bell and the Beacon shine back.'] },
       victory: { title: 'The line held.', text: 'Umbra is gone for good. The Dawn Forge burns again, Ser Aldric is home, and the Wardens of the valley stand once more, led by the squire who kept his oath.' },
@@ -490,7 +490,7 @@ export const KAEL: HeroStory = {
       { at: 'hero', cut: true, night: 0, speaker: 'Kael', portrait: '⚔️', text: '“He’s keeping vigil. Against whatever is inside his armour.”', dur: 4 }],
     'kael-roots-rise': [
       { at: '$ward', dy: -40, night: .5, text: 'Dusk in Bellhollow. Under the village, the roots begin to move like snakes under a blanket.', fx: [{ kind: 'quake' }, { kind: 'shadow', dx: 300, dy: 80, delay: .5 }], dur: 4.2 },
-      { at: '$ward', dx: 380, dy: 60, text: 'Out of the dark trees they come, thornlings and sporecaps and spinners, all of them Briarthorn’s.', fx: [{ kind: 'gloom', n: 4 }], dur: 4.4 },
+      { at: '$ward', dx: 380, dy: 60, text: 'Out of the dark trees they come, briarlings and mirecaps and spinners, all of them Briarthorn’s.', fx: [{ kind: 'gloom', n: 4 }], dur: 4.4 },
       { at: '$ward', speaker: 'Old Bellkeeper', portrait: '🧓', text: '“The rope, Warden! Whatever happens, they must not reach the rope!”', dur: 3.6 },
       { at: 'hero', speaker: 'Kael', portrait: '⚔️', text: '“I stand. I shield. I stay. Let them come.”', dur: 3.2 }],
     'bell-rung@kael': [
@@ -525,7 +525,7 @@ export const KAEL: HeroStory = {
       { at: 'hero', text: 'Kael sets his shield down and sits beside him in the snow, the way Aldric once sat beside a frightened squire at Gloom Hollow.', fx: [{ kind: 'memory' }], dur: 4.6 },
       { speaker: 'Kael', portrait: '⚔️', text: '“I ran too, the night the Beacon died. Somebody told me to. Tonight somebody’s telling you to come back.”', dur: 4.6 }],
     'kael-banner': [
-      { at: 'npc:summit:corvin', text: 'In the great hall of Skyhold, Abbot Corvin unfolds a banner that has not seen daylight in thirty years.', fx: [{ kind: 'embers' }], dur: 4.2 },
+      { at: 'npc:summit:corvin', text: 'In the great hall of Cloudcrest, Abbot Corvin unfolds a banner that has not seen daylight in thirty years.', fx: [{ kind: 'embers' }], dur: 4.2 },
       { text: 'Blue as a summer sky, with a white shield in the middle, and a row of names stitched along the hem in faded thread.', dur: 4.4 },
       { speaker: 'Brother Ansel', portrait: '🧘', text: '“The last Warden who carried it asked us to add a name, if there was ever a new one. We left a little room at the end.”', dur: 5 },
       { at: 'hero', speaker: 'Kael', portrait: '⚔️', text: '“Then leave room for more than one.”', fx: [{ kind: 'ring' }], dur: 3.6 }],
@@ -539,7 +539,7 @@ export const KAEL: HeroStory = {
       { at: 'obj:summit:barrier', text: 'Three Warden fires burn white by the Eastern Gate, and beside each one a new Warden raises a shield.', actors: [{ id: 'sdov', name: 'Quartermaster Dov', look: DOV, dx: -240, dy: 100 }, { id: 'silsa', name: 'Sky-warden Ilsa', look: ILSA, dx: -240, dy: -60 }, { id: 'sferris', name: 'Private Ferris', look: FERRIS, dx: -170, dy: 20 }], fx: [{ kind: 'kindle', dx: -200, dy: 60 }, { kind: 'kindle', dx: -200, dy: -100, delay: .3 }, { kind: 'kindle', dx: -130, dy: -20, delay: .6 }], dur: 5 },
       { text: 'Starfire pours out of the fires into the black ice. It hisses, and groans, and cracks from end to end…', fx: [{ kind: 'light', dx: -170, delay: .2 }, { kind: 'quake', delay: .8 }], dur: 4.2 },
       { text: '…and shatters.', fx: [{ kind: 'shatter' }], dur: 3 },
-      { at: 'summit:pass', cut: true, text: 'Behind them, Warden Brin plants the blue banner of Skyhold on the Silver Pass, where two squires once held the line.', actors: [{ id: 'sbrin', name: 'Warden Brin', look: LOOKS.brin, dy: 40 }], fx: [{ kind: 'embers' }], dur: 4.6 },
+      { at: 'summit:pass', cut: true, text: 'Behind them, Warden Brin plants the blue banner of Cloudcrest on the Silver Pass, where two squires once held the line.', actors: [{ id: 'sbrin', name: 'Warden Brin', look: LOOKS.brin, dy: 40 }], fx: [{ kind: 'embers' }], dur: 4.6 },
       { at: 'ember:forge', cut: true, dy: -60, text: 'Beyond lie the Ember Wastes. Under the cold Dawn Forge, something enormous and made of iron is waiting for a heart.', fx: [{ kind: 'quake' }], dur: 5 },
       title('Chapter IV', 'The Dawn Forge')],
     // ─────────────── Chapter IV

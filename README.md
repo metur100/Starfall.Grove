@@ -23,7 +23,7 @@ The website for promoting the game (landing page, privacy policy, terms, support
 
 ## The world
 
-The valley is **one continuous world** (38,912 × 6,720 px) made of four lands laid side by side. You walk from one to the next through a gate in the border cliffs. Each land keeps its own look, lighting, weather, music and difficulty:
+The valley is **one continuous world** (38,912 × 6,720 px) made of four lands laid side by side. You walk from one to the next through a gate: the Meadow and the Woods are split by the **Gloomwater**, a river that runs the whole height of the valley and can only be crossed on the Gloomwater Bridge once it is rebuilt (a Frost Step or a leap can't hop over it either); the other borders are cliffs. Each land keeps its own look, lighting, weather, music and difficulty:
 
 | Chapter | Land | Creature levels | Guardian |
 | --- | --- | --- | --- |
@@ -36,7 +36,7 @@ The Ember Wastes are an ash desert with lava lakes, falling ash and rising ember
 
 Creature levels rise from a land's entrance to its far side. Every creature shows a coloured **Lv** tag (grey, green, white, orange, red with a skull), and a banner warns you when you walk into a land that is too strong for you. Creatures above your level take less damage from you and hit much harder.
 
-Each land has a **main city** (Goldenhearth, Lanternmarket, Skyhold, Brasshaven): a fountain plaza, manors, rows of houses, market stalls, a **merchant** (potions), a **smith** (upgrades) and an **inn** (rest and resting point). Each land also has villages, a farm, camps, ruins, lakes, lairs, a grove, a shrine and its finale.
+Each land has a **main city** (Goldenhearth, Lanternmarket, Cloudcrest, Brasshaven): a fountain plaza, manors, rows of houses, market stalls, a **merchant** (potions), a **smith** (upgrades) and an **inn** (rest and resting point). Each land also has villages, a farm, camps, ruins, lakes, lairs, a grove, a shrine and its finale.
 
 Things to find: chests (potions, bombs, gear, gold, XP), runestones with lore, wells and fountains, campfires, glow pods and caged captives.
 
@@ -59,12 +59,12 @@ Each hero also has:
 | Kael | The Hollow Bulwark | Ser Briarthorn | The Frost Marshal | The Iron Colossus | The Black Oath |
 | Lyra | Gloamgill | The Pale Huntress | Queen Hoarfrost | Cinderwyrm | The Endless Winter Night |
 | Riven | Corvane | Silkmother Vesh | Nullface | The Ashen Broker | The Shadow That Chose |
-| Wren | Gorehide | Shadowmane | Skyhorn | The Duneworm | The Moon-Eater |
+| Wren | Gorehide | Duskmane | Starhorn | The Duneworm | The Moon-Eater |
 
 - **Kael, the Oathsworn:** musters the farms and the city guard, finds the Wardens' lost hall and the oath-stones, holds Silver Pass again and is knighted by Warden Brin, then finds Ser Aldric in the Ember Wastes and walks him to the Phoenix Spring.
 - **Lyra, Winter's Daughter:** follows the lost post and Nessa's letters, learns her family are Rimewards (frost-singers), frees Nessa early on the Summit and sings the two-voiced Rime Song with her against Queen Hoarfrost.
 - **Riven, the Foundling:** steals the Beacon's crystals back from the Hushed, finds the foundling house he grew up in, faces a double wearing his face, reaches Sable himself and breaks the ice seal with her, then takes the Ashen Broker's network apart.
-- **Wren, the Pack:** proves it was the Boar King, not wolves, learns Shadowmane is the shadow wearing a wolf's shape, frees Skyhorn's fawn, and heals Moonfang at the Phoenix Spring; Burr the poacher is slowly redeemed.
+- **Wren, the Pack:** proves it was the Boar King, not wolves, learns Duskmane is the shadow wearing a wolf's shape, frees Starhorn's fawn, and heals Snowmoon at the Phoenix Spring; Burr the poacher is slowly redeemed.
 
 Each hero also has their own chapter endings and cutscenes. `npm run check:stories` checks every hero's chain:
 - people present when needed, and places that exist;
@@ -83,7 +83,7 @@ Each hero also has their own intro and their own lines at key moments, and their
 - **Kael:** the night watch with Ser Aldric, the Beacon bursting into shadow, Aldric's last stand, and Kael's oath at sunrise.
 - **Lyra:** the ice shrine under the aurora, Nessa running on the lake road, Lyra's eyes opening, and her walk down the mountain.
 - **Riven:** the Hushed's last contract and its black feathers, the run over the rooftops, the shadow Riven knows, and the leap out of the window.
-- **Wren:** the pack at the campfire, the howl at the falling star, the shadow taking the wolves, Moonfang's last look, and the tracks at dawn.
+- **Wren:** the pack at the campfire, the howl at the falling star, the shadow taking the wolves, Snowmoon's last look, and the tracks at dawn.
 
 Each score was composed for its film and timed to what happens on screen: music box, strings, choir, horns and drums, with sound effects on the beats of the action (the falling star, the Beacon dying, sword on shield, a heartbeat, wolf howls, rooftop footsteps, a shing as Kael raises his sword). The films are compressed to 2–4.5 MB each and stream as they play. The game's own music and ambience go quiet while one plays, and its volume follows the master, music and effects settings. If the browser won't start it with sound, it plays muted with a *Tap for sound* button. **Skip** (or Esc / Enter) ends it. Then a cutscene of that hero's own night in the valley plays in the game world, and in every one the Beacon is seen burning and then going out in a burst of shadow: Orrin's lantern moving away down the east road (Mira), Kael and Aldric on the Rise and Kael's flight to Millbrook (Kael), Nessa on the lake road with her letters scattering (Lyra), the Hushed counting black feathers in Goldenhearth (Riven), and the pack howling at the Hunter's Camp and running with the shadow (Wren). It ends on the hero where they woke. On a landscape screen the film fills the whole screen; upright, it shows the whole frame. Offline, or if the film can't load within a few seconds, the game goes straight to the hero's full in-game intro cutscene instead (films aren't kept for offline play, to keep the offline download small).
 
@@ -126,43 +126,45 @@ The last chapter ends with Umbra, then an epilogue shows every light shining. Th
 
 ## Levels, spells and quests
 
+No ability, item, hero, guardian, mount or place shares its name with one from another well-known game: the spells were renamed in this version (Sunfire → Sunflare, Starfall → Comet Shower, Charge → Lion’s Rush, Shield Wall → Bulwark, Bladestorm → Steel Cyclone, Frost Bolt → Rime Shard, Blink → Frost Step, Frost Nova → Glacial Burst, Ice Block → Glacier Shell, Blizzard → Whiteout, Shadowstep → Shade Step, Fan of Knives → Dagger Burst, Stealth → Nightveil, Death Mark → Doom Sigil, Quick Shot → Swift Arrow, Volley → Arrow Fan, Call of the Wild → Howl of the Pack), and so were Skyhold (now Cloudcrest), Moonfang (Snowmoon), Skyhorn (Starhorn), Shadowmane (Duskmane), the Frostmane Wolf (Rimecoat Wolf), Barkskin Brew (Oakhide Brew), the Frost Bomb (Ice Bomb), the Smoke Bomb (Smoke Pouch) and the Sunfire Elixir (Dawnfire Elixir).
+
 There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands as a paper puppet on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
 
 The pedestal (`src/ui/paperStage.ts`) draws the same figure the world uses, only larger: it breathes, turns in four steps when dragged, shows off a spell now and then and wears the equipped gear. Tuft or Fenn sit beside Mira and Wren.
 
 | Level | Mira, Astralmancer (ranged) | Kael, Knight (melee) | Lyra, Frostweaver (ranged) | Riven, Assassin (melee) |
 | --- | --- | --- | --- | --- |
-| 1 | Spark (L), Gravity Well (E): a black star on the nearest foe drags creatures into its heart for 2 s and grinds them | Slash (L), Charge (E): rush at a foe up to 340 px away, needs a foe | Frost Bolt (L): chills, Blink (E): short teleport that leaves frost | Twin Daggers (L): two stabs, crits deal triple, Shadowstep (E): appear behind a foe up to 380 px away (needs a foe), next stab is a sure crit |
-| 3 | Sunfire (K) | Shield Wall (K) | Frost Nova (K): freezes everything nearby for 2 s | Fan of Knives (K): ten knives in every direction |
-| 6 | Guardian Stars (J): three stars circle her for 8 s, each catches one blow | Earthsplitter (J): stunning shockwave | Ice Block (J): frozen in ice, nothing can harm her, press again to break out | Stealth (J): invisible to every creature for up to 15 s, first strike deals triple damage |
-| 10 | Starfall (H) | Bladestorm (H): 3 s whirlwind, half damage taken | Blizzard (H): 4 s of ice raining on a pack | Death Mark (H): the toughest foe near you bursts after 2 s |
+| 1 | Spark (L), Gravity Well (E): a black star on the nearest foe drags creatures into its heart for 2 s and grinds them | Slash (L), Lion’s Rush (E): rush at a foe up to 340 px away, needs a foe | Rime Shard (L): chills, Frost Step (E): short teleport that leaves frost | Twin Daggers (L): two stabs, crits deal triple, Shade Step (E): appear behind a foe up to 380 px away (needs a foe), next stab is a sure crit |
+| 3 | Sunflare (K) | Bulwark (K) | Glacial Burst (K): freezes everything nearby for 2 s | Dagger Burst (K): ten knives in every direction |
+| 6 | Guardian Stars (J): three stars circle her for 8 s, each catches one blow | Earthsplitter (J): stunning shockwave | Glacier Shell (J): frozen in ice, nothing can harm her, press again to break out | Nightveil (J): invisible to every creature for up to 15 s, first strike deals triple damage |
+| 10 | Comet Shower (H) | Steel Cyclone (H): 3 s whirlwind, half damage taken | Whiteout (H): 4 s of ice raining on a pack | Doom Sigil (H): the toughest foe near you bursts after 2 s |
 
-**Wren, Ranger (ranged), with Fenn the wolf:** Quick Shot (L): an arrow that pierces the first creature it hits · Fenn: Attack / Passive (E): a command to Fenn (see below) · Volley (K, level 3): seven arrows in a fan · Snare Trap (J, level 6): a trap at her feet that catches and hurts the first creatures to step on it for 3 s (up to three traps, 20 s each) · Call of the Wild (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. On the pedestal he sits beside her.
+**Wren, Ranger (ranged), with Fenn the wolf:** Swift Arrow (L): an arrow that pierces the first creature it hits · Fenn: Attack / Passive (E): a command to Fenn (see below) · Arrow Fan (K, level 3): seven arrows in a fan · Hawk Leap (J, level 6): she vaults about 270 px away from the nearest foe (or the way she is moving), can't be hurt during the leap, and looses three arrows at it in mid-air; every creature they hit is pinned for 1.5 s (guardians for 0.6 s). It replaced the Snare Trap, which was rarely worth setting; stars bought for the trap carry over · Howl of the Pack (H, level 10): for 8 s two spirit wolves join the hunt and Fenn bites twice as fast and hard. Fenn follows her everywhere, runs at whatever she shoots (or anything fighting her) and bites on his own; he can't be hurt. On the pedestal he sits beside her.
 
 **The toggles:**
-- **Fenn's command** (Wren, E): pressed while Fenn is attacking, he goes **passive**: he stays at her heel and attacks nothing, even what she shoots (the button shows 💤 and glows). Pressed again, he goes back to **attack**: he pounces on the nearest foe within 520 px and stuns it (the pounce needs 5 s to come back). Out of combat that means he picks the nearest creature and starts the fight. Call of the Wild always sends him back to attack.
-- **Ice Block** (Lyra, J): she is frozen in a clear block of ice. No damage gets through, from blows, projectiles or ground attacks, but she can't move, cast, drink, talk or mount. Pressing it again breaks the ice (it melts by itself after 6 s). The 16 s cooldown starts when she comes out.
-- **Stealth** (Riven, J): he turns into a faint, wavering shimmer. Every creature in the world loses him and none can find him, guardians and heroic creatures included, anywhere, including the dummy world. It lasts up to 15 s. Striking (the first blow is an Ambush for triple damage), getting hurt or pressing it again brings him out. Shadowstep keeps him hidden. The 8 s cooldown starts when he comes out.
+- **Fenn's command** (Wren, E): pressed while Fenn is attacking, he goes **passive**: he stays at her heel and attacks nothing, even what she shoots (the button shows 💤 and glows). Pressed again, he goes back to **attack**: he pounces on the nearest foe within 520 px and stuns it (the pounce needs 5 s to come back). Out of combat that means he picks the nearest creature and starts the fight. Howl of the Pack always sends him back to attack.
+- **Glacier Shell** (Lyra, J): she is frozen in a clear block of ice. No damage gets through, from blows, projectiles or ground attacks, but she can't move, cast, drink, talk or mount. Pressing it again breaks the ice (it melts by itself after 6 s). The 16 s cooldown starts when she comes out.
+- **Nightveil** (Riven, J): he turns into a faint, wavering shimmer. Every creature in the world loses him and none can find him, guardians and heroic creatures included, anywhere, including the dummy world. It lasts up to 15 s. Striking (the first blow is a veil strike for triple damage), getting hurt or pressing it again brings him out. Shade Step keeps him hidden. The 8 s cooldown starts when he comes out.
 
-Mira fights from range, is the most fragile hero and has no escape spell, so she holds foes in place instead: a Gravity Well pulls a pack together for her Sunfire, and Guardian Stars soak the blows that reach her. Kael fights up close, has more health and takes about 35% less damage; his Charge needs a foe to aim at, runs up to 340 px and stops at that foe. Lyra controls fights: chilled creatures move and act at 55% speed, frozen ones stand still. Riven hits hardest and can vanish, but is lightly armoured. Wren is the fastest on foot (312 against 255–292 for the others). On touch screens the level-6 ability sits right next to the attack button.
+Mira fights from range, is the most fragile hero and has no escape spell, so she holds foes in place instead: a Gravity Well pulls a pack together for her Sunflare, and Guardian Stars soak the blows that reach her. Kael fights up close, has more health and takes about 35% less damage; his Lion’s Rush needs a foe to aim at, runs up to 340 px and stops at that foe. Lyra controls fights: chilled creatures move and act at 55% speed, frozen ones stand still. Riven hits hardest and can vanish, but is lightly armoured. Wren is the fastest on foot (312 against 255–292 for the others). On touch screens the level-6 ability sits right next to the attack button.
 
-**Balance:** the heroes are tuned to be about equally strong, though some are harder to play well. A simulation (`.sim/bal.ts`, run with esbuild) runs each hero, with no gear or spell stars, under a simple bot. At levels 3 to 25 it fights a creature pack of each land and measures the time to clear it and the health lost. Against each guardian it measures the share of the guardian's health taken in 40 seconds and the damage received. After tuning, every hero clears a pack within about 20% of the others (Lyra had been 60–90% slower). Kael is the toughest. Riven deals the most damage but takes the most, so Riven is the one to play carefully. Mira and Lyra are safer at range. The tuning: Lyra's Frost Bolt 12 → 18 (cooldown 0.42 → 0.4 s), Blink 10 → 12, Frost Nova 28 → 40, Blizzard 13 → 18; Mira's Spark 10 → 12, Sunfire 40 → 44, Starfall 34 → 38; Wren's Quick Shot 11 → 10 and Volley 20 → 18; Riven now takes 78% of a hit instead of 82%, and gains 10 health per level instead of 9. Ability damage now comes from one table (`spells.ts`), which the engine and the spellbook both read. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
+**Balance:** the heroes are tuned to be about equally strong, though some are harder to play well. A simulation (`.sim/bal.ts`, run with esbuild) runs each hero, with no gear or spell stars, under a simple bot. At levels 3 to 25 it fights a creature pack of each land and measures the time to clear it and the health lost. Against each guardian it measures the share of the guardian's health taken in 40 seconds and the damage received. After tuning, every hero clears a pack within about 20% of the others (Lyra had been 60–90% slower). Kael is the toughest. Riven deals the most damage but takes the most, so Riven is the one to play carefully. Mira and Lyra are safer at range. The tuning: Lyra's Rime Shard 12 → 18 (cooldown 0.42 → 0.4 s), Frost Step 10 → 12, Glacial Burst 28 → 40, Whiteout 13 → 18; Mira's Spark 10 → 12, Sunflare 40 → 44, Starfall 34 → 38; Wren's Swift Arrow 11 → 10 and Arrow Fan 20 → 18; Riven now takes 78% of a hit instead of 82%, and gains 10 health per level instead of 9. Ability damage now comes from one table (`spells.ts`), which the engine and the spellbook both read. The spellbook shows each ability's current damage, cost and cooldown, plus your smith upgrade ranks.
 
 **Casting.** Mira's and Lyra's bolts and big spells take a moment to cast, with a small bar filling above the hero's head:
 
 | Spell | Cast time |
 | --- | --- |
 | Spark | 0.45 s |
-| Frost Bolt | 0.5 s |
-| Sunfire | 0.95 s |
-| Blizzard | 1.05 s |
+| Rime Shard | 0.5 s |
+| Sunflare | 0.95 s |
+| Whiteout | 1.05 s |
 
 - While casting the hero walks at under half speed.
-- Another spell, Blink, the Ice Block, mounting or a cutscene breaks the cast off.
+- Another spell, Frost Step, the Glacier Shell, mounting or a cutscene breaks the cast off.
 - Magic is spent and the cooldown starts when the spell goes off.
 - A tap on a bolt while it is being cast (or a held key) casts it again straight after.
 - Upgrades that speed up a bolt shorten its cast just as much.
-- The bolts hit harder to make up for the wait (Spark 17, Frost Bolt 22, Sunfire 58).
+- The bolts hit harder to make up for the wait (Spark 17, Rime Shard 22, Sunflare 58).
 
 **Magic, stamina, energy and focus run out.** In a fight they regenerate slowly:
 - each hero's own rate (2–2.6 per second);
@@ -178,27 +180,27 @@ In a bot's minute of pressing every ability on cooldown in a crowd, Mira, Kael a
 
 **More creatures, a little less experience each.** Each land has up to 60 roaming packs (was 34), at least 430 px apart (was 540). A phone screen in the wild shows about 3.5 creatures on average (was 2.3), and only 7–14% of the wild is more than 600 px from one (was 21–26%). Villages, farms, camps and each hero's start stay calm. Each kill gives a fifth less experience than before.
 
-When the new spells came in, the same bot was run on packs and on a heroic creature at levels 3, 8, 14 and 21, before and after. Gravity Well was first far too strong (packs cleared 2–3 times faster, because Sunfire hit the whole bunched-up pack), so it was cut to 3 damage a tick, a 2 s pull with a weaker drag, an 11 s cooldown and 16 magic. Mira still clears packs faster than before (about 3–8 s against 5–11 s), but she no longer has Dash to escape. Riven's Stealth now breaks when he is hurt (Smoke Veil did not), so Riven takes 72% of a hit instead of 78%. Wren's walking speed went from 275 to 312. Charge and Shadowstep only changed in needing a target, and they fight as before.
+When the new spells came in, the same bot was run on packs and on a heroic creature at levels 3, 8, 14 and 21, before and after. Gravity Well was first far too strong (packs cleared 2–3 times faster, because Sunflare hit the whole bunched-up pack), so it was cut to 3 damage a tick, a 2 s pull with a weaker drag, an 11 s cooldown and 16 magic. Mira still clears packs faster than before (about 3–8 s against 5–11 s), but she no longer has Dash to escape. Riven's Nightveil now breaks when he is hurt (Smoke Veil did not), so Riven takes 72% of a hit instead of 78%. Wren's walking speed went from 275 to 312. Lion’s Rush and Shade Step only changed in needing a target, and they fight as before.
 
 Levelling is paced so you reach Whisperroot at about level 7 and the Summit at about level 13. Creatures far below your level give little XP.
 
-**Spell stars:** every ability can be upgraded five times in the spellbook (U) with gold. Each star adds 12% damage (15% for Charge, Gravity Well and Fenn's pounce); Blink, Shadowstep, Ice Block and Stealth get 8% shorter cooldowns per star, and Shield Wall and Call of the Wild last 12% longer. Stars bought for a spell that was replaced (Dash, Moss Shield, Ice Barrier, Smoke Veil, Tumble) carry over to the spell in its place. Star *n* needs hero level `ability level + 3 × (n − 1)`.
+**Spell stars:** every ability can be upgraded five times in the spellbook (U) with gold. Each star adds 12% damage (15% for Lion’s Rush, Gravity Well and Fenn's pounce); Frost Step, Shade Step, Glacier Shell and Nightveil get 8% shorter cooldowns per star, and Bulwark and Howl of the Pack last 12% longer. Stars bought for a spell that was replaced (Dash, Moss Shield, Ice Barrier, Smoke Veil, Tumble) carry over to the spell in its place. Star *n* needs hero level `ability level + 3 × (n − 1)`.
 
 **Equipment and loot:** nine slots: head, shoulders, back, chest, hands, waist, legs, feet and **weapon**. Each hero has their own kind of weapon (Mira a staff, Kael a sword, Lyra a frost staff, Riven twin daggers, Wren a bow), named for the land it comes from (Oak Staff, Bronze Leafblade, Glacier Staff, Obsidian Fangs, Moonhowl…). The weapon changes how it looks in the game and on the pedestal: its wood or metal follows the land (wood and iron, then root and bronze, starsilver and crystal, obsidian and ember), its gem or edge takes the rarity colour, higher tiers add ornaments (leaves, a crescent, a crown of flame, cross-guard wings, a glowing edge), and epic and legendary weapons glow. Weapons roll power and critical chance with a bigger budget than armour. Worn gear changes how the hero looks, in the game and on the pedestal: each piece dyes its body part (hat or helm, robe or armour, cape, gloves, belt, boots) in a colour picked from its land and rarity, shoulder pads and leg guards appear when worn, and epic and legendary pieces glow. Pieces come in five rarities (common, uncommon, rare, epic, legendary) and roll armour, power, health, magic, regeneration, speed or critical chance from a budget set by item level and rarity. Creatures sometimes drop a glowing loot bag, elites and chests often do, guardians always drop an epic. Every side quest rewards a rare piece (shown in the offer), and guardian quests an epic one. A piece for a slot that is still empty is put on straight away; everything else goes into the bag. Worn gear is capped at 40% armour, 25% speed and 30% critical chance in total.
 
 **Character and bag:** one screen (I for the bag tab, P or the portrait for stats). The hero stands on the pedestal in the middle with the slots around them, WoW-style; the bag is a 36-slot grid that scrolls on phones. Tap anything to see its card: use or throw a consumable, put it on the second quick button, or equip a piece. **Loot comparison:** bag slots carry a green ▲ when a piece is better than what you wear in that slot and a red ▼ when it is weaker; on PC, hovering a piece shows a tooltip with every stat compared (green ▲ / red ▼ per stat), the overall verdict ("▲ Upgrade · +22 item score") and the worn piece below. The same comparison is on the tapped card, at the armourer, and in the loot notice ("▲ upgrade"). Merchants buy spare gear.
 
-**Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Sunfire Elixir and Barkskin Brew (keys 1–5), plus Fire Bomb, Frost Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Bomb (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
+**Consumables:** Healing Draught, Starwater Flask, Swiftwind Tonic, Dawnfire Elixir and Oakhide Brew (keys 1–5), plus Fire Bomb, Ice Bomb (freezes for 3 s), Thunder in a Jar (lightning on up to six foes), Smoke Pouch (creatures lose you for 8 s) and Giant's Brew (keys 6–0), Sands of Haste (all cooldowns ready, then twice as fast), Four-leaf Clover (+50% XP and gold) and the Phoenix Feather, which revives you on the spot when you would fall.
 
 **Journal:** the book button in the top bar (O, U or Y) opens the journal, with its three tabs: quests, spellbook and achievements.
 
 **Achievements (Y, or the journal's Achievements tab):** 53 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 985 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
 
-**World map (M):** the whole valley at once, all four lands side by side, with the fog lifted wherever the hero has been. It opens zoomed on the current land; drag to pan, pinch or scroll to zoom, or jump with the buttons (Whole valley or one land).
+**World map (M, the map button, or a tap on the minimap):** the whole valley at once, all four lands side by side, with the fog lifted wherever the hero has been. It opens zoomed on the current land; drag to pan, pinch or scroll to zoom, or jump with the buttons (Whole valley or one land).
 
 **Android back button:** the page keeps an extra history entry, so back never leaves the game by accident. While playing it closes whatever is open, or opens the pause menu (which has **Leave game**). On the title screen it asks "Do you really want to leave the game?". Leaving closes the app through the wrapper's bridge if it offers one (`Android.exitApp`, Capacitor or Cordova); otherwise the next back press closes it.
 
-**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions and bombs, and buy anything you don't need: gear, potions, bombs and charms (for 40% of their price). **Armourers** (⛨, one in every city) sell equipment, but it is not easy to get: six pieces per shelf (one uncommon, three rare, two epic, sometimes a legendary), at 8–12 times what a merchant would pay for them. The best pieces are above your level and stay locked until you reach it. Each piece can be bought once, and the shelf is restocked when you level up. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health). Falling in battle drops 10% of your gold.
+**Gold and upgrades:** creatures, chests and quests give gold. Merchants sell potions and bombs, and buy anything you don't need: gear, potions, bombs and charms (for 40% of their price). **Armourers** (⛨, one in every city) buy your spare gear too (their Sell tab), and sell equipment, but it is not easy to get: six pieces per shelf (one uncommon, three rare, two epic, sometimes a legendary), at 8–12 times what a merchant would pay for them. The best pieces are above your level and stay locked until you reach it. Each piece can be bought once, and the shelf is restocked when you level up. Smiths sell three upgrades with five ranks each: Starsteel Weapon (+8% power), Warden's Mantle (−6% damage taken) and Heartstone Amulet (+30 max health).
 
 **Quests:** gold main quests (with the hero's own quests among them) and blue side quests (51 in total). Someone with both a main quest and a side quest offers only the main quest; speak to them again after accepting it for the side quest. Handing a quest in can lead straight on to the next main quest, but never to a side quest. The quest offer ends with **Decline / Accept**, with Accept on the right, and the buttons ignore taps for half a second so a skip-tap can't answer by accident. Quest kinds:
 - **Collect, slay, deliver, visit, talk, relic and boss.**
@@ -215,9 +217,22 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 Some conversations end with **a choice** of two answers. The answer changes what is said and the bonus reward, and it is remembered.
 
-**Creatures:** gloomlings, thornlings, void wisps, bristleboars (telegraphed charge), sporecaps (poison clouds), shadewolves (circling packs), webspinners (slowing silk), frost wraiths (blink and ice shards), crag golems (ground slam), ember imps, ash scorpions and magma hulks. Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 4 minutes**.
+**Creatures:** every land has creatures of its own, and none of them is met in another land (`LAND_KINDS` in `worlds.ts`; `npm run check:kinds` checks every quest, pack and siege):
 
-**Secrets:** every land hides four. Three **cracked walls** stand near old places: the cracks glow faintly, and inspecting one says a bomb could break it. A Fire Bomb, Frost Bomb or Thunder Jar thrown nearby (bombs aim at a close cracked wall when no creature is closer) shatters it and reveals a hidden runestone (one per land, with lore about the lights and the Dawn Forge) or a **Hidden cache** with better loot: always a rare or better piece, extra gold and an item. At each land's biggest lake a **waterfall** (a lava fall in the Ember Wastes) hides a cave: explore it to reveal the **Cave hoard**. Achievements: Something Hidden (the first) and Keeper of Secrets (all 16).
+| Land | Creatures |
+| --- | --- |
+| Sunpetal Meadow | gloomlings, thornlings, bristleboars (telegraphed charge), sporecaps (poison clouds) |
+| Whisperroot Woods | shadewolves (circling packs), webspinners (slowing silk), boglings, briarlings, mirecaps, marsh lights |
+| Starfall Summit | void wisps, frost wraiths (blink and ice shards), crag golems (ground slam), snowfangs, rimelings |
+| The Ember Wastes | ember imps, ash scorpions, magma hulks, cinderhounds, pyre wisps |
+
+The newer kinds fight like a cousin from another land (`ENEMY_AI` in `engine.ts`: a bogling lunges like a gloomling, a briarling or rimeling spits like a thornling, a mirecap puffs spores, marsh lights and pyre wisps dart and shoot like wisps, snowfangs and cinderhounds circle and dart like shadewolves) but are drawn in their land's colours, with their own details (a lily leaf, frost, embers). Any creature a quest, siege, guardian or cutscene calls into a land it doesn't live in comes as that land's own kin (`localKind`). The one exception is Wren's own shadow-bound pack, which comes back for her at the Hunter's Camp. Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 4 minutes** (heroic ones after 10), and the clock keeps running while the game is closed: each hero's save remembers when every creature fell, so leaving the game and coming straight back doesn't bring a pack back early.
+
+**Falling in battle** sends the hero to the last resting place and costs 10% of their gold. Every creature and guardian still standing is back at full health, at home, and calm: a lost fight starts over.
+
+**Aggro:** a creature that is after the hero turns red, glows red and stands in a pulsing red ring, so it is easy to see who is fighting you.
+
+**Secrets:** every land hides four. Three **cracked walls** stand near old places: the cracks glow faintly, and inspecting one says a bomb could break it. A Fire Bomb, Ice Bomb or Thunder Jar thrown nearby (bombs aim at a close cracked wall when no creature is closer) shatters it and reveals a hidden runestone (one per land, with lore about the lights and the Dawn Forge) or a **Hidden cache** with better loot: always a rare or better piece, extra gold and an item. At each land's biggest lake a **waterfall** (a lava fall in the Ember Wastes) hides a cave: explore it to reveal the **Cave hoard**. Achievements: Something Hidden (the first) and Keeper of Secrets (all 16).
 
 **Mini-games:** some villagers (and every innkeeper, after you rest) ask if you want to play; the offer has **Play** and **Not now**, and players call out for a game as you pass. **Starfall Dice:** three dice each, keep what you like and reroll the rest once, pairs add 4 and three of a kind 12, best of three rounds for a stake that grows with your level (win it back doubled; a draw returns it). **Archery match** (hunters, guards and a few villagers): eight arrows at three moving targets, aim with the mouse or finger while the bow sways a little; bullseyes score 10, far targets double, and gold is paid by score, with bronze, silver and gold medals at 40, 70 and 100 points. Achievements: Lucky Streak (win 5 dice games) and Eagle Eye (a gold medal).
 
@@ -225,7 +240,7 @@ Some conversations end with **a choice** of two answers. The answer changes what
 
 **Heroic creatures:** the leader of each lair is a named little boss, two per land: Murkmaw the Gloom King and Old Tusker (Meadow), Mother Briar and Silkshade the Weaver (Woods), Frostfang the Unbroken and Nulleye (Summit), Sandreaper and Slagjaw (Ember Wastes). They are bigger, stand in a violet rune ring with a crown, their name and a long health bar, and have nine times an ordinary creature's health. Besides their kind's own attacks they slam the ground every few seconds (a warning ring under them and under you; lava in the Ember Wastes), and at half health they enrage and call two of their kin. They always drop a rare or better piece (often epic, sometimes legendary) plus a second piece, two consumables, lots of gold and nine times the XP. They come back after 10 minutes and show as violet dots on the world map. Achievements: Heroic Deed (the first one) and Bane of the Lairs (eight).
 
-**Mounts:** earned through achievements and kept by that hero: Sunpetal Pony (Wanderer: discover 10 places, +50% speed), Tusked Bristleboar (Heroic Deed, +55%), Whisperroot Stag (finish Chapter II, +65%), Frostmane Wolf (finish Chapter III, +75%), Cinder Drake (finish Chapter IV, +85%) and Starlit Unicorn (defeat Umbra, +100%). Press R or the saddle button in the top bar to ride; you can't call a mount in combat (while a creature within 900 px is after you, in a guardian fight or a siege, or within 5 s of striking or being struck), and attacking, casting, throwing a bomb or being hit puts you back on your feet. The Achievements tab starts with the stable, where you pick which mount to ride.
+**Mounts:** no mount comes for free. Every city has a **stable master** (♞) who sells four, each from a level: Sunpetal Pony (level 4, 350 gold, +50% speed), Whisperroot Stag (level 9, 1,400 gold, +65%), Rimecoat Wolf (level 14, 3,200 gold, +75%) and Cinder Drake (level 20, 6,000 gold, +85%). Two can only be won in battle: the Tusked Bristleboar (+55%) drops now and then from a heroic creature (one in five), and the Starlit Unicorn (+100%) from Umbra. A mount is kept by that hero (`mounts` in the profile); saves from before mounts were sold keep the ones they had already earned. Press R or the saddle button in the top bar to ride; you can't call a mount in combat (while a creature within 900 px is after you, in a guardian fight or a siege, or within 5 s of striking or being struck), and attacking, casting, throwing a bomb or being hit puts you back on your feet. The Achievements tab starts with the stable, where you pick which mount to ride.
 
 **Phones:** the prompt just says **Talk** (or Trade, Rest…), notifications are one or two words, and every screen, including the prologue and cutscenes, fits a landscape phone without scrolling.
 
@@ -241,6 +256,8 @@ Some conversations end with **a choice** of two answers. The answer changes what
 - **Ambience:** birds, crickets, owls, dripping water, wind and crystal chimes per chapter. Water and campfires get louder as you walk near them.
 - **Footsteps:** they change with the ground (grass, road, stone, snow).
 - **Volume:** master, music and effects sliders in the pause menu.
+
+**Pause:** the pause menu (and any menu, conversation or map) stops the world completely: creatures, spells, timers and buffs, and the picture itself (water, grass, sparks and creatures hold still), because the renderer runs on a world clock that only moves while the game does.
 
 ## Art direction
 
@@ -316,7 +333,7 @@ Phones and tablets come first: changes are measured in phone and tablet emulatio
 **Keyboard (default keys, all of them can be changed):**
 
 - Move: WASD / arrows
-- Left hand: WASD move · E level-1 ability (Gravity Well, Charge, Blink, Shadowstep or Fenn’s command) · R ride
+- Left hand: WASD move · E level-1 ability (Gravity Well, Lion’s Rush, Frost Step, Shade Step or Fenn’s command) · R ride
 - Right hand, home row: L attack (F also works while it is unbound), then leftward in learning order: K · J · H (see the table above)
 - Right hand, menus (row above): U spellbook · I inventory · O quest log · P character · Y achievements
 - Space / Enter talk, open or use · 1–0 potions and bombs · M map · Tab quest log · N mute · Esc pause
@@ -355,7 +372,7 @@ src/
     music.ts           Music sequencer and composed themes
     GameCanvas.tsx     Game loop, pixel budget, adaptive quality, music switching, autosave
     storage.ts         In-chapter save helpers
-    mounts.ts          The mounts, their speeds and the achievements that earn them
+    mounts.ts          The mounts, their speeds, what stable masters ask for them and who drops the rest
     trails.ts          Cosmetic trails and the achievements that earn them
     keys.ts            Remappable key bindings
     backup.ts          Save backup export and import

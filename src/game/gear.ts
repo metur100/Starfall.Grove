@@ -46,7 +46,7 @@ const PER_POINT: Record<GearStat, number> = { armor: .1, power: .12, health: 1.3
 
 /** Base names by slot for the four lands (levels 1–6, 7–12, 13–18, 19–26). */
 const BASES: Record<GearSlot, [string[], string[], string[], string[]]> = {
-  head: [['Wool Hood', 'Leather Cap', 'Farmhand’s Hat'], ['Mossweave Cowl', 'Rootbound Helm', 'Lantern Hood'], ['Starsilver Crown', 'Frostforged Helm', 'Skyhold Circlet'], ['Obsidian Helm', 'Cinderveil Hood', 'Ashen Crown']],
+  head: [['Wool Hood', 'Leather Cap', 'Farmhand’s Hat'], ['Mossweave Cowl', 'Rootbound Helm', 'Lantern Hood'], ['Starsilver Crown', 'Frostforged Helm', 'Cloudcrest Circlet'], ['Obsidian Helm', 'Cinderveil Hood', 'Ashen Crown']],
   shoulders: [['Padded Shoulders', 'Hide Mantle'], ['Barkplate Pauldrons', 'Webspun Mantle'], ['Comet Spaulders', 'Glacier Pauldrons'], ['Magmaplate Pauldrons', 'Emberwing Mantle']],
   back: [['Travel Cloak', 'Patchwork Cape'], ['Mossy Shroud', 'Owl-feather Cloak'], ['Starsilver Cloak', 'Aurora Drape'], ['Phoenix Cloak', 'Smoulder Drape']],
   chest: [['Quilted Vest', 'Leather Jerkin'], ['Rootweave Robe', 'Bramble Cuirass'], ['Nightsky Robe', 'Crystal Breastplate'], ['Forgeheart Cuirass', 'Cinderweave Robe']],
@@ -60,9 +60,9 @@ const BASES: Record<GearSlot, [string[], string[], string[], string[]]> = {
  *  starsilver and crystal → obsidian and ember). */
 const WEAPONS: Record<HeroId, [string[], string[], string[], string[]]> = {
   mira: [['Oak Staff', 'Apprentice’s Wand'], ['Rootwood Staff', 'Mossheart Wand'], ['Starsilver Staff', 'Crescent Rod'], ['Obsidian Staff', 'Sunflare Rod']],
-  kael: [['Iron Sword', 'Militia Blade'], ['Bronze Leafblade', 'Warden’s Sword'], ['Crystal Longsword', 'Skyhold Blade'], ['Obsidian Greatsword', 'Cinderedge']],
+  kael: [['Iron Sword', 'Militia Blade'], ['Bronze Leafblade', 'Warden’s Sword'], ['Crystal Longsword', 'Cloudcrest Blade'], ['Obsidian Greatsword', 'Cinderedge']],
   lyra: [['Birch Staff', 'Rime Wand'], ['Frostroot Staff', 'Icicle Wand'], ['Glacier Staff', 'Aurora Rod'], ['Blackice Staff', 'Frostfire Rod']],
-  riven: [['Iron Daggers', 'Cutpurse Knives'], ['Bronze Fangs', 'Thornbite Daggers'], ['Crystal Shivs', 'Moonfang Daggers'], ['Obsidian Fangs', 'Emberkiss Daggers']],
+  riven: [['Iron Daggers', 'Cutpurse Knives'], ['Bronze Fangs', 'Thornbite Daggers'], ['Crystal Shivs', 'Snowmoon Daggers'], ['Obsidian Fangs', 'Emberkiss Daggers']],
   wren: [['Hunting Bow', 'Ashwood Bow'], ['Rootwood Longbow', 'Mossstring Bow'], ['Starsilver Bow', 'Windsong Longbow'], ['Obsidian Warbow', 'Cinderstring Bow']],
 };
 const LEGEND_WEAPONS: Record<HeroId, string> = { mira: 'Orrin’s Starstaff', kael: 'Dawnbreaker', lyra: 'Heart of Winter', riven: 'Eclipse Fangs', wren: 'Moonhowl, Bow of the Pack' };

@@ -193,7 +193,7 @@ export const CINES: Record<string, Shot[]> = {
     { speaker: 'Tuft', portrait: '🦊', text: '(Tuft yips, tail wagging so hard the whole fox wiggles.)', dur: 3.4 }],
   'moonfang': [
     { at: 'ember:green', text: 'Under the last green tree lies a great white wolf, and the shadow is gone from her fur.', actors: [{ id: 'moonfang', beast: true, spirit: true, dx: 50, dy: 40, face: -1 }], fx: [{ kind: 'memory' }], dur: 4.8 },
-    { text: 'Moonfang lifts her head. Fenn creeps close, and she licks his ear once, the way she did when he was a pup.', dur: 4.8 },
+    { text: 'Snowmoon lifts her head. Fenn creeps close, and she licks his ear once, the way she did when he was a pup.', dur: 4.8 },
     { text: 'Then she stands and walks into the green, and the leaves close behind her like a door.', fx: [{ kind: 'memory', dx: 50 }], dur: 4.4 }],
   // ─────────────── more of the heroes’ own stories
   'orrin-lanterns': [

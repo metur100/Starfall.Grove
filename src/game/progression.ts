@@ -1,7 +1,7 @@
 import { ITEM_ORDER } from './items';
 import { SLOT_ORDER, sumGear, validGear } from './gear';
 import { HEROES, MAX_STARS, RENAMED_SPELLS } from './spells';
-import { MOUNT_ORDER } from './mounts';
+import { MOUNT_ORDER, OLD_MOUNT_ACH } from './mounts';
 import { TRAIL_ORDER } from './trails';
 import type { GearItem, GearSlot, HeroId, ItemId, MountId, SpellId, TrailId, UpgradeId } from './types';
 
@@ -20,8 +20,9 @@ export type Profile = {
   bought: string[];
   /** Achievements: when each was earned, and the running counters they are measured by. */
   ach: { got: Record<string, number>; n: Record<string, number> };
-  /** The mount chosen in the stable; null rides the best one earned. */
-  mount: MountId | null;
+  /** The mounts this hero owns (bought from a stable master or won in battle), and the one chosen to ride (null rides
+   *  the fastest one owned). */
+  mounts: MountId[]; mount: MountId | null;
   /** The cosmetic trail chosen in the stable (null: none). */
   trail: TrailId | null;
 };
@@ -34,7 +35,7 @@ export const MAX_LEVEL = 25;
 export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
-const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mount: null, trail: null });
+const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mounts: [], mount: null, trail: null });
 export const practiceProfile = (hero: HeroId): Profile => ({ ...blank(hero), gold: 0, items: {} });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
@@ -90,7 +91,9 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     p.bought = Array.isArray(raw.bought) ? raw.bought.filter(x => typeof x === 'string').slice(-60) : [];
     const num = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, Number(v)]));
     p.ach = { got: num(raw.ach?.got), n: num(raw.ach?.n) };
-    p.mount = MOUNT_ORDER.includes(raw.mount as MountId) ? raw.mount as MountId : null;
+    // Mounts used to come free with achievements; a save from then keeps the ones it had already earned.
+    p.mounts = Array.isArray(raw.mounts) ? MOUNT_ORDER.filter(id => raw.mounts!.includes(id)) : MOUNT_ORDER.filter(id => p.ach.got[OLD_MOUNT_ACH[id]]);
+    p.mount = p.mounts.includes(raw.mount as MountId) ? raw.mount as MountId : null;
     p.trail = TRAIL_ORDER.includes(raw.trail as TrailId) ? raw.trail as TrailId : null;
     p.quick = ITEM_ORDER.includes(raw.quick as ItemId) && raw.quick !== 'healthPotion' ? raw.quick as ItemId : 'manaPotion';
     return p;

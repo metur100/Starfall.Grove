@@ -7,7 +7,7 @@ export type HeroId = 'mira' | 'kael' | 'lyra' | 'riven' | 'wren';
 export type MountId = 'pony' | 'boar' | 'stag' | 'frostwolf' | 'drake' | 'unicorn';
 export type SpellId = 'spark' | 'gravity' | 'sunfire' | 'starguard' | 'starfall' | 'slash' | 'charge' | 'guard' | 'slam' | 'bladestorm'
   | 'frostbolt' | 'blink' | 'frostnova' | 'iceBlock' | 'blizzard' | 'stab' | 'shadowstep' | 'knives' | 'stealth' | 'deathmark'
-  | 'arrow' | 'command' | 'volley' | 'snare' | 'wildcall';
+  | 'arrow' | 'command' | 'volley' | 'leap' | 'wildcall';
 export type ItemId =
   | 'healthPotion' | 'manaPotion' | 'swiftTonic' | 'powerElixir' | 'barkskin'
   | 'fireBomb' | 'frostBomb' | 'thunderJar' | 'smokeBomb' | 'giantBrew' | 'hourglass' | 'luckyClover' | 'phoenixFeather';
@@ -35,10 +35,17 @@ export type Obstacle = { x: number; y: number; r: number; kind: ObstacleKind; se
 export type DecorKind = 'grass' | 'flower' | 'fern' | 'pebble' | 'shroom' | 'shard' | 'crop' | 'reed' | 'clover';
 export type Decor = { x: number; y: number; kind: DecorKind; seed: number; color: string };
 export type Pond = { x: number; y: number; r: number };
+/** A river running the whole height of the valley along a border: its centre line, top to bottom, and half its width.
+ *  It can only be crossed on the bridge at `bridgeY` (when `barrier` is open). */
+export type River = { pts: Point[]; hw: number; bridgeY: number; barrier: string };
 
 export type EnemyKind =
   | 'gloomling' | 'thornling' | 'wisp' | 'bristleboar' | 'sporecap' | 'shadewolf' | 'webspinner' | 'frostwraith' | 'cragGolem'
   | 'emberImp' | 'ashScorpion' | 'magmaHulk'
+  /** Each land has creatures of its own. These fight like a kind from another land (see ENEMY_AI) but look and are
+   *  named for theirs: boglings, briarlings, mirecaps and marsh lights in the Woods, snowfangs and rimelings on the Summit, cinderhounds
+   *  and pyre wisps in the Ember Wastes. */
+  | 'bogling' | 'briarling' | 'mirecap' | 'marshlight' | 'snowfang' | 'rimeling' | 'cinderhound' | 'pyrewisp'
   | 'mossback' | 'brambleWarden' | 'hollowStar' | 'cinderTyrant' | 'eclipse';
 /** `guard` names the rescue quest whose captive this creature keeps caged. */
 export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; level: number; region: RegionId; boss?: boolean; elite?: boolean; guard?: string;
@@ -51,8 +58,8 @@ export type CritterSeed = { kind: CritterKind; x: number; y: number };
 export type NpcHat = 'none' | 'straw' | 'hood' | 'cap' | 'wizard' | 'bonnet' | 'helm' | 'ears' | 'scarf';
 export type NpcLook = { skin: string; robe: string; hat: NpcHat; hatColor: string; hair: string; beard?: boolean; small?: boolean };
 export type NpcActivity = 'idle' | 'wander' | 'patrol' | 'travel' | 'chop' | 'farm' | 'fish' | 'sweep' | 'hammer' | 'play';
-/** Merchants sell potions, smiths forge upgrades, armourers sell equipment, innkeepers let Mira rest. */
-export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer'
+/** Merchants sell potions, smiths forge upgrades, armourers sell equipment, stable masters sell mounts, innkeepers let Mira rest. */
+export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer' | 'stable'
   /** Quest people: someone walking with the hero, someone running away, and people in a cutscene. */
   | 'follower' | 'thief' | 'actor';
 export type NpcDef = {
@@ -153,7 +160,7 @@ export type Region = {
 
 export type WorldDefinition = {
   width: number; height: number; spawn: Point; regions: Region[];
-  pois: Poi[]; roads: Point[][]; obstacles: Obstacle[]; decor: Decor[]; pods: Point[]; ponds: Pond[];
+  pois: Poi[]; roads: Point[][]; obstacles: Obstacle[]; decor: Decor[]; pods: Point[]; ponds: Pond[]; rivers: River[];
   enemies: EnemySeed[]; critters: CritterSeed[]; npcs: NpcDef[]; objects: WorldObject[]; quests: QuestDef[];
 };
 
@@ -201,7 +208,7 @@ export type QuestOffer = { id: string; title: string; summary: string; reward: s
 export type MiniGame = 'dice' | 'archery';
 /** Cosmetic trails that follow the hero, earned by achievements. */
 export type TrailId = 'sparks' | 'clovers' | 'stardust';
-export type ShopKind = 'merchant' | 'smith' | 'armorer';
+export type ShopKind = 'merchant' | 'smith' | 'armorer' | 'stable';
 /** A piece on an armourer's shelf. `sold` pieces stay on the shelf, marked, until the stock changes. */
 export type ShopGear = { item: GearItem; price: number; needLevel: number; sold: boolean };
 export type EngineEvent =

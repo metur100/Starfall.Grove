@@ -5,7 +5,7 @@ import { Grid } from './spatial';
 import type { StoryQuest } from './story';
 import type {
   Ambient, BarrierKind, HeroId, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
-  Palette, Point, Poi, Pond, QuestDef, RegionId, WorldDefinition, WorldObject, WorldScript,
+  Palette, Point, Poi, Pond, QuestDef, RegionId, River, WorldDefinition, WorldObject, WorldScript,
 } from './types';
 
 /** Region width is a whole number of 512 px ground chunks, so no chunk straddles two regions. */
@@ -42,6 +42,16 @@ function lattice(x: number, y: number, s: number) {
 export const fbm = (x: number, y: number, s: number) => lattice(x / 1100, y / 1100, s) * .55 + lattice(x / 420, y / 420, s + 7) * .3 + lattice(x / 150, y / 150, s + 13) * .15;
 const pickW = <T,>(rand: () => number, list: Array<[T, number]>) => { const total = list.reduce((s, [, w]) => s + w, 0); let p = rand() * total; for (const [k, w] of list) if ((p -= w) <= 0) return k; return list[0][0]; };
 const d2 = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+/** The x of a river's centre line at a height. */
+export function riverX(rv: River, y: number) {
+  const p = rv.pts, step = p[1].y - p[0].y, i = Math.max(0, Math.min(p.length - 2, Math.floor((y - p[0].y) / step))), f = Math.max(0, Math.min(1, (y - p[i].y) / step));
+  return p[i].x + (p[i + 1].x - p[i].x) * f;
+}
+/** How far a point is inside a river (positive: in the water), and which bank it is nearer (-1 west, 1 east). */
+export function inRiver(rivers: River[], x: number, y: number, pad = 0) {
+  for (const rv of rivers) { const cx = riverX(rv, y), d = rv.hw + pad - Math.abs(x - cx); if (d > 0) return { rv, cx, d, side: x < cx ? -1 : 1 }; }
+  return null;
+}
 export const inPond = (ponds: Pond[], x: number, y: number, pad = 0) => ponds.some(p => Math.hypot((x - p.x) / (p.r + pad), (y - p.y) / (p.r * .58 + pad)) < 1);
 
 /** Nearest-road distance lookups over a segment grid. */
@@ -73,7 +83,7 @@ const SKINS = ['#f0c8a2', '#e2b089', '#c98f66', '#9c6a4a', '#f5d6bc', '#7a5037']
 const HAIRS = ['#6b3f2a', '#2e2420', '#b8743c', '#d9c08a', '#8a8a8a', '#e8e2d0', '#4a2f24'];
 const ROBES = ['#6f8fb8', '#b86a5a', '#7a9a5a', '#c9a24c', '#8a6fb0', '#5a8a8a', '#b07a9a', '#a0785a', '#7d8f5a', '#c07850'];
 
-type RegionPart = Omit<WorldDefinition, 'width' | 'height' | 'spawn' | 'regions'> & { start: Point };
+type RegionPart = Omit<WorldDefinition, 'width' | 'height' | 'spawn' | 'regions' | 'rivers'> & { start: Point };
 
 function buildRegion(spec: RegionSpec): RegionPart {
   const rand = rng(spec.seed), W = REGION_W, H = WORLD_H;
@@ -476,9 +486,13 @@ function buildRegion(spec: RegionSpec): RegionPart {
   };
 }
 
-/** Lays the regions side by side, west to east, and walls the borders with cliffs broken only by the gate road. */
+/**
+ * Lays the regions side by side, west to east, and walls the borders with cliffs broken only by the gate road. The border
+ * whose gate is a bridge (the Meadow and the Woods) is a river instead, running the whole height of the valley: the
+ * Gloomwater can only be crossed on its bridge.
+ */
 export function buildValley(specs: RegionSpec[]): WorldDefinition {
-  const out: WorldDefinition = { width: REGION_W * specs.length, height: WORLD_H, spawn: { x: 0, y: 0 }, regions: [], pois: [], roads: [], obstacles: [], decor: [], pods: [], ponds: [], enemies: [], critters: [], npcs: [], objects: [], quests: [] };
+  const out: WorldDefinition = { width: REGION_W * specs.length, height: WORLD_H, spawn: { x: 0, y: 0 }, regions: [], pois: [], roads: [], obstacles: [], decor: [], pods: [], ponds: [], rivers: [], enemies: [], critters: [], npcs: [], objects: [], quests: [] };
   specs.forEach((spec, i) => {
     const ox = i * REGION_W, part = buildRegion(spec);
     const sx = <T extends Point>(p: T): T => ({ ...p, x: p.x + ox });
@@ -492,8 +506,9 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
   });
   const rand = rng(991);
   for (let k = 1; k < specs.length; k++) {
-    const bx = k * REGION_W;
-    for (let y = 40; y < WORLD_H - 20; y += 56) {
+    const bx = k * REGION_W, b0 = specs[k - 1].barrier;
+    if (b0?.kind === 'bridge') river(out, bx - 80, `${specs[k - 1].id}:barrier`, rand);
+    else for (let y = 40; y < WORLD_H - 20; y += 56) {
       if (Math.abs(y - GATE_Y) < 200) continue;
       out.obstacles.push({ x: bx + (rand() - .5) * 40, y, r: 40 + rand() * 12, kind: 'cliff', seed: rand() });
     }
@@ -507,4 +522,25 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
   }
   out.decor.sort((a, b) => a.y - b.y);
   return out;
+}
+
+/** A river along a border at `x`, meandering a little but running straight under its bridge at the gate road. Trees,
+ *  grass, pods and critters in its way are cleared, and creatures and things to find are moved to the nearer bank. */
+function river(out: WorldDefinition, x: number, barrier: string, rand: () => number) {
+  const hw = 96, pts: Point[] = [], ph = rand() * 6.28;
+  for (let y = -120; y <= WORLD_H + 120; y += 60) {
+    const calm = Math.max(0, Math.min(1, (Math.abs(y - GATE_Y) - 140) / 420));
+    pts.push({ x: x + (Math.sin(y / 820 + ph) * 64 + Math.sin(y / 290 + ph * 2) * 20) * calm, y });
+  }
+  const rv: River = { pts, hw, bridgeY: GATE_Y, barrier };
+  out.rivers.push(rv);
+  const wet = (p: Point, pad: number) => Math.abs(p.x - riverX(rv, p.y)) < hw + pad;
+  out.obstacles = out.obstacles.filter(o => !wet(o, o.r + (o.w || 0) + 14));
+  out.decor = out.decor.filter(d => !wet(d, 16));
+  out.pods = out.pods.filter(p => !wet(p, 40));
+  out.critters = out.critters.filter(c => !wet(c, 30));
+  const bank = <T extends Point>(p: T, pad: number): T => { const cx = riverX(rv, p.y); return Math.abs(p.x - cx) < hw + pad ? { ...p, x: cx + Math.sign(p.x - cx || -1) * (hw + pad) } : p; };
+  out.enemies = out.enemies.map(e => bank(e, 140));
+  out.objects = out.objects.map(o => o.kind === 'barrier' ? o : bank(o, 70));
+  out.npcs = out.npcs.map(n => bank(n, 60));
 }

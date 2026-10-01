@@ -1310,3 +1310,13 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 /* On a landscape screen the film fills it edge to edge; the crop comes mostly off the top, so the captions near the
    bottom of each shot stay in view. Upright, the whole frame is shown. */
 @media (orientation: landscape) { .film video { object-fit: cover; object-position: 50% 72%; } }
+
+/* The minimap is drawn on the canvas (render.ts drawMinimap); this invisible button over it opens the world map. Its
+   box follows the minimap's: 190 × 140 at 14 px from the right and 64 px from the top, 128 × 96 on small screens. */
+.minimap-hit { position: absolute; right: 14px; top: 64px; width: 190px; height: 140px; z-index: 3; padding: 0; border: 0; border-radius: 10px; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.minimap-hit:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+@media (max-width: 639px), (max-height: 519px) {
+  .minimap-hit { right: 8px; top: 54px; width: 128px; height: 96px; }
+  .is-touch .minimap-hit { top: 58px; }
+}
+.stable-item .up-icon { font-size: 26px; line-height: 1; }

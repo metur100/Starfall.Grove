@@ -87,6 +87,8 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     };
     const ro = new ResizeObserver(applyTier); ro.observe(canvas);
     music.play(engine.regionTrack);
+    // The world's own clock: it stops while the game is paused, so nothing on screen moves (water, grass, creatures, sparks).
+    let clock = performance.now() / 1000;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       const g = settings.current.graphics, capped = g.fps === 30;
@@ -110,7 +112,8 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
       if (!pausedRef.current && !warming) { const steps = Math.ceil(dt / .05 - 1e-6) || 1; for (let i = 0; i < steps; i++) engine.update(dt / steps); } else engine.settleFx(dt);
       if (engine.combat > .15) { lastFight = now; fightInWindow = true; }
       renderer.fighting = now - lastFight < 3000;
-      renderer.render(ctx, viewW, viewH, engine, now / 1000, pausedRef.current ? dt * .15 : dt, dpr);
+      if (!pausedRef.current) clock += dt;
+      renderer.render(ctx, viewW, viewH, engine, clock, pausedRef.current ? 0 : dt, dpr);
       // The touch prompt follows the person in reach. Its position is written straight onto the prompt, and only when it
       // moves: set on the stage it would restyle the whole HUD every frame.
       const ns = renderer.nearScreen, prompt = ns && canvas.parentElement?.querySelector<HTMLElement>('.near-prompt.compact');
