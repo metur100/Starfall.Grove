@@ -3,7 +3,7 @@
 // optional audio-file overrides via public/music/manifest.json. Shares the context and mixer of audio.ts.
 import { audioCore } from './audio';
 
-export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'ember' | 'boss' | 'finale' | 'siege' | 'victory';
+export type TrackId = 'menu' | 'meadow' | 'woods' | 'summit' | 'ember' | 'boss' | 'finale' | 'siege' | 'victory' | 'depths';
 type Core = NonNullable<ReturnType<typeof audioCore>>;
 
 // ───────────────────────────── notes, chords, melodies
@@ -362,6 +362,30 @@ const TRACKS: Record<TrackId, Def> = {
       padBar(b, 48, .45);
       const stab = (q: number, len: number, v: number) => b.at(q, t => { for (const m of tones(b.ch(q), 55)) brass(br, t, hz(m), len * b.spb, v, 1500); });
       if (b.sec === 'B') { stab(0, 1.5, .75); stab(2, .35, .85); stab(2.5, .35, .85); stab(3, 1, .8); } else { stab(0, .35, .9); stab(.75, .35, .7); stab(2, .35, .9); }
+    },
+  },
+  // "The Depths": the dark beneath the Dawn Forge. B phrygian, slow: a heartbeat drum, a tolling bell, a low brass lament
+  // over cold pads, and a few harp notes dripping somewhere far off.
+  depths: {
+    bpm: 66, scale: [11, 0, 2, 4, 6, 7, 9], lead: 'brass', oct: -12, form: 'AABA', mix: { pad: 1.2, bell: 1.3, harp: .8 },
+    sec: {
+      A: {
+        ch: ['Bm', 'C', 'Bm', 'Am', 'Bm', 'G', 'C', 'Bm'],
+        mel: ['B4:2 C5:1 D5:1', 'E5:3 D5:1', 'C5:1 B4:1 A4:2', 'B4:4', 'D5:2 E5:1 F#5:1', 'G5:2 F#5:1 E5:1', 'E5:1 D5:1 C5:2', ['B4:4', 'B4:2 r:2']],
+      },
+      B: {
+        ch: ['G', 'Am', 'Em', 'Bm', 'C', 'Am', 'F#m', 'Bm'],
+        mel: ['G5:2 F#5:1 E5:1', 'E5:2 C5:2', 'B4:1.5 C5:.5 D5:2', 'B4:4', 'C5:1 E5:1 G5:2', 'A5:2 G5:1 E5:1', 'F#5:2 E5:1 C#5:1', 'B4:4'],
+      },
+    },
+    parts: b => {
+      const { drum, bell: bl } = b.x.bus;
+      [0, .42].forEach((q, j) => b.at(q, t => kick(drum, t, j ? .45 : .75)));
+      [2, 2.42].forEach((q, j) => b.at(q, t => kick(drum, t, j ? .35 : .55)));
+      if (b.i % 2 === 0) b.at(0, t => bell(bl, t, hz(root(b.ch(0), 47)), 5, .4));
+      padBar(b, 47, .42);
+      bassLine(b, [[0, 0, 3.8]], 35, .7);
+      arp(b, [-1, -1, 4, -1, -1, 2, -1, -1], .5, 59, .26, 1.4);
     },
   },
   // "Hold the Line": a siege march in A minor. Marching drums and rolls, a brass call and answer, a walking bass.

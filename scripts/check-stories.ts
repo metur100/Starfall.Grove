@@ -87,12 +87,13 @@ for (const hero of HEROES) {
   // Every cutscene this hero plays points its camera and effects at things that exist in their world (a name that
   // doesn't resolve leaves the camera where it was, showing the wrong place).
   const objs = new Set(hw.objects.map(o => o.id)), people = new Set(npcs.keys());
-  const played: Array<[string, QuestDef | null, string]> = [['arrive', null, 'arrive'], ['intro', null, 'intro'], ...LEVEL_ORDER.map(r => [`chapter-${r}`, null, 'chapter'] as [string, null, string])];
+  const played: Array<[string, QuestDef | null, string]> = [['arrive', null, 'arrive'], ['intro', null, 'intro'], ['depths-fall', null, 'fall'], ...LEVEL_ORDER.map(r => [`chapter-${r}`, null, 'chapter'] as [string, null, string])];
   for (const q of quests) for (const [when, c] of Object.entries(q.cine || {})) if (c) played.push([c, q, when]);
   for (const [id, q, when] of played) {
     const shots = cineFor(id, hero); if (!shots) continue;
     const has = (kind: string) => !!q && hw.objects.some(o => o.kind === kind && o.questId === q.id);
-    const ctx = new Set(when === 'caught' ? ['$thief'] : [...(has('ward') ? ['$ward'] : []), ...(has('site') ? ['$site'] : [])]);
+    // Umbra's own scene plays when it rises on its throne in the depths.
+    const ctx = new Set(when === 'caught' ? ['$thief'] : [...(has('ward') ? ['$ward'] : []), ...(has('site') ? ['$site'] : []), ...(q?.boss?.endsWith(':final') ? ['$throne'] : [])]);
     const bad = (at?: string) => !!at && at !== 'hero' && (at.startsWith('$') ? !ctx.has(at) : at.startsWith('npc:') ? !people.has(at.slice(4)) : at.startsWith('obj:') ? !objs.has(at.slice(4)) : !poi.has(at));
     for (const sh of shots) for (const at of [sh.at, ...(sh.fx || []).map(x => x.at)]) if (bad(at)) err(hero, `cutscene '${id}'${q ? ` (${q.id} ${when})` : ''}: nothing called '${at}' here`);
   }

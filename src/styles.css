@@ -643,6 +643,14 @@ kbd { display: inline-block; min-width: 20px; padding: 2px 6px; border-radius: 6
 .near-prompt.compact::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; margin-left: -6px; background: #e8a13a; border-right: 2px solid #fff1c0; border-bottom: 2px solid #fff1c0; transform: rotate(45deg); }
 @keyframes prompt-float { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, calc(-100% - 4px)); } }
 .near-prompt.compact span { position: relative; z-index: 1; font: 900 15px var(--ui); color: #2a1a08; letter-spacing: .04em; }
+.star-banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; text-align: center; animation: level-in 5.2s ease both; white-space: nowrap; }
+.star-banner small { font: 900 clamp(15px, 2.4vw, 22px) var(--ui); letter-spacing: .3em; text-transform: uppercase; color: #fff1b8; text-shadow: 0 0 18px rgba(255, 220, 140, .9), 0 2px 10px #000; }
+.star-banner h3 { margin: 0; font: 900 clamp(24px, 4vw, 40px)/1.1 var(--deco); color: #fffbe8; text-shadow: 0 3px 18px rgba(0, 0, 0, .8), 0 0 30px rgba(255, 241, 184, .6); }
+.star-banner span { font: 800 13px var(--ui); color: #e8ecff; text-shadow: 0 2px 8px #000; }
+.depths-banner h3 { color: #e8dcff; text-shadow: 0 3px 18px rgba(0, 0, 0, .9), 0 0 30px rgba(140, 100, 220, .7); }
+.trk-star b { color: #fff1b8; }
+.star-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font: 900 12px var(--ui); color: #fff1b8; background: rgba(40, 30, 60, .7); border: 1px solid rgba(255, 241, 184, .5); }
+.map-tabs .depths-tab { background: #2a2230; color: #e8dcff; }
 .region-banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; text-align: center; animation: level-in 4.2s ease both; white-space: nowrap; }
 .region-banner small { font: 800 12px var(--ui); letter-spacing: .45em; text-transform: uppercase; color: var(--gold); text-shadow: 0 2px 10px #000; }
 .region-banner h3 { margin: 0; font: 900 clamp(26px, 4.5vw, 46px)/1.1 var(--deco); color: #fff4d6; text-shadow: 0 3px 18px rgba(0, 0, 0, .8), 0 0 30px rgba(245, 210, 122, .4); }

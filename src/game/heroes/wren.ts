@@ -350,9 +350,9 @@ export const WREN: HeroStory = {
       m12: { title: 'The Duneworm', summary: 'Defeat the Duneworm, Devourer Under the Wastes, at the Dawn Forge.',
         text: { offer: ['(The Duneworm towers over the Dawn Forge, sand pouring off it like water. Snowmoon’s hackles rise beside Fenn’s.)', 'It bursts up out of the ground, and it spits fire and lava. Never stand still. Salt arrows, Fenn. Every one.', 'And when it falls, the shadow that has been riding it will have nowhere left to hide.'],
           progress: ['The Dawn Forge is in the far north-east.'], complete: [], after: ['Be brave, Fenn.'] } },
-      m13: { title: 'Umbra, the Moon-Eater', summary: 'Defeat Umbra, the Moon-Eater, and light the Dawn Forge.',
-        text: { offer: ['(The worm crumbles into sand. Overhead the moon rises… and something black begins to eat it, bite by bite.)', '(From the Beacon Rise, the Old Bell and the Star Cradle, dark light streams east and gathers into one great shape.)', 'The Moon-Eater. The thing that took the moon out of our song. Snowmoon, Fenn: sing. We finish it here.'],
-          progress: ['Defeat Umbra at the Dawn Forge.'], complete: [], after: [] } },
+      m13: { title: 'Umbra, the Moon-Eater', summary: 'Fight through the depths beneath the Dawn Forge, defeat Umbra, the Moon-Eater, then light the Forge.',
+        text: { offer: ['(The worm crumbles into sand. Overhead the moon rises… and something black begins to eat it, bite by bite.)', '(From the Beacon Rise, the Old Bell and the Star Cradle, dark light streams east, and sinks into the ground beneath the Forge.)', 'The Moon-Eater. It went to ground, like a wounded beast. Snowmoon, Fenn: we follow it down. We finish it there.'],
+          progress: ['Find Umbra on its throne in the depths beneath the Dawn Forge.'], complete: [], after: [] } },
     },
   },
   npcs: {

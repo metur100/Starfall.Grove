@@ -424,9 +424,9 @@ export const LYRA: HeroStory = {
       m12: { title: 'Cinderwyrm', giver: 'fox', summary: 'Defeat the Cinderwyrm, the Serpent in the Slag, at the Dawn Forge.', reward: { xp: 480, hearts: 1 },
         text: { offer: ['(The Cinderwyrm rears over the Dawn Forge, and the air shimmers with heat.)', 'It rains lava, spins fire in spirals and charges like a landslide, and wherever it has been, the ground burns. Never stand still.', 'It hates frost. Good. Let it hate me. Nessa is singing, and I’m not afraid of my cold any more.'],
           progress: ['The Dawn Forge is in the far north-east.'], complete: [], after: ['Be brave.'] } },
-      m13: { title: 'The Endless Winter Night', giver: 'fox', summary: 'Defeat Umbra, the Endless Winter Night, and light the Dawn Forge.', reward: { xp: 900, hearts: 2 },
-        text: { offer: ['(The Cinderwyrm crumbles into cooling slag, and for one breath the forge is quiet. Then every ember in the wastes goes out at once.)', '(Far to the west, dark light rises from the Beacon Rise, the Old Bell and the Star Cradle. The shadows of the serpent, the Huntress and the Queen gather into one.)', '(Black frost creeps over the Dawn Forge: a winter with no warmth anywhere in it. Nessa takes your hand. Umbra is here.)'],
-          progress: ['Defeat Umbra at the Dawn Forge.'], complete: [], after: [] } },
+      m13: { title: 'The Endless Winter Night', giver: 'fox', summary: 'Fight through the depths beneath the Dawn Forge, defeat Umbra, the Endless Winter Night, then light the Forge.', reward: { xp: 900, hearts: 2 },
+        text: { offer: ['(The Cinderwyrm crumbles into cooling slag, and for one breath the forge is quiet. Then every ember in the wastes goes out at once.)', '(Far to the west, dark light rises from the Beacon Rise, the Old Bell and the Star Cradle. The shadows of the serpent, the Huntress and the Queen pour toward the Forge, and down into the ground.)', '(Black frost cracks across the earth under your feet: a winter with no warmth anywhere in it. Nessa takes your hand. Umbra is below.)'],
+          progress: ['Find Umbra on its throne in the depths beneath the Dawn Forge.'], complete: [], after: [] } },
     },
   },
   npcs: {

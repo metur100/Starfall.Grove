@@ -16,6 +16,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Story', 'ch-summit', 'Heart of the Fallen Light', 'Return the star to its Cradle and finish Chapter III.', '✦', 10, 'chapter:summit'),
   a('Story', 'ch-ember', 'The Dawn Forge', 'Light the Dawn Forge and finish Chapter IV.', '🔥', 25, 'chapter:ember'),
   a('Story', 'eclipse', 'The Eclipse Ends', 'Defeat Umbra, the Eclipse.', '🌑', 50, 'boss:eclipse'),
+  a('Story', 'depths', 'Into the Depths', 'Fall into the depths beneath the Dawn Forge.', '🕳', 10, 'depths'),
+  a('Story', 'echoes', 'Echo Chamber', 'Defeat the echo of Umbra on its empty throne.', '🔮', 25, 'echoes'),
 
   // Every hero meets their own guardians (bosses.ts), so these name the place, not the creature.
   a('Guardians', 'b-mossback', 'Guardian of the Rise', 'Defeat the guardian of the Beacon Rise.', '🪨', 10, 'boss:mossback'),
@@ -45,6 +47,10 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Exploration', 'fog', 'Fog Lifter', 'Uncover half of the world map.', '☁', 25, 'explore', 50),
   a('Exploration', 's1', 'Something Hidden', 'Find a secret: break a cracked wall with a bomb, or look behind a waterfall.', '🔍', 10, 'secrets', 1),
   a('Exploration', 'sall', 'Keeper of Secrets', 'Find every secret in the valley.', '🗝', 50, 'secrets', t => t.secrets),
+  a('Exploration', 'star1', 'Stargazer', 'Defeat the beast that fell with a star.', '⭐', 10, 'starbeasts'),
+  a('Exploration', 'star5', 'Starchaser', 'Defeat the beasts of five fallen stars.', '🌠', 25, 'starbeasts', 5),
+  a('Exploration', 'frag40', 'Star Collector', 'Gather 40 star fragments.', '✨', 25, 'fragments', 40),
+  a('Character', 'starheart', 'Starheart', 'Fuse eight star fragments into a Starheart.', '💫', 10, 'starhearts'),
   a('Exploration', 'c10', 'Treasure Hunter', 'Open 10 chests.', '🧰', 10, 'chests', 10),
   a('Exploration', 'c40', 'Hoarder', 'Open 40 chests.', '🧰', 25, 'chests', 40),
   a('Exploration', 'lore10', 'Reader of Stones', 'Read 10 runestones.', '📜', 10, 'lore', 10),
@@ -58,6 +64,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Character', 'lv10', 'Seasoned', 'Reach level 10.', '⬆', 10, 'level', 10),
   a('Character', 'lv20', 'Veteran', 'Reach level 20.', '⬆', 25, 'level', 20),
   a('Character', 'lv25', 'Living Legend', 'Reach level 25.', '⬆', 50, 'level', 25),
+  a('Character', 'lv30', 'Starborn', 'Reach level 30, the highest there is.', '✦', 50, 'level', 30),
   a('Character', 'gold', 'Deep Pockets', 'Carry 1000 gold at once.', '🪙', 10, 'gold', 1000),
   a('Character', 'kitted', 'Fully Kitted', 'Wear a piece in every equipment slot, weapon included.', '🎽', 10, 'slots', 9),
   a('Character', 'epic', 'Purple Haze', 'Find an epic piece of equipment.', '◆', 10, 'epics'),

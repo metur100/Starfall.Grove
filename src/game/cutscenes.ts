@@ -108,7 +108,7 @@ export const CINES: Record<string, Shot[]> = {
   'sunpetal-attack': [
     { at: '$ward', dy: -40, night: .45, text: 'Dusk falls over Sunpetal, and the tall grass begins to move.', fx: [{ kind: 'gloom', n: 4, dx: 380, dy: 140 }], dur: 3.8 },
     { text: 'A spark catches a thatched roof. The village bell rings out!', fx: [{ kind: 'fire', n: 2, t: 120 }], dur: 3.6 },
-    { speaker: 'Elder Rowan', portrait: '🧙🏼', text: '“Protect the barricade! Don’t let them reach the houses!”', dur: 3.4 }],
+    { speaker: 'Elder Rowan', portrait: '🧙🏼', text: '“They’re coming for the houses! Drive them back into the grass!”', dur: 3.4 }],
   'beacon-lit': [
     { at: 'meadow:rise', dy: -90, text: 'The Beacon roars back to life. Gold light spills across the meadow.', fx: [{ kind: 'light', dy: -90 }], dur: 4 },
     { at: 'obj:meadow:barrier', cut: true, text: 'Its light reaches all the way to the Eastern Gate… where the old Gloomwater Bridge lies in the river, broken the night the star fell.', fx: [{ kind: 'collapse' }], dur: 5.2 },
@@ -131,7 +131,7 @@ export const CINES: Record<string, Shot[]> = {
     { at: 'npc:woods:thessaly', text: 'In Lanternmarket, Warden Thessaly is calling the watch to arms.', dur: 3.6 }],
   'lantern-siege': [
     { at: '$ward', dy: -40, text: 'Shadewolves pour out of the trees, and one by one the lanterns of Lanternmarket go dark.', fx: [{ kind: 'wolves', n: 4, dx: 420 }, { kind: 'fire', n: 2, t: 140, delay: .8 }], dur: 4.6 },
-    { speaker: 'Warden Thessaly', portrait: '🛡️', text: '“Hold the lantern gate! If it falls, the whole market burns!”', dur: 3.4 }],
+    { speaker: 'Warden Thessaly', portrait: '🛡️', text: '“Into the streets! If they reach the houses, the whole market burns!”', dur: 3.4 }],
   'chapter-woods': [
     { at: 'obj:woods:barrier', text: 'The Bell-lanterns blaze, and the Bell’s last echo rolls down the road…', fx: [{ kind: 'light' }], dur: 3.6 },
     { text: '…and the wall of thorns at the Eastern Gate withers into dust.', fx: [{ kind: 'wither' }], dur: 3.8 },
@@ -150,7 +150,7 @@ export const CINES: Record<string, Shot[]> = {
     { text: 'Something dark slips through the tear and curls up inside the falling light. Umbra.', fx: [{ kind: 'shadow', delay: .6 }], dur: 4.4 }],
   'pass-siege': [
     { at: '$ward', text: 'Void light spills over the ridge. Wisps and wraiths swarm toward Silver Pass.', fx: [{ kind: 'wisps', n: 5, dx: 420, dy: -200 }], dur: 4 },
-    { speaker: 'Quartermaster Dov', portrait: '💂', text: '“Hold the barricade! If the pass falls, the road to the Spire falls with it!”', dur: 3.6 }],
+    { speaker: 'Quartermaster Dov', portrait: '💂', text: '“Hold the camp! If the pass falls, the road to the Spire falls with it!”', dur: 3.6 }],
   'star-rises': [
     { at: 'summit:cradle', dy: -100, text: 'The star rises from its Cradle, whole again, and the whole Summit shines.', fx: [{ kind: 'light', dy: -100 }], dur: 4 },
     { text: 'But a thread of black smoke tears loose from the broken shell…', fx: [{ kind: 'smoke', dy: -100, to: { dx: 1600, dy: 900 } }], dur: 3.8 },
@@ -165,11 +165,17 @@ export const CINES: Record<string, Shot[]> = {
   // ─────────────── Chapter IV
   'outpost-siege': [
     { at: '$ward', text: 'Sparks rain from a black sky. Imps come shrieking out of the smoke toward Emberwatch Outpost.', fx: [{ kind: 'imps', n: 5, dx: 420, dy: -160 }, { kind: 'fire', n: 2, t: 140, delay: .6 }], dur: 4.4 },
-    { speaker: 'Captain Ashka', portrait: '💂‍♀️', text: '“To the gate! Nobody sleeps until the outpost stands!”', dur: 3.2 }],
+    { speaker: 'Captain Ashka', portrait: '💂‍♀️', text: '“To the tents! Nobody sleeps until the outpost stands!”', dur: 3.2 }],
   'pyrrhus-wakes': [
     { at: 'ember:forge', dy: -60, text: 'The great bellows heave. For the first time in weeks, the Dawn Forge breathes.', fx: [{ kind: 'build' }], dur: 3.8 },
     { text: 'The ground splits, and magma wells up around the anvil…', fx: [{ kind: 'quake' }, { kind: 'fire', n: 2, t: 30, delay: .4 }], dur: 3.6 },
     { text: '…and Pyrrhus, the Cinder Tyrant, rises out of the fire, furious that anyone dared to wake his forge.', fx: [{ kind: 'shadow', delay: .2 }], dur: 4.6 }],
+  // The ground gives way under the hero after the last guardian falls: down into the depths, where Umbra waits.
+  'depths-fall': [
+    { at: 'ember:forge', dy: -40, text: 'The last guardian crumbles. For a heartbeat the wastes are silent…', fx: [{ kind: 'embers', dy: -40 }], dur: 3.2 },
+    { text: '…then the ground shakes. Every shadow in the four lands pours toward the Forge and sinks into the earth beneath it.', fx: [{ kind: 'quake' }, { kind: 'shadow', delay: .5 }, { kind: 'smoke', dx: -900, dy: -300, to: { dx: 900, dy: 300 }, delay: .2 }], dur: 4.6 },
+    { at: 'obj:ember:hole', cut: true, text: 'The ground splits open, and the dark drags you down with it.', fx: [{ kind: 'collapse' }, { kind: 'quake', delay: .3 }], dur: 3.6 },
+    title('The Depths', 'Beneath the Dawn Forge', 3.2)],
   'chapter-ember': [
     { at: 'ember:forge', dy: -60, text: 'The Dawn Forge burns white and gold, and a new dawn spills across the wastes.', fx: [{ kind: 'light', dy: -60 }], dur: 4.4 },
     { at: 'summit:cradle', cut: true, dy: -90, text: 'On the Summit, the Star shines in its Cradle.', fx: [{ kind: 'light', dy: -90 }], dur: 3.4 },

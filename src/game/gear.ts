@@ -44,7 +44,7 @@ const SLOT_STATS: Record<GearSlot, { main: GearStat[]; extra: GearStat[] }> = {
 /** How much of a stat one budget point buys. */
 const PER_POINT: Record<GearStat, number> = { armor: .1, power: .12, health: 1.3, mana: .8, regen: .03, speed: .09, crit: .09 };
 
-/** Base names by slot for the four lands (levels 1–6, 7–12, 13–18, 19–26). */
+/** Base names by slot for the four lands (levels 1–6, 7–12, 13–18, 19–30). */
 const BASES: Record<GearSlot, [string[], string[], string[], string[]]> = {
   head: [['Wool Hood', 'Leather Cap', 'Farmhand’s Hat'], ['Mossweave Cowl', 'Rootbound Helm', 'Lantern Hood'], ['Starsilver Crown', 'Frostforged Helm', 'Cloudcrest Circlet'], ['Obsidian Helm', 'Cinderveil Hood', 'Ashen Crown']],
   shoulders: [['Padded Shoulders', 'Hide Mantle'], ['Barkplate Pauldrons', 'Webspun Mantle'], ['Comet Spaulders', 'Glacier Pauldrons'], ['Magmaplate Pauldrons', 'Emberwing Mantle']],
@@ -84,7 +84,7 @@ export function rollRarity(r: () => number, luck = 0): Rarity {
 }
 
 export function makeGear(opts: { ilvl: number; rarity: Rarity; slot?: GearSlot; rand?: () => number; uid?: string; hero?: HeroId }): GearItem {
-  const r = opts.rand || Math.random, ilvl = Math.max(1, Math.min(26, Math.round(opts.ilvl))), rarity = opts.rarity;
+  const r = opts.rand || Math.random, ilvl = Math.max(1, Math.min(30, Math.round(opts.ilvl))), rarity = opts.rarity;
   // A weapon needs to know whose it is; without a hero, an armour piece is rolled instead.
   const slots = opts.hero ? SLOT_ORDER : SLOT_ORDER.filter(s => s !== 'weapon');
   const slot = opts.slot === 'weapon' && !opts.hero ? 'hands' : opts.slot || pickOf(r, slots), spec = SLOT_STATS[slot], info = RARITY[rarity];
@@ -161,11 +161,12 @@ export function buyPrice(g: GearItem) { return Math.round(sellPrice(g) * (g.rari
 export function armouryStock(hero: HeroId, region: string, level: number, levels: [number, number]) {
   const r = seeded(`armoury:${hero}:${region}:${level}`);
   const tiers: Rarity[] = ['uncommon', 'rare', 'rare', 'rare', 'epic', r() < .2 ? 'legendary' : 'epic'];
-  const base = Math.max(levels[0], Math.min(level, levels[1] + 2));
+  // The last land's shelf keeps growing with the hero all the way to the level cap.
+  const base = Math.max(levels[0], Math.min(level, levels[1] + (region === 'ember' ? 6 : 2)));
   // Six different slots, so the shelf never shows three chests.
   const slots = [...SLOT_ORDER].map(s => [r(), s] as const).sort((x, y) => x[0] - y[0]).map(x => x[1]);
   return tiers.map((rarity, i) => {
-    const ilvl = Math.min(26, base + (i >= 4 ? 2 : r() < .35 ? 1 : 0));
+    const ilvl = Math.min(30, base + (i >= 4 ? 2 : r() < .35 ? 1 : 0));
     const item = makeGear({ ilvl, rarity, slot: slots[i], rand: r, uid: `shop-${hero}-${region}-${level}-${i}`, hero });
     return { item, price: buyPrice(item), needLevel: ilvl };
   });

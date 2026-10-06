@@ -10,7 +10,7 @@ import { RARITY, RARITY_ORDER, SLOT_NAMES, gearScore, sellPrice } from './game/g
 import { DECOR_LEVELS, QUALITIES, isTouch, loadGraphics, saveGraphics, type GraphicsSettings } from './game/graphics';
 import { clearSession, loadSession, saveSession } from './game/storage';
 import { MAX_RANK, UPGRADES, UPGRADE_ORDER, loadProfile, resetProfile, saveProfile, upgradeCost } from './game/progression';
-import { MAIN_COLOR, SIDE_COLOR, drawWorldMap } from './game/render';
+import { MAIN_COLOR, SIDE_COLOR, depthsHole, drawDepthsMap, drawWorldMap } from './game/render';
 import { sfx } from './game/audio';
 import { music } from './game/music';
 import { ACTIONS, RESERVED, actionOf, bindKey, getKeys, keyLabel, onKeysChange, resetKeys, spellSlot, type Action } from './game/keys';
@@ -136,6 +136,11 @@ function App() {
   const [spellQueue, setSpellQueue] = useState<SpellId[]>([]);
   const [levelBanner, setLevelBanner] = useState<{ level: number; key: number } | null>(null);
   const [bossBanner, setBossBanner] = useState<{ name: string; title: string } | null>(null);
+  /** A star has just fallen (where), or the hero just went down into the depths. */
+  const [starBanner, setStarBanner] = useState<{ place: string; land: string; key: number } | null>(null);
+  const [depthsBanner, setDepthsBanner] = useState<{ first: boolean; key: number } | null>(null);
+  useEffect(() => { if (!starBanner) return; const t = window.setTimeout(() => setStarBanner(null), 5200); return () => window.clearTimeout(t); }, [starBanner]);
+  useEffect(() => { if (!depthsBanner) return; const t = window.setTimeout(() => setDepthsBanner(null), 4600); return () => window.clearTimeout(t); }, [depthsBanner]);
   /** After the last chapter's closing cutscene, the ending screen follows. */
   const [endingPending, setEndingPending] = useState(false);
   /** The hero's intro film, which opens a new adventure. */
@@ -197,6 +202,8 @@ function App() {
         else if (event.state === 'completed') notify(`Quest complete: ${event.title}${event.xp ? ` · +${event.xp} XP` : ''}`, 'epic', '✓ Quest complete');
         break;
       case 'bossIntro': setBossBanner({ name: event.name, title: event.title }); window.setTimeout(() => setBossBanner(null), 3000); break;
+      case 'starfall': setStarBanner(b => ({ place: event.place, land: WORLDS[event.region].title, key: (b?.key || 0) + 1 })); break;
+      case 'depths': setDepthsBanner(b => ({ first: event.first, key: (b?.key || 0) + 1 })); break;
       case 'achievement': {
         setAchQueue(q => [...q, { ...event, key: Date.now() + Math.random() }]);
         break;
@@ -507,6 +514,8 @@ function App() {
           <small>Entering</small><h3>{WORLDS[regionBanner.region].title}</h3><span>Creatures {levels(regionBanner.region)}</span>
           {regionBanner.danger && <em>⚠ Too dangerous for your level</em>}
         </div>}
+        {starBanner && !cine && <div className="star-banner" key={`star-${starBanner.key}`}><small>⭐ A star has fallen</small><h3>{starBanner.place}</h3><span>{starBanner.land} · Follow the gold-white arrow</span></div>}
+        {depthsBanner && !cine && <div className="region-banner depths-banner" key={`depths-${depthsBanner.key}`}><small>{depthsBanner.first ? 'The ground gave way' : 'Descending'}</small><h3>The Depths</h3><span>Beneath the Dawn Forge · Creatures Lv 26–30</span></div>}
         {levelBanner && !snapshot?.cine && <div className="level-banner" key={`level-${levelBanner.key}`}><small>Level up</small><b>{levelBanner.level}</b><span>Health and magic restored</span></div>}
 
         {bossBanner && <div className="boss-banner"><div className="letterbox top" /><div className="letterbox bottom" /><div className="boss-name"><small>{bossBanner.title}</small><h2>{bossBanner.name}</h2></div></div>}
@@ -731,7 +740,7 @@ function VolumeControls() {
 }
 
 /** Only redraws when the values it shows change, not on every snapshot. */
-const VITAL_KEYS = ['hp', 'maxHp', 'mana', 'maxMana', 'level', 'xp', 'xpNext', 'hero', 'shield', 'gold', 'buffs'] as const;
+const VITAL_KEYS = ['hp', 'maxHp', 'mana', 'maxMana', 'level', 'xp', 'xpNext', 'hero', 'shield', 'gold', 'buffs', 'fragments', 'starhearts'] as const;
 const Vitals = memo(function Vitals({ snapshot, onProfile }: { snapshot: GameSnapshot | null; onProfile: () => void }) {
   const hp = snapshot?.hp ?? 100, max = snapshot?.maxHp ?? 100, mana = snapshot?.mana ?? 80, maxMana = snapshot?.maxMana ?? 100;
   const level = snapshot?.level ?? 1, xp = snapshot?.xp ?? 0, next = snapshot?.xpNext ?? 1, pct = Math.max(0, hp / max) * 100;
@@ -746,6 +755,7 @@ const Vitals = memo(function Vitals({ snapshot, onProfile }: { snapshot: GameSna
     </div>
     <div className="vitals-row">
       <span className="gold-chip" title="Gold"><i />{snapshot?.gold ?? 0}</span>
+      {!!snapshot && (snapshot.fragments > 0 || snapshot.starhearts > 0) && <span className="star-chip" title={`Star fragments: ${snapshot.fragments} of 8 toward the next Starheart (${snapshot.starhearts} made)`}>✦ {snapshot.fragments}/8</span>}
       {!!snapshot?.buffs.length && <div className="buffs">{snapshot.buffs.map(b => <span key={b.id} className="buff" title={`${ITEMS[b.id].name} · ${Math.ceil(b.time)}s`} style={{ '--c': ITEMS[b.id].color, '--p': `${(b.time / b.max) * 360}deg` } as CSSProperties}><span className="buff-icon"><ItemIcon id={b.id} size={20} /></span><b>{Math.ceil(b.time)}</b></span>)}</div>}
     </div>
   </div>;
@@ -753,13 +763,14 @@ const Vitals = memo(function Vitals({ snapshot, onProfile }: { snapshot: GameSna
 
 /** WoW-style objective list: the main quest in gold, followed side quests in blue, just goals and counts. */
 const QuestTracker = memo(function QuestTracker({ snapshot, onOpen }: { snapshot: GameSnapshot; onOpen: () => void }) {
-  const main = snapshot.main;
+  const main = snapshot.main, sf = snapshot.starfall;
   const sides = snapshot.quests.filter(q => q.status === 'active' || q.status === 'ready').sort((a, b) => Number(b.tracked) - Number(a.tracked)).slice(0, 3);
   return <button className="tracker" onClick={onOpen} aria-label="Open quest log">
     <span className="trk trk-main"><b>{main.title}<i> {main.index}/{main.total}</i></b><span>{main.step}{main.count > 0 && <em>{main.progress}/{main.count}</em>}</span></span>
     {sides.map(q => <span key={q.id} className={`trk trk-side ${q.status === 'ready' ? 'ready' : ''}`}><b>{q.title}</b><span>{q.goal}{q.count > 0 && <em>{q.progress}/{q.count}</em>}</span></span>)}
+    {sf && <span className="trk trk-star"><b>⭐ Fallen star<i> {Math.floor(sf.left / 60)}:{String(sf.left % 60).padStart(2, '0')}</i></b><span>{sf.boss ? `Defeat its beast · ${sf.place}` : `Open the star-forged chest · ${sf.place}`}<em>{sf.found}/{sf.total}</em></span></span>}
   </button>;
-}, (a, b) => a.onOpen === b.onOpen && a.snapshot.main === b.snapshot.main && a.snapshot.quests === b.snapshot.quests);
+}, (a, b) => a.onOpen === b.onOpen && a.snapshot.main === b.snapshot.main && a.snapshot.quests === b.snapshot.quests && a.snapshot.starfall?.left === b.snapshot.starfall?.left && a.snapshot.starfall?.found === b.snapshot.starfall?.found && a.snapshot.starfall?.boss === b.snapshot.starfall?.boss);
 
 function BossBar({ boss }: { boss: NonNullable<GameSnapshot['boss']> }) {
   const pct = (boss.hp / boss.maxHp) * 100;
@@ -986,6 +997,11 @@ function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boo
   const view = useRef({ cx: engine.hero.x, cy: H / 2, z: 0 });
   const size = useRef({ w: 1, h: 1 });
   const [here, setHere] = useState(() => engine.heroRegion.id);
+  // The depths are underground, not part of the valley: they get a map of their own, opened from the hole on the valley's
+  // map (once the ground has opened) or straight away while the hero is down there.
+  const [under, setUnder] = useState(() => engine.inDepths);
+  const underRef = useRef(under); underRef.current = under;
+  const hole = depthsHole(engine);
   const base = () => Math.min((size.current.w - 16) / W, (size.current.h - 16) / H);
   const regionZoom = () => { const r = engine.world.regions[0]; return Math.min((size.current.w - 16) / (r.x1 - r.x0), (size.current.h - 16) / H) / base(); };
   const clampView = () => {
@@ -1011,7 +1027,9 @@ function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boo
       size.current = { w: r.width, h: r.height };
       if (!view.current.z) view.current.z = regionZoom();
       const S = base() * view.current.z; clampView();
-      ctx.setTransform(d, 0, 0, d, 0, 0); drawWorldMap(ctx, r.width, r.height, engine, now / 1000, { cx: view.current.cx, cy: view.current.cy, S });
+      ctx.setTransform(d, 0, 0, d, 0, 0);
+      if (underRef.current) drawDepthsMap(ctx, r.width, r.height, engine, now / 1000);
+      else drawWorldMap(ctx, r.width, r.height, engine, now / 1000, { cx: view.current.cx, cy: view.current.cy, S });
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -1023,14 +1041,22 @@ function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boo
       v.z = clamp(v.z * f, 1, regionZoom() * 3); const S1 = base() * v.z;
       v.cx = wx - (sx - size.current.w / 2) / S1; v.cy = wy - (sy - size.current.h / 2) / S1;
     };
-    const down = (e: PointerEvent) => { c.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); } };
+    // A tap (not a drag) on the hole opens the map of the depths.
+    let tap: { x: number; y: number } | null = null;
+    const click = (e: PointerEvent) => {
+      if (!tap || underRef.current || Math.hypot(e.offsetX - tap.x, e.offsetY - tap.y) > 8) return;
+      const o = depthsHole(engine); if (!o) return;
+      const v = view.current, S = base() * v.z, x = size.current.w / 2 + (o.x - v.cx) * S, y = size.current.h / 2 + (o.y - v.cy) * S;
+      if (Math.hypot(e.offsetX - x, e.offsetY - y) < Math.max(26, 160 * S)) { setUnder(true); sfx.play('page'); }
+    };
+    const down = (e: PointerEvent) => { tap = { x: e.offsetX, y: e.offsetY }; c.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); } };
     const move = (e: PointerEvent) => {
       const p = pts.get(e.pointerId); if (!p) return;
       if (pts.size === 1) { const S = base() * view.current.z; view.current.cx -= (e.offsetX - p.x) / S; view.current.cy -= (e.offsetY - p.y) / S; }
       pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       if (pts.size === 2) { const [a, b] = [...pts.values()], d2 = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0) zoomAt(d2 / pinch, (a.x + b.x) / 2, (a.y + b.y) / 2); pinch = d2; }
     };
-    const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch = 0; };
+    const up = (e: PointerEvent) => { click(e); tap = null; pts.delete(e.pointerId); pinch = 0; };
     const wheel = (e: WheelEvent) => { e.preventDefault(); zoomAt(Math.pow(1.0015, -e.deltaY), e.offsetX, e.offsetY); };
     c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up); c.addEventListener('wheel', wheel, { passive: false });
     return () => { cancelAnimationFrame(raf); c.removeEventListener('pointerdown', down); c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); c.removeEventListener('wheel', wheel); };
@@ -1040,8 +1066,9 @@ function MapOverlay({ engine, touch, onClose }: { engine: GameEngine; touch: boo
   return <div className="map-overlay" onClick={onClose}>
     <div className="map-head" onClick={e => e.stopPropagation()}>
       <div className="map-tabs">
-        <button onClick={() => jump('all')}>Whole valley<small>All {LEVEL_ORDER.length} lands</small></button>
-        {LEVEL_ORDER.map(id => <button key={id} className={id === here ? 'on' : ''} onClick={() => jump(id)}>{WORLDS[id].title}<small>{levels(id)}</small></button>)}
+        <button onClick={() => { setUnder(false); jump('all'); }}>Whole valley<small>All {LEVEL_ORDER.length} lands</small></button>
+        {LEVEL_ORDER.map(id => <button key={id} className={!under && id === here ? 'on' : ''} onClick={() => { setUnder(false); jump(id); }}>{WORLDS[id].title}<small>{levels(id)}</small></button>)}
+        {hole && <button className={under ? 'on depths-tab' : 'depths-tab'} onClick={() => { setUnder(true); sfx.play('page'); }}>The Depths<small>Underground</small></button>}
       </div>
       <button className="icon-button" onClick={onClose} aria-label="Close map">✕</button>
     </div>

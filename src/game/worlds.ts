@@ -1,4 +1,5 @@
 import { buildValley, inPond, type RegionSpec } from './worldgen';
+import { addDepths } from './depths';
 import { STORY, type StoryQuest } from './story';
 import { HERO_QUESTS } from './heroStory';
 import { HERO_STORIES } from './heroes';
@@ -58,7 +59,8 @@ const meadow: RegionSpec = {
   lakeSize: { mirror: 360 },
   links: [['sunpetal', 'city'], ['mirror', 'faerie'], ['camp', 'rise'], ['willow', 'shrine'], ['millbrook', 'hollow'], ['city', 'willow'], ['city', 'camp']],
   keyAt: ['stones', 'hollow', 'shepherd'], keyName: 'Sun-crystal', shrineName: 'Sun Shrine', finaleName: 'Meadow Beacon',
-  trees: [['tree', 7], ['bush', 3], ['rock', 2]], decorKinds: [['grass', 10], ['flower', 4], ['pebble', 1], ['clover', 2]], decorColors: ['#f7d774', '#f2a1b8', '#ffffff', '#c7a6f2', '#ff9b73'],
+  trees: [['tree', 6], ['fruittree', 1], ['bush', 3], ['rock', 1]], decorKinds: [['grass', 10], ['flower', 5], ['pebble', 1], ['clover', 3]], decorColors: ['#f7d774', '#f2a1b8', '#ffffff', '#c7a6f2', '#ff9b73'],
+  border: 'river', forest: .63, features: ['meadows', 'orchards', 'hedgerows', 'beehives'],
   enemyKinds: [['gloomling', 6], ['thornling', 3], ['bristleboar', 3], ['sporecap', 2]], boss: 'mossback', bossLevel: 7,
   critters: [['rabbit', 5], ['bird', 6], ['deer', 2], ['duck', 3], ['frog', 2], ['squirrel', 2]],
   villagerNames: ['Hollis', 'Marigold', 'Fen', 'Bertie', 'Clover', 'Aldo', 'Posy', 'Jem', 'Nell', 'Tobin', 'Wynn', 'Ada', 'Cress', 'Bramwell', 'Lark', 'Maddox', 'Primrose', 'Hugo', 'Elsie', 'Barnaby', 'Dot', 'Gideon', 'Juniper', 'Ottar', 'Rue'],
@@ -157,12 +159,13 @@ const woods: RegionSpec = {
     { id: 'spring', name: 'Moss Shrine', kind: 'shrine', x: 6600, y: 700, r: 280 },
     { id: 'web', name: 'Silkshadow Hollow', kind: 'lair', x: 8500, y: 4400, r: 420, pack: ['webspinner', 'webspinner', 'shadewolf'] },
     { id: 'bell', name: 'The Old Bell', kind: 'finale', x: 8800, y: 1300, r: 440 },
-    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9480, y: 3300, r: 240 },
+    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9020, y: 3300, r: 240 },
   ],
   lakeSize: { pool: 360 },
   links: [['bellhollow', 'city'], ['glade', 'city'], ['watch', 'bell'], ['lodge', 'web'], ['shroomfarm', 'ruins'], ['city', 'gateE'], ['city', 'watch']],
   keyAt: ['shroomfarm', 'nest', 'watch'], keyName: 'Root rune', shrineName: 'Moss Shrine', finaleName: 'Ancient Root Bell',
-  trees: [['tree', 7], ['mushroom', 2], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 6], ['fern', 5], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
+  trees: [['tree', 6], ['oak', 2], ['mushroom', 1], ['bush', 2], ['rock', 1]], decorKinds: [['grass', 5], ['fern', 6], ['shroom', 3], ['pebble', 1]], decorColors: ['#9fe3c9', '#f0c47a', '#d6a3f0', '#86d4ff'],
+  border: 'snow', forest: .47, features: ['oaks', 'bogs', 'rings', 'litter'],
   enemyKinds: [['shadewolf', 4], ['webspinner', 3], ['bogling', 3], ['briarling', 3], ['mirecap', 2], ['marshlight', 1]], boss: 'brambleWarden', bossLevel: 13,
   critters: [['deer', 4], ['rabbit', 3], ['bird', 3], ['frog', 4], ['squirrel', 4], ['duck', 1]],
   villagerNames: ['Moss', 'Tansy', 'Fennick', 'Briar', 'Hazel', 'Oakley', 'Sorrel', 'Wick', 'Ivy', 'Thistle', 'Burr', 'Nettle', 'Rowe', 'Linden', 'Alder', 'Sedge', 'Fern', 'Aspen', 'Bracken', 'Holly', 'Yarrow', 'Robin', 'Clove', 'Mallow'],
@@ -244,8 +247,8 @@ const summit: RegionSpec = {
   palette: { ground: '#3e4a6b', alternate: '#46527a', path: '#8f93b8', pathEdge: '#62678c', accent: '#c9b6ff', water: '#5a6fc0', waterDeep: '#34408a', foliage: ['#1c2b45', '#2e4a63', '#6a93a8'], trunk: '#3c3346', rock: '#6f7493', pod: '#c9b6ff', roof: ['#5a5f8a', '#6e5a8a', '#4a6a8a', '#7a6a9a'], wall: '#c8cce0' },
   darkness: .6, ambient: 'stars', ground: 'snow', levels: [13, 18], xpScale: 2.4,
   pois: [
-    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
-    { id: 'lookout', name: 'Warden’s Lookout', kind: 'start', x: 1000, y: 3000, r: 380 },
+    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 700, y: 3300, r: 240 },
+    { id: 'lookout', name: 'Warden’s Lookout', kind: 'start', x: 1180, y: 2760, r: 380 },
     { id: 'hamlet', name: 'Frostpine Hamlet', kind: 'village', x: 2300, y: 4400, r: 500 },
     { id: 'observatory', name: 'Old Observatory', kind: 'lookout', x: 1300, y: 5900, r: 380 },
     { id: 'crystal', name: 'Crystal Hollow', kind: 'ruins', x: 1300, y: 1200, r: 400 },
@@ -258,13 +261,14 @@ const summit: RegionSpec = {
     { id: 'rift', name: 'Void Rift', kind: 'lair', x: 7600, y: 5900, r: 430, pack: ['wisp', 'frostwraith', 'wisp'] },
     { id: 'altar', name: 'Star Altar', kind: 'shrine', x: 7400, y: 4200, r: 280 },
     { id: 'spire', name: 'Broken Spire', kind: 'ruins', x: 7800, y: 1300, r: 400 },
-    { id: 'cradle', name: 'The Star Cradle', kind: 'finale', x: 8800, y: 1900, r: 480 },
-    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9480, y: 3300, r: 240 },
+    { id: 'cradle', name: 'The Star Cradle', kind: 'finale', x: 8760, y: 1900, r: 480 },
+    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9020, y: 3300, r: 240 },
   ],
   lakeSize: { tarn: 380 },
   links: [['hamlet', 'tarn'], ['terrace', 'city'], ['pass', 'spire'], ['city', 'altar'], ['crystal', 'bloom'], ['altar', 'cradle'], ['city', 'frostfang'], ['altar', 'gateE']],
   keyAt: ['crystal', 'frostfang', 'spire'], keyName: 'Star shard', shrineName: 'Star Altar', finaleName: 'Star Cradle',
-  trees: [['pine', 7], ['crystal', 2], ['rock', 3]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 2], ['flower', 2]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
+  trees: [['pine', 7], ['crag', 2], ['crystal', 1], ['rock', 3]], decorKinds: [['grass', 4], ['shard', 3], ['pebble', 3], ['flower', 1]], decorColors: ['#c9b6ff', '#8ee8ff', '#ffffff', '#ffd6f5'],
+  border: 'volcano', forest: .58, features: ['crags', 'peaks', 'cairns', 'tarns', 'drifts'],
   enemyKinds: [['wisp', 4], ['frostwraith', 4], ['cragGolem', 2], ['snowfang', 2], ['rimeling', 2]], boss: 'hollowStar', bossLevel: 19,
   critters: [['goat', 6], ['bird', 3], ['rabbit', 3], ['duck', 1]],
   villagerNames: ['Frost', 'Astra', 'Corin', 'Vesper', 'Lumi', 'Soren', 'Nyx', 'Halden', 'Skye', 'Elna', 'Birk', 'Selka', 'Tarn', 'Isolde', 'Rune', 'Kestrel', 'Sölve', 'Brisa', 'Eira', 'Haldor', 'Tove'],
@@ -350,8 +354,8 @@ const ember: RegionSpec = {
   palette: { ground: '#6e4a3a', alternate: '#7c5442', path: '#c9a26e', pathEdge: '#8a6a48', accent: '#ff9a3d', water: '#e2592a', waterDeep: '#a3301a', foliage: ['#2e2220', '#4f3428', '#8f5a34'], trunk: '#2a1e1a', rock: '#5e4c4a', pod: '#ffb347', roof: ['#9a4a2a', '#6a4a3a', '#b0642a', '#5a3a3a'], wall: '#dcc4a2' },
   darkness: .38, ambient: 'embers', ground: 'ash', levels: [19, 24], xpScale: 4,
   pois: [
-    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
-    { id: 'camp', name: 'Emberwatch Outpost', kind: 'start', x: 1000, y: 2700, r: 380 },
+    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 700, y: 3300, r: 240 },
+    { id: 'camp', name: 'Emberwatch Outpost', kind: 'start', x: 1080, y: 2620, r: 380 },
     { id: 'kiln', name: 'Kilnhollow', kind: 'village', x: 2400, y: 4300, r: 500 },
     { id: 'farm', name: 'Saltglass Farm', kind: 'farm', x: 1200, y: 5600, r: 440 },
     { id: 'obsidian', name: 'Obsidian Maze', kind: 'ruins', x: 1500, y: 1100, r: 400 },
@@ -368,7 +372,8 @@ const ember: RegionSpec = {
   lakeSize: { mere: 380 },
   links: [['kiln', 'city'], ['city', 'caravan'], ['city', 'foundry'], ['mere', 'watch'], ['obsidian', 'mere'], ['foundry', 'forge'], ['spring', 'caravan'], ['city', 'spring']],
   keyAt: ['obsidian', 'nest', 'foundry'], keyName: 'Ember core', shrineName: 'Phoenix Spring', finaleName: 'Dawn Forge',
-  trees: [['deadtree', 5], ['rock', 4], ['crystal', 1]], decorKinds: [['pebble', 5], ['grass', 3], ['shard', 2], ['flower', 1]], decorColors: ['#ff9a3d', '#ffd27a', '#ff5f3d', '#c9a26e'],
+  trees: [['deadtree', 4], ['rock', 3], ['obsidian', 2], ['crystal', 1]], decorKinds: [['pebble', 6], ['grass', 2], ['shard', 2], ['flower', 1]], decorColors: ['#ff9a3d', '#ffd27a', '#ff5f3d', '#c9a26e'],
+  forest: .64, features: ['volcanoes', 'lavapools', 'obsidian', 'fumaroles', 'bones'],
   enemyKinds: [['emberImp', 4], ['ashScorpion', 4], ['magmaHulk', 2], ['cinderhound', 2], ['pyrewisp', 2]], boss: 'cinderTyrant', bossLevel: 25,
   critters: [['bird', 4], ['rabbit', 3], ['goat', 2], ['frog', 1]],
   villagerNames: ['Ash', 'Brenna', 'Cinder', 'Dax', 'Emberly', 'Faro', 'Garnet', 'Hale', 'Ione', 'Jasper', 'Kilna', 'Loam', 'Marl', 'Nell', 'Onyx', 'Pyra', 'Quill', 'Rust', 'Sienna', 'Tinder', 'Umber', 'Vesta', 'Linnet'],
@@ -512,6 +517,8 @@ function addSecrets(world: WorldDefinition) {
     }
   }
 }
-export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); addSecrets(valley); } return valley; }
+export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); addSecrets(valley); addDepths(valley); } return valley; }
+/** The creatures of the depths beneath the Dawn Forge, found in no land. */
+export const DEPTH_KINDS: EnemyKind[] = ['umbralKnight', 'duskwing', 'hollowArcher', 'shardback', 'acolyte'];
 /** Region metadata for menus, without generating the map. */
 export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit, ember };

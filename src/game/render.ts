@@ -4,9 +4,10 @@ import { SPELLS } from './spells';
 import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
-import { REGION_W, fbm, riverX } from './worldgen';
+import { CAVE_MOUTH, REGION_W, fbm, rangeEdge, riverX } from './worldgen';
+import { inDepthsArea, type Depths } from './depths';
 import type { BossLook, BossVariant } from './bosses';
-import type { Captive, Decor, ItemIcon, Obstacle, Palette, Point, Poi, Region, River, WorldDefinition, WorldObject } from './types';
+import type { Captive, Decor, ItemIcon, Obstacle, Palette, Point, Poi, Range, Region, River, WorldDefinition, WorldObject } from './types';
 
 /** Traces a river's band, `w` either side of its centre line, between two heights (as a path to fill or clip). */
 function riverBand(g: CanvasRenderingContext2D, rv: River, w: number, y0: number, y1: number, dx = 0, dy = 0) {
@@ -41,12 +42,21 @@ const BUBBLE_FONT = `800 13px ${UI}`, TAG_FONT = `900 11px ${UI}`;
 const CHUNK = 512;
 /** How far a tuft's piece (with its lean and shadow) reaches from its root: sideways, up and down. */
 const TUFT_X = 40, TUFT_UP = 50, TUFT_DOWN = 16;
-const BAKED_DECOR = new Set(['pebble', 'clover', 'crop']);
-const TALL = new Set(['tree', 'pine', 'house', 'manor', 'windmill', 'tower', 'deadtree', 'mushroom', 'crystal', 'cliff']);
-/** Buildings and cliffs don't sway in the wind. */
-const STILL = new Set(['house', 'manor', 'tower', 'windmill', 'cliff']);
+const BAKED_DECOR = new Set(['pebble', 'clover', 'crop', 'litter', 'drift', 'vein', 'bone']);
+const TALL = new Set(['tree', 'pine', 'house', 'manor', 'windmill', 'tower', 'deadtree', 'mushroom', 'crystal', 'cliff', 'oak', 'fruittree', 'crag', 'peak', 'basalt', 'volcano', 'obsidian']);
+/** Buildings, cliffs, mountains and stone don't sway in the wind. */
+const STILL = new Set(['house', 'manor', 'tower', 'windmill', 'cliff', 'crag', 'peak', 'basalt', 'volcano', 'obsidian']);
 /** Scenery with moving parts drawn over its baked piece (water, smoke, flags, sails, flames, glows, falling leaves). */
-const LIVELY = new Set(['fountain', 'banner', 'manor', 'tree', 'crystal', 'mushroom', 'lamppost', 'campfire', 'windmill', 'house', 'tower']);
+const LIVELY = new Set(['fountain', 'banner', 'manor', 'tree', 'crystal', 'mushroom', 'lamppost', 'campfire', 'windmill', 'house', 'tower', 'oak', 'beehive', 'volcano', 'basalt', 'fumarole', 'obsidian']);
+/**
+ * Big scenery is baked in only a few sizes and shared by every land (it doesn't take the land's colours), and the
+ * largest at a capped resolution: a mountain is soft paper, and a sharp one would cost a phone megabytes per piece.
+ */
+const SIZE_STEP: Partial<Record<string, number>> = { oak: 10, peak: 20, basalt: 20, volcano: 60, crag: 8 };
+const SHARED_ART = new Set(['peak', 'basalt', 'volcano']);
+const RES_CAP: Partial<Record<string, number>> = { peak: 1.25, basalt: 1.25, volcano: .85, oak: 1.5 };
+/** A building site on a river: the bridge itself is built there. */
+const riverSite = (o: WorldObject, world: WorldDefinition) => o.variant === 'bridge' && world.rivers.some(rv => Math.abs(riverX(rv, o.y) - o.x) < 60);
 /** The region a world x position belongs to. */
 const regionOf = (world: WorldDefinition, x: number): Region => world.regions[clamp(Math.floor(x / REGION_W), 0, world.regions.length - 1)];
 
@@ -66,6 +76,8 @@ function shade(c: string, f: number) {
 /** Main quest markers are gold, side quests blue. */
 export const MAIN_COLOR = '#ffd35c';
 export const SIDE_COLOR = '#6fc3ff';
+/** A fallen star's colour, on the arrow that points to it and on the maps. */
+export const STAR_COLOR = '#fff1b8';
 const tintCache = new Map<string, string>();
 /** Blends a '#rrggbb' colour toward angry red as a creature turns aggressive (k = 0…1). */
 function enrage(c: string, k: number) {
@@ -163,6 +175,16 @@ function spriteBounds(o: Obstacle): [number, number, number, number] {
     case 'fence': return o.w! > o.h! ? [-36, -26, 36, 10] : [-10, -44, 10, 40];
     case 'campfire': return [-28, -16, 28, 18];
     case 'log': return [-40, -16, 42, 16];
+    case 'hedge': return o.w! > o.h! ? [-56, -48, 58, 20] : [-26, -76, 28, 52];
+    case 'fruittree': return [-r * 1.7, -r * 2.6, r * 1.8, r * 1.0];
+    case 'beehive': return [-22, -46, 34, 14];
+    case 'oak': return [-r * 1.9, -r * 2.6, r * 2.0, r * 1.0];
+    case 'crag': return [-r * 1.3, -r * 2.6, r * 1.4, r * .7];
+    case 'cairn': return [-22, -40, 22, 12];
+    case 'peak': case 'basalt': return [-r * 1.82, -r * 2.4, r * 1.92, r * .8];
+    case 'volcano': return [-r * 1.6, -r * 1.75, r * 1.65, r * .75];
+    case 'obsidian': return [-r * 1.2, -r * 2.5, r * 1.3, r * .7];
+    case 'fumarole': return [-26, -14, 26, 14];
     default: return [-r * 1.4, -r * 1.6, r * 1.5, r * 1.2];
   }
 }
@@ -180,6 +202,7 @@ const ENEMY_REACH: Partial<Record<Enemy['kind'], [number, number, number, number
   emberImp: [-1.9, -2.73, 1.92, .77], ashScorpion: [-1.78, -1.3, 1.31, 1.05], magmaHulk: [-1.62, -1.34, 1.77, .98],
   bogling: [-1.79, -2.31, 1.24, .91], briarling: [-1.58, -1.63, 1.56, 1.37], rimeling: [-1.58, -1.63, 1.56, 1.37], mirecap: [-1.4, -1.31, 1.38, 1.16],
   marshlight: [-1.3, -2.75, 1.29, 2.06], pyrewisp: [-1.3, -2.75, 1.29, 2.06], snowfang: [-1.97, -1.2, 1.7, 1.09], cinderhound: [-1.97, -1.2, 1.7, 1.09],
+  umbralKnight: [-1.5, -2.6, 1.9, 1.15], duskwing: [-2.3, -2.7, 2.3, 1.4], hollowArcher: [-1.1, -1.75, 1.75, 1.15], shardback: [-1.6, -2.1, 1.7, 1], acolyte: [-1.6, -2.2, 1.6, 1.25],
 };
 /**
  * The colours of each land's own creatures, drawn with the body of the kind they take after (ENEMY_AI): boglings and
@@ -378,8 +401,9 @@ export class Renderer {
     this.wind = .75 + Math.sin(time * .35) * .35 + Math.sin(time * 1.3) * .1;
     // In a cutscene the camera glides to what the story shows; otherwise it follows the hero a little ahead.
     const focus = e.cineFocus;
-    const tx = clamp((focus ? focus.x : hero.x + hero.vx * .28) - vw / 2, 0, Math.max(0, world.width - vw));
-    const ty = clamp((focus ? focus.y : hero.y + hero.vy * .28) - vh / 2, 0, Math.max(0, world.height - vh));
+    const B = e.boundsOf(focus || hero);
+    const tx = clamp((focus ? focus.x : hero.x + hero.vx * .28) - vw / 2, B.x0, Math.max(B.x0, B.x1 - vw));
+    const ty = clamp((focus ? focus.y : hero.y + hero.vy * .28) - vh / 2, B.y0, Math.max(B.y0, B.y1 - vh));
     if (!this.cam.ready || this.camCut !== e.camCut || (!focus && Math.hypot(tx - this.cam.x, ty - this.cam.y) > 900)) { this.cam.x = tx; this.cam.y = ty; this.cam.ready = true; this.camCut = e.camCut; this.fox.x = hero.x - 40; this.fox.y = hero.y + 10; }
     const k = Math.min(1, dt * (focus ? 1.8 : 5));
     this.cam.x += (tx - this.cam.x) * k; this.cam.y += (ty - this.cam.y) * k;
@@ -397,6 +421,8 @@ export class Renderer {
     this.drawWater(ctx, e, view);
     this.drawDecor(ctx, e, view);
     this.drawPlaceNames(ctx, e, view);
+    this.drawCaveRoofs(ctx, e, view);
+    this.drawFallenStar(ctx, e, view);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
     for (const w of e.wells) this.drawWell(ctx, w);
     this.drawChargeLines(ctx, e);
@@ -405,11 +431,11 @@ export class Renderer {
     const m = 140, x0 = camX - m, x1 = camX + vw + m, y0 = camY - m, y1 = camY + vh + 260;
     const inView = (x: number, y: number) => x > x0 && x < x1 && y > y0 && y < y1;
     for (const o of e.obstacleGrid.rect(x0 - 60, y0, x1 + 60, y1)) draws.push({ y: o.y + (o.h || o.r * .5), run: () => this.drawObstacle(ctx, o, e) });
-    for (const o of world.objects) if (inView(o.x, o.y) && o.kind !== 'well' && o.kind !== 'campfire' && o.kind !== 'fountain') { if (e.isVisible(o)) draws.push({ y: o.kind === 'barrier' && o.variant === 'bridge' && world.rivers.length ? o.y - 60 : o.y + 10, run: () => this.drawObject(ctx, o, e) }); }
+    for (const o of world.objects) if (inView(o.x, o.y) && o.kind !== 'well' && o.kind !== 'campfire' && o.kind !== 'fountain') { if (e.isVisible(o)) draws.push({ y: (o.kind === 'barrier' && o.variant === 'bridge' && world.rivers.length) || (o.kind === 'site' && riverSite(o, world)) ? o.y - 60 : o.y + 10, run: () => this.drawObject(ctx, o, e) }); }
     for (const p of e.pods) if (!p.dead && inView(p.x, p.y)) draws.push({ y: p.y + 12, run: () => this.drawPod(ctx, p.x, p.y, e) });
     for (const n of e.npcs) if (inView(n.x, n.y) && e.npcVisible(n)) draws.push({ y: n.y + 22, run: () => this.drawNpc(ctx, n, e) });
     for (const c of e.critters) if (inView(c.x, c.y)) draws.push({ y: c.y + (c.state === 'fly' ? 400 : 6), run: () => this.drawCritter(ctx, c, e) });
-    for (const en of e.enemies) if (!en.dead && inView(en.x, en.y)) draws.push({ y: en.y + en.r * .7, run: () => this.drawEnemy(ctx, en, e) });
+    for (const en of e.enemies) if (!en.dead && !en.wall && inView(en.x, en.y)) draws.push({ y: en.y + en.r * .7, run: () => this.drawEnemy(ctx, en, e) });
     // Tuft trots beside Mira; Kael travels alone.
     if (e.hasPet) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
     for (const p of e.pets) if (inView(p.x, p.y)) draws.push({ y: p.y + 14, run: () => this.drawPet(ctx, p, e) });
@@ -432,8 +458,8 @@ export class Renderer {
     this.drawBubbles(ctx, e, view);
     this.drawLevelTags(ctx, e, view);
     this.drawFloating(ctx, e);
-    if (!e.cine) { this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0); this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1); }
-    const rich = this.quality > .5, here = regionOf(world, hero.x), amb = here.ambient;
+    if (!e.cine) { this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0); this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1); this.drawArrow(ctx, e, e.starTarget(), STAR_COLOR, 2); }
+    const rich = this.quality > .5, here = regionOf(world, hero.x), amb = e.inDepths ? 'depths' : here.ambient;
     if (amb === 'petals' && rich && this.weather) this.drawCloudShadows(ctx, e, view);
     ctx.restore();
 
@@ -443,8 +469,15 @@ export class Renderer {
     if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'stable' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
     else this.nearScreen = null;
     // Story scenes at night darken even the sunny meadow, so lamps and fires glow.
-    const dark = Math.max(this.darkAt(world, camX + vw / 2), e.cineDark);
-    if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, amb === 'stars' ? '8,8,32' : amb === 'embers' ? '28,10,8' : '6,20,22');
+    const cave = this.caveDark(world, hero);
+    if (cave > 0) for (const rg of world.ranges) if (rg.kind === 'volcano') for (let x = Math.floor((camX - 100) / 170) * 170; x < camX + vw + 100; x += 170) {
+      if (Math.abs(x - rg.x) > rangeEdge(rg, rg.passY)) continue;
+      const k = Math.floor(x / 170), fl = .6 + Math.sin(time * 2 + k) * .15;
+      this.lights.push({ x: x + (k % 3) * 30, y: rg.passY + (k % 2 ? 1 : -1) * (rg.passHw - 30), r: 120, color: '#ff7a3d', a: fl });
+    }
+    const deep = e.inDepths, dark = deep ? .8 : Math.max(this.darkAt(world, camX + vw / 2), e.cineDark, cave);
+    if (dark > .01) this.drawLighting(ctx, w, h, e, toScreen, scale, dark, deep ? '14,6,22' : cave >= dark ? '24,8,6' : amb === 'stars' ? '8,8,32' : amb === 'embers' ? '28,10,8' : '6,20,22');
+    if (e.skyStar.t > 0 && !deep) this.drawSkyStar(ctx, w, h, e);
     if (amb === 'leaves' && rich && this.weather) this.drawGodRays(ctx, w, h);
     if (amb === 'stars' && this.weather) this.drawShootingStar(ctx, w, h, dt);
     if (amb === 'petals' && this.quality >= 1 && this.weather) this.drawSunGlow(ctx, w, h);
@@ -506,6 +539,7 @@ export class Renderer {
     const c = document.createElement('canvas'); c.width = c.height = Math.ceil(CHUNK * res);
     const g = c.getContext('2d')!;
     g.scale(res, res); g.translate(-ox, -oy);
+    if (world.depths && ox + CHUNK > world.width + 200) { this.bakeDepths(g, world.depths, ox, oy); this.chunkDecor.set(c, this.pasteKeep); this.chunks.set(`${cx},${cy}`, c); return c; }
     g.fillStyle = p.ground; g.fillRect(ox, oy, CHUNK, CHUNK);
     // The page itself: faint fibres and a slow mottle of lighter and darker paper.
     g.globalAlpha = .45; g.fillStyle = grainPattern(g); g.fillRect(ox, oy, CHUNK, CHUNK); g.globalAlpha = 1;
@@ -522,6 +556,7 @@ export class Renderer {
     sheet(g, lo, dark, p.ground, 3, 4);
     sheet(g, hi, alt, p.ground);
     sheet(g, top, bright, alt, 3, 4, 1.4);
+    for (const rg of world.ranges) if (Math.abs(ox + CHUNK / 2 - rg.x) < rg.hw + CHUNK) this.bakeRange(g, rg, oy);
     // Places: plazas, fields and ruined floors.
     for (const poi of world.pois) {
       if (poi.x + poi.r < ox - 60 || poi.x - poi.r > ox + CHUNK + 60 || poi.y + poi.r < oy - 60 || poi.y - poi.r > oy + CHUNK + 60) continue;
@@ -541,16 +576,28 @@ export class Renderer {
         }
       }
     }
+    // The road through the cave runs in the dark.
+    for (const rg of world.ranges) if (rg.kind === 'volcano' && Math.abs(ox + CHUNK / 2 - rg.x) < rg.hw + CHUNK) { const e = rangeEdge(rg, rg.passY) - CAVE_MOUTH; g.fillStyle = 'rgba(18,8,10,.5)'; g.fillRect(rg.x - e, rg.passY - rg.passHw, e * 2, rg.passHw * 2); }
     // Lake beds (the living surface is drawn each frame).
     for (const pond of world.ponds) {
       if (pond.x + pond.r * 1.2 < ox || pond.x - pond.r * 1.2 > ox + CHUNK || pond.y + pond.r < oy || pond.y - pond.r > oy + CHUNK) continue;
-      const shore = region.ground === 'snow' ? '#dfe6f5' : region.ground === 'ash' ? '#5a3a30' : mix(p.path, p.ground, .3);
+      // A bog is murky and mossy-edged, a tarn frozen over; other lakes take the land's water (lava in the Ember Wastes).
+      const bog = pond.kind === 'bog', ice = pond.kind === 'ice';
+      const shore = bog ? '#4a5a34' : ice ? '#eef2fb' : region.ground === 'snow' ? '#dfe6f5' : region.ground === 'ash' ? '#5a3a30' : mix(p.path, p.ground, .3);
+      const deep = bog ? '#203826' : ice ? '#8fb4d8' : p.waterDeep, water = bog ? '#34503a' : ice ? '#c8def2' : p.water;
       ellipse(g, pond.x + 5, pond.y + 7, pond.r * 1.1, pond.r * .66, mix(p.ground, INK, .2));
       ellipse(g, pond.x, pond.y, pond.r * 1.08, pond.r * .64, mix(shore, '#fffbea', .3));
       ellipse(g, pond.x, pond.y, pond.r * 1.05, pond.r * .62, shore);
-      ellipse(g, pond.x, pond.y, pond.r, pond.r * .58, p.waterDeep);
-      ellipse(g, pond.x - pond.r * .06, pond.y - pond.r * .05, pond.r * .86, pond.r * .47, p.water);
-      ellipse(g, pond.x - pond.r * .16, pond.y - pond.r * .12, pond.r * .5, pond.r * .24, mix(p.water, '#ffffff', .12));
+      ellipse(g, pond.x, pond.y, pond.r, pond.r * .58, deep);
+      ellipse(g, pond.x - pond.r * .06, pond.y - pond.r * .05, pond.r * .86, pond.r * .47, water);
+      ellipse(g, pond.x - pond.r * .16, pond.y - pond.r * .12, pond.r * .5, pond.r * .24, mix(water, '#ffffff', ice ? .45 : .12));
+      if (ice) {
+        // Cracks in the ice and a dusting of snow at the edge.
+        g.strokeStyle = 'rgba(90,130,180,.55)'; g.lineWidth = 1.4;
+        for (let i = 0; i < 6; i++) { const a = i * 1.1 + pond.x * .01, x0 = pond.x + Math.cos(a) * pond.r * .15, y0 = pond.y + Math.sin(a) * pond.r * .08; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + Math.cos(a) * pond.r * .4, y0 + Math.sin(a) * pond.r * .2 + 6); g.lineTo(x0 + Math.cos(a + .3) * pond.r * .75, y0 + Math.sin(a + .3) * pond.r * .4); g.stroke(); }
+        for (let i = 0; i < 14; i++) { const a = i / 14 * TAU; ellipse(g, pond.x + Math.cos(a) * pond.r * .95, pond.y + Math.sin(a) * pond.r * .55, 18, 6, '#f7f9ff'); }
+      }
+      if (bog) for (let i = 0; i < 10; i++) { const a = i * 2.4 + pond.x * .02, d = pond.r * (.3 + (i % 3) * .2); ellipse(g, pond.x + Math.cos(a) * d, pond.y + Math.sin(a) * d * .55, 12, 6, '#5f8a3c'); }
     }
     // River beds: a band of water with paper banks, running the whole height of the valley.
     for (const rv of world.rivers) {
@@ -565,7 +612,11 @@ export class Renderer {
     }
     // Pebbles, clover and crops: tiny pieces pasted flat.
     for (const d of this.bakedDecor.rect(ox - 20, oy - 20, ox + CHUNK + 20, oy + CHUNK + 20)) {
-      if (d.kind === 'pebble') { const rx = 4.5 + d.seed * 3, ry = 2.8 + d.seed * 1.5; ellipse(g, d.x + 1.5, d.y + 2, rx, ry, mix(p.ground, INK, .3)); ellipse(g, d.x, d.y, rx, ry, shade(p.rock, .15)); ellipse(g, d.x - .8, d.y - 1, rx * .55, ry * .5, 'rgba(255,255,245,.45)'); }
+      if (d.kind === 'litter') { for (let i = 0; i < 3; i++) { const a = d.seed * 20 + i * 2.1, lx = d.x + Math.cos(a) * 5, ly = d.y + Math.sin(a) * 3; ellipse(g, lx + 1, ly + 1.2, 4.6, 2.2, mix(p.ground, INK, .25), a); ellipse(g, lx, ly, 4.6, 2.2, i ? shade(d.color, (i - 1) * .12) : d.color, a); } }
+      else if (d.kind === 'drift') { const w = 16 + d.seed * 18; ellipse(g, d.x + 2, d.y + 3, w, w * .32, 'rgba(80,90,130,.25)'); ellipse(g, d.x, d.y, w, w * .34, d.color); ellipse(g, d.x - w * .25, d.y - w * .1, w * .5, w * .14, '#ffffff'); }
+      else if (d.kind === 'vein') { const a = d.seed * 9, l = 14 + d.seed * 14, pts = [[-l, 0], [-l * .3, 3], [l * .2, -2], [l, 2]].map(([u, v]) => [d.x + Math.cos(a) * u - Math.sin(a) * v, d.y + Math.sin(a) * u * .6 + Math.cos(a) * v]); g.lineCap = 'round'; g.lineJoin = 'round'; for (const [w, c] of [[5, '#2a1a16'], [2.6, d.color], [1, '#ffe9a8']] as Array<[number, string]>) { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); } }
+      else if (d.kind === 'bone') { if (d.seed > .5) { ellipse(g, d.x + 1, d.y + 1.5, 6, 5, mix(p.ground, INK, .3)); ellipse(g, d.x, d.y, 6, 5, d.color); circle(g, d.x - 2, d.y - .5, 1.3, '#3a2a26'); circle(g, d.x + 2, d.y - .5, 1.3, '#3a2a26'); } else { g.strokeStyle = d.color; g.lineWidth = 2.2; g.lineCap = 'round'; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(d.x - 7 + i * 4.5, d.y - 4); g.quadraticCurveTo(d.x - 9 + i * 4.5, d.y, d.x - 6 + i * 4.5, d.y + 4); g.stroke(); } g.beginPath(); g.moveTo(d.x - 9, d.y); g.lineTo(d.x + 9, d.y); g.stroke(); } }
+      else if (d.kind === 'pebble') { const rx = 4.5 + d.seed * 3, ry = 2.8 + d.seed * 1.5; ellipse(g, d.x + 1.5, d.y + 2, rx, ry, mix(p.ground, INK, .3)); ellipse(g, d.x, d.y, rx, ry, shade(p.rock, .15)); ellipse(g, d.x - .8, d.y - 1, rx * .55, ry * .5, 'rgba(255,255,245,.45)'); }
       else if (d.kind === 'clover') { for (let i = 0; i < 3; i++) { const lx = d.x + Math.cos(i * 2.1) * 3.2, ly = d.y + Math.sin(i * 2.1) * 2.2; circle(g, lx + 1, ly + 1.5, 2.8, mix(p.ground, INK, .22)); circle(g, lx, ly, 2.8, p.foliage[2]); } if (d.seed > .7) circle(g, d.x, d.y - 4, 2, '#fff'); }
       else { g.strokeStyle = p.foliage[1]; g.lineWidth = 2.2; g.lineCap = 'round'; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(d.x, d.y); g.quadraticCurveTo(d.x + i * 6, d.y - 8, d.x + i * 9, d.y - 12); g.stroke(); } circle(g, d.x + 1, d.y - 11, 3.4, mix(p.ground, INK, .2)); circle(g, d.x, d.y - 12, 3.2, d.seed > .5 ? '#e0a040' : d.color); }
     }
@@ -586,6 +637,86 @@ export class Renderer {
     this.chunkDecor.set(c, keep);
     this.chunks.set(`${cx},${cy}`, c);
     return c;
+  }
+  /**
+   * The depths' ground: black rock, and the floor of each chamber and hall cut out of it with a pale rim and a deep
+   * shadow, flagstones in the throne room, bones and pebbles strewn about.
+   */
+  private bakeDepths(g: CanvasRenderingContext2D, dp: Depths, ox: number, oy: number) {
+    g.fillStyle = '#120c14'; g.fillRect(ox, oy, CHUNK, CHUNK);
+    const rockLo: Blob[] = [], rockHi: Blob[] = [];
+    for (let y = Math.floor((oy - 60) / 44) * 44; y < oy + CHUNK + 60; y += 44) for (let x = Math.floor((ox - 60) / 44) * 44; x < ox + CHUNK + 60; x += 44) { const n = fbm(x * 1.4, y * 1.4, 41), j = hash(x * .3 + y) * 8 - 4; if (n > .56) rockHi.push([x + j, y - j, 24 + (n - .56) * 70]); if (n < .38) rockLo.push([x - j, y + j, 22 + (.38 - n) * 60]); }
+    const blobs = (list: Blob[], c: string) => { g.fillStyle = c; g.beginPath(); for (const [x, y, r] of list) { g.moveTo(x + r, y); g.arc(x, y, r, 0, TAU); } g.fill(); };
+    blobs(rockLo, '#0c080e'); blobs(rockHi, '#1a1220');
+    const near = (x: number, y: number, r: number) => x + r > ox - 40 && x - r < ox + CHUNK + 40 && y + r > oy - 40 && y - r < oy + CHUNK + 40;
+    const floor = (pad: number, dx: number, dy: number, color: string) => {
+      g.fillStyle = color; g.strokeStyle = color; g.lineCap = 'round';
+      g.beginPath(); for (const r of dp.rooms) if (near(r.x, r.y, Math.max(r.rx, r.ry) + pad)) { g.moveTo(r.x + dx + r.rx + pad, r.y + dy); g.ellipse(r.x + dx, r.y + dy, r.rx + pad, r.ry + pad, 0, 0, TAU); } g.fill();
+      for (const h of dp.halls) { g.lineWidth = (h.hw + pad) * 2; g.beginPath(); g.moveTo(h.a.x + dx, h.a.y + dy); g.lineTo(h.b.x + dx, h.b.y + dy); g.stroke(); }
+    };
+    floor(16, 6, 9, '#050307'); floor(14, 0, 0, '#5a4c56'); floor(10, 0, 0, '#3e3440'); floor(0, 0, 0, '#2e2630');
+    // Lighter flags of stone across the floors.
+    g.save(); g.beginPath(); for (const r of dp.rooms) { g.moveTo(r.x + r.rx, r.y); g.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, TAU); } g.clip();
+    const fl: Blob[] = []; for (let y = Math.floor(oy / 50) * 50; y < oy + CHUNK + 50; y += 50) for (let x = Math.floor(ox / 50) * 50; x < ox + CHUNK + 50; x += 50) { const n = fbm(x * 2, y * 2, 43); if (n > .52) fl.push([x, y, 20 + (n - .52) * 60]); }
+    blobs(fl, '#332a38');
+    g.restore();
+    const throne = dp.rooms.find(r => r.id === 'throne');
+    if (throne && near(throne.x, throne.y, throne.rx)) {
+      paving(g, throne.x, throne.y, throne.rx * .62, throne.ry * .62, '#3a3046', '#1e1828', 34, throne.x);
+      g.strokeStyle = 'rgba(201,182,255,.35)'; g.lineWidth = 3; g.setLineDash([16, 12]);
+      for (const k of [.3, .45]) { g.beginPath(); g.ellipse(throne.x, throne.y, throne.rx * k, throne.ry * k, 0, 0, TAU); g.stroke(); } g.setLineDash([]);
+    }
+    for (const d of this.bakedDecor.rect(ox - 20, oy - 20, ox + CHUNK + 20, oy + CHUNK + 20)) {
+      if (d.kind === 'bone') { if (d.seed > .5) { ellipse(g, d.x, d.y, 6, 5, d.color); circle(g, d.x - 2, d.y - .5, 1.3, '#2a1e24'); circle(g, d.x + 2, d.y - .5, 1.3, '#2a1e24'); } else { g.strokeStyle = d.color; g.lineWidth = 2; g.lineCap = 'round'; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(d.x - 7 + i * 4.5, d.y - 4); g.quadraticCurveTo(d.x - 9 + i * 4.5, d.y, d.x - 6 + i * 4.5, d.y + 4); g.stroke(); } } }
+      else if (d.kind === 'pebble') { const rx = 4.5 + d.seed * 3, ry = 2.8 + d.seed * 1.5; ellipse(g, d.x + 1.5, d.y + 2, rx, ry, '#141018'); ellipse(g, d.x, d.y, rx, ry, '#4a4050'); }
+    }
+  }
+  /**
+   * A mountain range's massif as the ground sees it: rock heaped in sheets, snowfields (or ash with lava running through
+   * it), and the canyon floor through it, packed snow or the dark floor of the cave. The peaks themselves stand on top.
+   */
+  private bakeRange(g: CanvasRenderingContext2D, rg: Range, oy: number) {
+    const snow = rg.kind === 'snow', y0 = oy - 60, y1 = oy + CHUNK + 60, step = 16;
+    const rock = snow ? '#8d93ad' : '#3e3036', high = snow ? '#a6acc4' : '#4e3e42', low = snow ? '#6f7493' : '#2a1e24', cap = snow ? '#eef2fb' : '#5e4c4c';
+    const outline = (pad: number, dx = 0, dy = 0) => {
+      g.beginPath();
+      for (let y = Math.floor(y0 / step) * step; y <= y1; y += step) { const x = rg.x - rangeEdge(rg, y) - pad; if (y === Math.floor(y0 / step) * step) g.moveTo(x + dx, y + dy); else g.lineTo(x + dx, y + dy); }
+      for (let y = Math.ceil(y1 / step) * step; y >= y0 - step; y -= step) g.lineTo(rg.x + rangeEdge(rg, y) + pad + dx, y + dy);
+      g.closePath();
+    };
+    outline(10, 5, 7); g.fillStyle = mix(rock, INK, .45); g.fill();
+    outline(16); g.fillStyle = mix(rock, '#fffbea', .25); g.fill();
+    outline(12); g.fillStyle = rock; g.fill();
+    g.save(); outline(12); g.clip();
+    // Ridges and hollows in sheets, then snowfields high up (or ash), from the same noise everywhere along the range.
+    const lo: Blob[] = [], hi: Blob[] = [], top: Blob[] = [];
+    for (let y = Math.floor(y0 / 40) * 40; y < y1; y += 40) for (let x = rg.x - rg.hw - 40; x < rg.x + rg.hw + 40; x += 40) {
+      const n = fbm(x * 1.6, y * 1.6, snow ? 11 : 23), j = hash(x * .37 + y * 1.3) * 10 - 5, mid = 1 - Math.abs(x - rg.x) / rg.hw;
+      if (n > .5) hi.push([x + j, y - j, 26 + (n - .5) * 60]);
+      if (n + mid * .35 > .78) top.push([x - j, y + j, 22 + mid * 26]);
+      if (n < .38) lo.push([x + j, y + j, 24 + (.38 - n) * 60]);
+    }
+    sheet(g, lo, low, rock, 3, 4); sheet(g, hi, high, rock); sheet(g, top, cap, high, 3, 4, 1.6);
+    if (!snow) {
+      // Lava seeping through the cracks of the volcanic rock.
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      for (let y = Math.floor(y0 / 90) * 90; y < y1; y += 90) for (let x = rg.x - rg.hw; x < rg.x + rg.hw; x += 120) {
+        if (hash(x * .13 + y * .07) < .55) continue;
+        const a = hash(x + y) * 6, pts = [0, 1, 2, 3].map(k => [x + Math.cos(a) * k * 22 + hash(k + x) * 10, y + Math.sin(a) * k * 14 + hash(k + y) * 8]);
+        for (const [w, c] of [[6, '#1e1418'], [3, '#e2592a'], [1.2, '#ffd27a']] as Array<[number, string]>) { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); pts.forEach(([px, py], i) => i ? g.lineTo(px, py) : g.moveTo(px, py)); g.stroke(); }
+      }
+    } else {
+      // Strata lines across the rock.
+      g.strokeStyle = 'rgba(60,64,90,.35)'; g.lineWidth = 1.4;
+      for (let y = Math.floor(y0 / 70) * 70; y < y1; y += 70) { g.beginPath(); for (let x = rg.x - rg.hw; x <= rg.x + rg.hw; x += 40) { const yy = y + Math.sin(x * .02 + y) * 10; if (x === rg.x - rg.hw) g.moveTo(x, yy); else g.lineTo(x, yy); } g.stroke(); }
+    }
+    g.restore();
+    // The canyon floor (the cave's, inside the volcano).
+    const e = rangeEdge(rg, rg.passY) + 40, cy0 = rg.passY - rg.passHw, cy1 = rg.passY + rg.passHw;
+    if (cy1 < y0 || cy0 > y1) return;
+    const floor = snow ? '#d4dbea' : '#2e2226', floorDark = snow ? '#b4bcd2' : '#1e1518';
+    rrect(g, rg.x - e, cy0 - 6, e * 2, cy1 - cy0 + 12, 20, floorDark); rrect(g, rg.x - e, cy0, e * 2, cy1 - cy0, 18, floor);
+    for (let i = 0; i < 70; i++) { const x = rg.x - e + hash(i * 3.7 + rg.x) * e * 2, y = cy0 + 10 + hash(i * 7.1) * (cy1 - cy0 - 20); ellipse(g, x, y, 6 + hash(i) * 10, 3 + hash(i + 1) * 4, snow ? (i % 3 ? '#ffffff' : '#9da4bc') : (i % 4 ? '#3e3036' : '#ff7a3d')); }
   }
   private bakePlace(g: CanvasRenderingContext2D, poi: Poi, p: Palette) {
     const { x, y, r } = poi, stone = shade(p.path, .06), gap = shade(p.pathEdge, -.05), rock = p.rock.startsWith('#') ? p.rock : '#8c8f80';
@@ -617,6 +748,7 @@ export class Renderer {
   }
   /** Darkness at a world x: each region's own, blended over the last stretch before a border. */
   private darkAt(world: WorldDefinition, x: number) {
+    if (world.depths && x > world.width + 200) return .8;
     const r = regionOf(world, x), band = 900;
     const next = x > r.x1 - band ? world.regions[world.regions.indexOf(r) + 1] : x < r.x0 + band ? world.regions[world.regions.indexOf(r) - 1] : undefined;
     if (!next) return r.darkness;
@@ -645,10 +777,12 @@ export class Renderer {
     }
     for (const [pi, pond] of e.world.ponds.entries()) {
       if (pond.x + pond.r < v.x - 40 || pond.x - pond.r > v.x + v.w + 40 || pond.y + pond.r < v.y - 40 || pond.y - pond.r > v.y + v.h + 40) continue;
-      const reg = regionOf(e.world, pond.x), summit = reg.ambient === 'stars', lava = reg.ambient === 'embers', p = reg.palette;
+      const reg = regionOf(e.world, pond.x), summit = reg.ambient === 'stars', lava = reg.ambient === 'embers', p = reg.palette, bog = pond.kind === 'bog';
+      if (pond.kind === 'ice') { for (let i = 0; i < 5; i++) { const a = Math.max(0, Math.sin(t * 1.2 + i * 2.3 + pi)), x = pond.x + Math.sin(i * 5.3 + pi) * pond.r * .6, y = pond.y + Math.cos(i * 3.1) * pond.r * .3; if (a > .6) { ctx.fillStyle = `rgba(255,255,255,${a})`; star(ctx, x, y, 3 + a * 3); ctx.fill(); } } continue; }
       ctx.save(); ctx.beginPath(); ctx.ellipse(pond.x, pond.y, pond.r, pond.r * .58, 0, 0, TAU); ctx.clip();
       const bands = Math.min(9, Math.round(pond.r / 45));
-      for (let i = 0; i < bands; i++) {
+      if (bog) for (let k = 0; k < 4; k++) { const ph = (t * .5 + k * .27 + pi * .13) % 1, x = pond.x + Math.sin(k * 4.1 + pi) * pond.r * .55, y = pond.y + Math.cos(k * 2.3 + pi) * pond.r * .28; circle(ctx, x, y - ph * 4, 2 + ph * 4, `rgba(160,200,140,${(1 - ph) * .5})`); }
+      for (let i = 0; i < (bog ? 0 : bands); i++) {
         const yy = pond.y - pond.r * .45 + i * pond.r * .9 / bands, off = Math.sin(t * .8 + i * 1.3 + pi) * pond.r * .25;
         ctx.strokeStyle = `rgba(255,255,255,${.07 + Math.sin(t * 1.4 + i) * .04})`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(pond.x - pond.r * .45 + off, yy); ctx.quadraticCurveTo(pond.x + off, yy - 5, pond.x + pond.r * .45 + off, yy); ctx.stroke();
@@ -762,11 +896,12 @@ export class Renderer {
 
   // ───────────────────────────── obstacles
   private spriteKey(o: Obstacle, reg: { id: string }) {
-    return `${reg.id}|${o.kind}|${Math.round(o.r / 4) * 4}|${Math.floor(o.seed * 3)}|${o.color || ''}|${o.w || 0}`;
+    const step = SIZE_STEP[o.kind] || 4;
+    return `${SHARED_ART.has(o.kind) ? 'any' : reg.id}|${o.kind}|${Math.round(o.r / step) * step}|${Math.floor(o.seed * 3)}|${o.color || ''}|${o.w || 0}|${o.h || 0}`;
   }
   private sprite(o: Obstacle, e: GameEngine): Sprite {
     const memo = this.obstacleMemo.get(o); if (memo) return memo;
-    const rq = Math.round(o.r / 4) * 4, variant = Math.floor(o.seed * 3), res = this.chunkRes, reg = regionOf(e.world, o.x);
+    const step = SIZE_STEP[o.kind] || 4, rq = Math.round(o.r / step) * step, variant = Math.floor(o.seed * 3), res = Math.min(this.chunkRes, RES_CAP[o.kind] ?? 9), reg = regionOf(e.world, o.x);
     const key = this.spriteKey(o, reg);
     let s = this.sprites.get(key);
     if (!s) {
@@ -846,12 +981,25 @@ export class Renderer {
         break;
       }
       case 'tower': if (dark) { glow(ctx, o.x, o.y - 140, 22, '#ffcf6e', .8); this.lights.push({ x: o.x, y: o.y - 130, r: 180, color: '#ffcf6e', a: .8 }); } break;
+      case 'oak': if (Math.random() < .007 * this.wind && !this.reduced) this.spawnLeaf(o.x + rand(-o.r * 1.4, o.r * 1.4), o.y - o.r * 1.6, e); break;
+      case 'beehive': for (let i = 0; i < 3; i++) { const a = t * 3.2 + i * 2.1 + o.seed * 9, bx = o.x + 6 + Math.cos(a) * (16 + i * 5), by = o.y - 30 + Math.sin(a * 1.7) * 9; circle(ctx, bx, by, 1.9, '#ffd35c'); circle(ctx, bx - 1, by - 1.6, 1.1, 'rgba(255,255,255,.8)'); } break;
+      case 'volcano': {
+        const topY = o.y - o.r * 1.5 + 10, f = .8 + Math.sin(t * 1.3 + o.seed * 9) * .2;
+        glow(ctx, o.x, topY, o.r * .7, '#ff7a3d', .45 * f);
+        this.lights.push({ x: o.x, y: topY, r: o.r * 2.2, color: '#ff7a3d', a: f }); this.lights.push({ x: o.x, y: o.y - o.r * .4, r: o.r * 1.6, color: '#ff5f3d', a: .55 });
+        if (Math.random() < .3 * this.quality) this.pushAmbient({ x: o.x + rand(-o.r * .2, o.r * .2), y: topY - 10, vx: rand(6, 20) * this.wind, vy: rand(-46, -28), life: 5, max: 5, size: rand(16, 26), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(58,44,48,.55)', phase: 0 });
+        if (Math.random() < .25 * this.quality) this.pushAmbient({ x: o.x + rand(-o.r * .25, o.r * .25), y: topY, vx: rand(-20, 20), vy: rand(-80, -40), life: 1.6, max: 1.6, size: 2.2, rot: 0, vr: 0, kind: 'mote', color: pick(['#ffd27a', '#ff9a3d', '#ff6b3d']), phase: 0 });
+        break;
+      }
+      case 'basalt': this.lights.push({ x: o.x, y: o.y - o.r * 1.2, r: o.r * 1.5, color: '#ff7a3d', a: .4 }); break;
+      case 'fumarole': if (Math.random() < .14 * this.quality) this.pushAmbient({ x: o.x + rand(-4, 4), y: o.y - 6, vx: rand(-6, 6) + 6 * this.wind, vy: rand(-38, -24), life: 2.8, max: 2.8, size: rand(7, 11), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(238,236,226,.42)', phase: 0 }); this.lights.push({ x: o.x, y: o.y, r: 80, color: '#ff7a3d', a: .45 }); break;
+      case 'obsidian': if (dark && Math.sin(t * 1.7 + o.seed * 20) > .92) { ctx.fillStyle = 'rgba(255,255,255,.9)'; star(ctx, o.x - o.r * .2, o.y - o.r * 1.4, 4, 4, .3); ctx.fill(); } break;
     }
   }
   // ───────────────────────────── objects
   /** Solid world objects are paper pieces with an ink edge; glowing pickups, clues and ground marks are drawn as they are. */
   private drawObject(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
-    const box = OBJECT_BOX[o.kind];
+    const box = o.kind === 'site' && riverSite(o, e.world) ? undefined : OBJECT_BOX[o.kind];
     // Chests, signs and lore stones only glint and pulse slowly, so they are re-cut half as often as the rest.
     const calm = o.kind === 'chest' || o.kind === 'sign' || o.kind === 'lore';
     if (box) this.cutWorld(ctx, o, o.x, o.y, box, g => this.paintObject(g, o, e), SCENERY_LIVE, calm ? 6 : this.creatureFps); else this.paintObject(ctx, o, e);
@@ -882,6 +1030,7 @@ export class Renderer {
     } else if (o.kind === 'questItem') this.drawQuestItem(ctx, o, t);
     else if (o.kind === 'chest') {
       const open = e.isOpened(o.id);
+      if (o.variant === 'star') { glow(ctx, x, y - 10, 90, '#fff1b8', open ? .2 : .55 + Math.sin(t * 3) * .15); for (let i = 0; i < 5; i++) { const a = t * 1.5 + i * TAU / 5; ctx.fillStyle = '#fff1b8'; star(ctx, x + Math.cos(a) * 34, y - 14 + Math.sin(a) * 12, 3.5, 4, .35, t * 2); ctx.fill(); } this.lights.push({ x, y: y - 10, r: 200, color: '#fff1b8', a: .9 }); }
       shadow(ctx, x, y + 14, 24, 7, .3);
       if (!open) glow(ctx, x, y - 6, 40, '#ffd35c', .35 + Math.sin(t * 3 + x) * .12);
       rect(ctx, x - 20, y - 14, 40, 26, '#8a5a34'); rect(ctx, x - 20, y - 14, 40, 4, '#a8744a');
@@ -914,6 +1063,30 @@ export class Renderer {
     else if (o.kind === 'pen') this.drawPen(ctx, o);
     else if (o.kind === 'ward') this.drawWard(ctx, o, e);
     else if (o.kind === 'barrier') this.drawBarrier(ctx, o, e);
+    else if (o.kind === 'hole') this.drawHole(ctx, o);
+    else if (o.kind === 'exit') this.drawExit(ctx, o);
+  }
+  /** The hole beside the Dawn Forge: a black pit with broken edges, shadow curling out of it. */
+  private drawHole(ctx: CanvasRenderingContext2D, o: WorldObject) {
+    const x = o.x, y = o.y, t = this.time;
+    ellipse(ctx, x + 6, y + 10, 128, 58, 'rgba(20,10,10,.4)');
+    ctx.fillStyle = '#4a3a36'; ctx.beginPath(); for (let i = 0; i <= 24; i++) { const a = i / 24 * TAU, r = 1 + Math.sin(i * 2.7) * .08; ctx.lineTo(x + Math.cos(a) * 124 * r, y + Math.sin(a) * 56 * r); } ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#05030a'; ctx.beginPath(); for (let i = 0; i <= 24; i++) { const a = i / 24 * TAU, r = 1 + Math.sin(i * 3.1) * .1; ctx.lineTo(x + Math.cos(a) * 104 * r, y + Math.sin(a) * 44 * r); } ctx.closePath(); ctx.fill();
+    for (let i = 0; i < 9; i++) { const a = i / 9 * TAU; ellipse(ctx, x + Math.cos(a) * 120, y + Math.sin(a) * 54, 14, 7, i % 2 ? '#5e4c4a' : '#3a2e2c', a); }
+    glow(ctx, x, y, 110, '#6a4bd6', .25 + Math.sin(t * 2) * .08);
+    if (Math.random() < .2) this.pushAmbient({ x: x + rand(-70, 70), y: y + rand(-20, 20), vx: rand(-6, 6), vy: rand(-30, -16), life: 2.2, max: 2.2, size: rand(8, 13), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(40,24,60,.5)', phase: 0 });
+    this.lights.push({ x, y, r: 160, color: '#6a4bd6', a: .5 });
+  }
+  /** A way out of the depths: roots hanging down to the floor, or (once Umbra is beaten) a shaft of dawnlight. */
+  private drawExit(ctx: CanvasRenderingContext2D, o: WorldObject) {
+    const x = o.x, y = o.y, t = this.time, dawn = o.variant === 'throne';
+    const c = dawn ? '#fff1b8' : '#c9e8a8';
+    const g = ctx.createLinearGradient(0, y - 420, 0, y + 20); g.addColorStop(0, alpha(c, 0)); g.addColorStop(1, alpha(c, dawn ? .45 : .22));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 60, y - 420); ctx.lineTo(x + 60, y - 420); ctx.lineTo(x + 46, y + 20); ctx.lineTo(x - 46, y + 20); ctx.closePath(); ctx.fill();
+    ellipse(ctx, x, y + 14, 52, 16, alpha(c, .3));
+    if (!dawn) { ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.lineCap = 'round'; for (let i = 0; i < 4; i++) { const rx = x - 24 + i * 16, sw = Math.sin(t * 1.4 + i) * 4; ctx.beginPath(); ctx.moveTo(rx, y - 260); ctx.quadraticCurveTo(rx + sw, y - 120, rx - sw * .5, y + 4); ctx.stroke(); } }
+    else for (let i = 0; i < 6; i++) { const ph = (t * .4 + i / 6) % 1; ctx.fillStyle = alpha('#ffffff', (1 - ph) * .8); star(ctx, x + Math.sin(i * 2.3) * 30, y - ph * 380, 3, 4, .4); ctx.fill(); }
+    glow(ctx, x, y - 30, 90, c, .45); this.lights.push({ x, y: y - 40, r: dawn ? 300 : 180, color: c, a: .9 });
   }
   /** A cracked stone wall with faint light in its cracks; once a bomb breaks it, a heap of rubble. */
   private drawCrack(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
@@ -1077,8 +1250,19 @@ export class Renderer {
   /** Something to build: a staked-out plot with a ghostly plan and a growing pile of materials, then the finished thing. */
   private drawSite(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
     const x = o.x, y = o.y, t = this.time, built = e.siteBuilt(o), q = o.questId ? e.quest(o.questId) : undefined;
-    if (built) { this.drawStructure(ctx, o.variant || 'tower', x, y, 1); return; }
     const have = q ? e.questProgress(q.id) : 0, need = q?.count || 1, ready = have >= need;
+    if (riverSite(o, e.world)) {
+      // Built, the bridge itself stands here (it is the land's crossing).
+      if (built) return;
+      ctx.save(); ctx.globalAlpha = .22 + Math.sin(t * 2.4) * .08 + (ready ? .18 : 0); this.drawRiverBridge(ctx, x, y, true, true); ctx.restore();
+      const bx = x - 168;
+      for (let i = 0; i < Math.min(need, have); i++) { const px = bx - 30 + (i % 3) * 18, py = y + 30 - Math.floor(i / 3) * 8; rect(ctx, px, py, 34, 7, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, py, 34, 2, '#c9a06a'); }
+      for (const sy of [-44, 44]) { rect(ctx, x - 140, y + sy - 18, 5, 22, '#8a6a48'); rect(ctx, x + 136, y + sy - 18, 5, 22, '#8a6a48'); }
+      ctx.strokeStyle = 'rgba(240,230,200,.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(x - 138, y - 44); ctx.lineTo(x + 138, y - 44); ctx.moveTo(x - 138, y + 44); ctx.lineTo(x + 138, y + 44); ctx.stroke(); ctx.setLineDash([]);
+      if (ready) { glow(ctx, x, y, 140, '#ffd35c', .3 + Math.sin(t * 4) * .12); this.lights.push({ x, y, r: 200, color: '#ffd35c', a: .7 }); }
+      return;
+    }
+    if (built) { this.drawStructure(ctx, o.variant || 'tower', x, y, 1); return; }
     shadow(ctx, x, y + 14, 60, 14, .18);
     ctx.strokeStyle = 'rgba(240,230,200,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.ellipse(x, y + 8, 58, 20, 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
@@ -1119,6 +1303,27 @@ export class Renderer {
         ctx.fillStyle = a ? '#7a4a2a' : wood; ctx.beginPath(); ctx.moveTo(x - 50, y - 6); ctx.lineTo(x + 30, y - 30 + (a ? Math.sin(t * 3) * 8 : 0)); ctx.lineTo(x + 30, y + 14); ctx.closePath(); ctx.fill();
         rect(ctx, x + 28, y - 10, 34, 10, a ? '#c9a24c' : stone); for (let i = 0; i < 3; i++) circle(ctx, x - 20 + i * 18, y - 4 - i * 6, 4, a ? '#c9a24c' : stone);
         if (a && Math.random() < .3) this.pushAmbient({ x: x + 62, y: y - 6, vx: rand(30, 60), vy: rand(-30, -10), life: .8, max: .8, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 });
+        break;
+      case 'cart':
+        for (const wx of [-30, 30]) { circle(ctx, x + wx, y + 4, 15, '#5a4130'); circle(ctx, x + wx, y + 4, 11, '#9a7650'); circle(ctx, x + wx, y + 4, 3, '#3a2a1a'); }
+        rrect(ctx, x - 50, y - 30, 100, 30, 3, wood); rect(ctx, x - 50, y - 30, 100, 5, '#c9a06a');
+        ellipse(ctx, x - 10, y - 38, 30, 14, '#dcb65a'); ellipse(ctx, x + 18, y - 40, 18, 10, '#ecd07a');
+        break;
+      case 'songstone': {
+        ctx.fillStyle = a ? '#8c96b8' : stone; ctx.beginPath(); ctx.moveTo(x - 22, y + 10); ctx.lineTo(x - 18, y - 70); ctx.quadraticCurveTo(x, y - 96, x + 18, y - 70); ctx.lineTo(x + 22, y + 10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(x + 6, y - 74, 14, 84);
+        const pulse = .6 + Math.sin(t * 3) * .3; ctx.strokeStyle = `rgba(191,232,255,${pulse})`; ctx.lineWidth = 2;
+        ctx.beginPath(); for (let i = 0; i < 4; i++) { const yy = y - 60 + i * 16; ctx.moveTo(x - 9, yy); ctx.quadraticCurveTo(x, yy - 6, x + 9, yy); } ctx.stroke();
+        if (a) { glow(ctx, x, y - 40, 60, '#bfe8ff', .5 * pulse); this.lights.push({ x, y: y - 40, r: 160, color: '#bfe8ff', a: .7 }); }
+        break;
+      }
+      case 'barrels':
+        for (const [bx, by] of [[-22, 0], [0, -4], [22, 0], [-11, -26], [11, -28]] as Array<[number, number]>) { rrect(ctx, x + bx - 12, y + by - 28, 24, 30, 6, '#9a6238'); rect(ctx, x + bx - 12, y + by - 20, 24, 3, '#5a5a62'); rect(ctx, x + bx - 12, y + by - 8, 24, 3, '#5a5a62'); ellipse(ctx, x + bx, y + by - 28, 12, 4, '#6fa8c8'); }
+        break;
+      case 'kiln':
+        ctx.fillStyle = '#7a5a4a'; ctx.beginPath(); ctx.moveTo(x - 40, y + 10); ctx.quadraticCurveTo(x - 44, y - 70, x, y - 84); ctx.quadraticCurveTo(x + 44, y - 70, x + 40, y + 10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#2a1a14'; ctx.beginPath(); ctx.moveTo(x - 14, y + 10); ctx.lineTo(x - 14, y - 16); ctx.quadraticCurveTo(x, y - 30, x + 14, y - 16); ctx.lineTo(x + 14, y + 10); ctx.fill();
+        if (a) { this.drawFlame(ctx, x, y + 6, .6, '#ffb347'); this.lights.push({ x, y: y - 10, r: 200, color: '#ffb347', a: .9 }); }
         break;
       default: // bridge site: a stack of lumber and a trestle
         rect(ctx, x - 40, y - 10, 80, 8, wood); rect(ctx, x - 34, y - 2, 6, 14, dark); rect(ctx, x + 28, y - 2, 6, 14, dark);
@@ -1188,11 +1393,24 @@ export class Renderer {
     }
     ellipse(ctx, x - 30, y - 6, 16, 8, '#d9b45a'); ellipse(ctx, x + 36, y + 10, 14, 7, '#c9a44c');
   }
-  /** What a siege attacks: a palisade that cracks as it takes hits, with its health over it while the fight lasts. */
+  /**
+   * What a siege attacks. A town has no fence: its own houses are what the raiders burn, so nothing is drawn. A quest that
+   * guards one thing shows that thing (a cart, a lantern, a song-stone, a knight) on a ward ring, with its health over it
+   * while the fight lasts.
+   */
   private drawWard(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
-    const s = e.siege, mine = s?.ward === o, hp = mine ? s!.hp / 100 : 1, x = o.x + (mine && Math.random() < .1 ? rand(-2, 2) : 0), y = o.y;
-    this.drawStructure(ctx, 'barricade', x, y, 1);
-    if (hp < .66) { ctx.strokeStyle = 'rgba(30,20,10,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 20, y - 30); ctx.lineTo(x - 10, y - 14); ctx.lineTo(x - 18, y); ctx.moveTo(x + 22, y - 36); ctx.lineTo(x + 12, y - 20); ctx.stroke(); }
+    if (o.variant === 'town') return;
+    const s = e.siege, mine = s?.ward === o, hp = mine ? s!.hp / 100 : 1, x = o.x + (mine && Math.random() < .1 ? rand(-2, 2) : 0), y = o.y, t = this.time, n = o.name.toLowerCase();
+    const acc = regionOf(e.world, o.x).palette.accent;
+    ctx.save(); ctx.translate(x, y + 8); ctx.scale(1, .42); ctx.strokeStyle = alpha(mine ? '#ffd35c' : acc, .55); ctx.lineWidth = 3; ctx.setLineDash([12, 9]); ctx.lineDashOffset = -t * 24;
+    ctx.beginPath(); ctx.arc(0, 0, 70, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    if (/cart/.test(n)) this.drawStructure(ctx, 'cart', x, y, 1);
+    else if (/lantern|lamp/.test(n)) this.drawStructure(ctx, 'lantern', x, y, 1);
+    else if (/stone/.test(n)) this.drawStructure(ctx, 'songstone', x, y, 1);
+    else if (/barrel/.test(n)) this.drawStructure(ctx, 'barrels', x, y, 1);
+    else if (/kiln/.test(n)) this.drawStructure(ctx, 'kiln', x, y, 1);
+    else if (/^ser |knight/.test(n)) this.living(ctx, o, x, y, FIGURE_BOX, STICKER, g => { drawFigure(g, villagerFigure(o.name, { skin: '#f0c8a2', robe: '#3f5a8a', hat: 'helm', hatColor: '#b8bcc6', hair: '#8a8a8a', beard: true }), { facing: 'front', dir: 1, walk: 0, moving: false, t, arm: 'hold', seed: x * .01 }); });
+    else glow(ctx, x, y - 20, 70, acc, .3 + Math.sin(t * 3) * .1);
     if (mine) {
       const w = 100, by = y - 72;
       ctx.fillStyle = 'rgba(14,20,30,.8)'; ctx.beginPath(); ctx.roundRect(x - w / 2 - 3, by - 3, w + 6, 12, 6); ctx.fill();
@@ -1218,6 +1436,7 @@ export class Renderer {
       } else {
         for (const side of [-1, 1]) { for (let i = 0; i < 3; i++) { ctx.save(); ctx.translate(x + side * 56, y - 30 + i * 22); ctx.rotate(side * (.9 + i * .15)); rect(ctx, -4, 0, 8, 34 - i * 6, i % 2 ? '#8a5a34' : '#6f4a2a'); ctx.restore(); } rect(ctx, x + side * 70 - 5, y - 46, 10, 34, '#6f5337'); }
       }
+    } else if (v === 'rocks' || v === 'cave') { this.drawRubble(ctx, o, e, open, v === 'cave'); return;
     } else if (v === 'thorns') {
       if (open) { for (let i = 0; i < 12; i++) { const yy = y - H + i * 38; ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 50 + (i % 2) * 90, yy); ctx.lineTo(x - 40 + (i % 2) * 90, yy - 14); ctx.stroke(); } return; }
       glow(ctx, x, y, 200, '#6a4bd6', .25 + Math.sin(t * 2) * .08);
@@ -1237,11 +1456,144 @@ export class Renderer {
       glow(ctx, x, y, 180, '#6a7fd6', .3); this.lights.push({ x, y, r: 260, color: '#8ea0ff', a: .6 });
     }
   }
+  /**
+   * The rockfall in Frostspine Pass (snowy boulders) or the caved-in mouth of the Cindermaw (obsidian blocks with magma in
+   * the cracks), heaped across the canyon. Struck, it cracks wider and glows; broken, its pieces lie against the walls.
+   */
+  private drawRubble(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine, open: boolean, cave: boolean) {
+    const x = o.x, y = o.y, w = e.wallOf(o.id), frac = w ? clamp(w.hp / w.maxHp, 0, 1) : 1, flash = w && w.hitFlash > 0 ? w.hitFlash / .14 : 0;
+    const rock = cave ? '#3a2e34' : '#8d93ad', cap = cave ? '#5a4a4e' : '#f4f7ff', crack = cave ? '#ff7a3d' : '#bfe8ff';
+    for (let i = 0; i < 20; i++) {
+      const by0 = y - 170 + (i / 19) * 340, side = by0 < y ? -1 : 1;
+      let bx = x + (hash(i * 3.1 + o.x) - .5) * 130, by = by0 + (hash(i * 1.7) - .5) * 26;
+      const s = 26 + hash(i * 5.3) * 22;
+      if (open) { if (i % 3) continue; by = y + side * (165 + hash(i) * 20); bx += (hash(i * 9) - .5) * 160; }
+      const sh = flash > 0 ? rand(-2, 2) : 0;
+      shadow(ctx, bx + 4, by + s * .4, s * 1.05, s * .32, .28);
+      ctx.fillStyle = shade(rock, -.2); ctx.beginPath(); ctx.moveTo(bx - s + sh, by + s * .3); ctx.lineTo(bx - s * .7, by - s * .55); ctx.lineTo(bx + s * .1, by - s * .85); ctx.lineTo(bx + s * .85, by - s * .4); ctx.lineTo(bx + s, by + s * .35); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = rock; ctx.beginPath(); ctx.moveTo(bx - s * .9 + sh, by + s * .2); ctx.lineTo(bx - s * .65, by - s * .5); ctx.lineTo(bx + s * .1, by - s * .78); ctx.lineTo(bx + s * .2, by + s * .25); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = cap; ctx.beginPath(); ctx.moveTo(bx - s * .62, by - s * .48); ctx.lineTo(bx + s * .1, by - s * .8); ctx.lineTo(bx + s * .7, by - s * .42); ctx.quadraticCurveTo(bx, by - s * .52, bx - s * .62, by - s * .48); ctx.fill();
+      if (!open && (cave || i < (1 - frac) * 22)) {
+        // Cracks: magma in the cave mouth always, opening wider in the rockfall the more it is struck.
+        const a = hash(i * 2.2) * 6, g = cave ? .55 + (1 - frac) * .45 : .4 + (1 - frac) * .6;
+        ctx.strokeStyle = cave ? `rgba(255,122,61,${g})` : `rgba(30,30,50,.6)`; ctx.lineWidth = cave ? 2.4 : 1.8; ctx.beginPath(); ctx.moveTo(bx - Math.cos(a) * s * .5, by - s * .2); ctx.lineTo(bx, by - s * .35 + Math.sin(a) * 6); ctx.lineTo(bx + Math.cos(a) * s * .55, by - s * .1); ctx.stroke();
+        if (cave) { ctx.strokeStyle = `rgba(255,233,168,${g * .8})`; ctx.lineWidth = 1; ctx.stroke(); }
+      }
+    }
+    if (open) return;
+    if (cave) { glow(ctx, x, y - 30, 160, '#ff7a3d', .25 + (1 - frac) * .3); this.lights.push({ x, y: y - 30, r: 260, color: '#ff7a3d', a: .7 }); }
+    if (flash > 0) glow(ctx, x, y - 40, 130, crack, .5 * flash);
+    if (frac < 1) {
+      const bw = 140, by = y - 236;
+      ctx.fillStyle = 'rgba(14,20,30,.8)'; ctx.beginPath(); ctx.roundRect(x - bw / 2 - 3, by - 3, bw + 6, 13, 6); ctx.fill();
+      ctx.fillStyle = cave ? '#ff9a3d' : '#bfe8ff'; ctx.beginPath(); ctx.roundRect(x - bw / 2, by, bw * frac, 7, 3); ctx.fill();
+    }
+    if (Math.random() < .05) this.pushAmbient({ x: x + rand(-60, 60), y: y + rand(-160, 160), vx: rand(-8, 8), vy: cave ? rand(-30, -14) : rand(4, 16), life: 1.4, max: 1.4, size: 2, rot: 0, vr: 0, kind: 'mote', color: cave ? '#ff9a3d' : '#ffffff', phase: 0 });
+  }
+  /**
+   * The rock roof over the cave through the volcano: the mountain carries on over the road, so from outside the road
+   * vanishes into a dark mouth. It fades away while the hero is inside, the way a roof does in a house you walk into.
+   * Painted once per range into a canvas of its own.
+   */
+  private drawCaveRoofs(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
+    for (const rg of e.world.ranges) {
+      if (rg.kind !== 'volcano') continue;
+      const edge = rangeEdge(rg, rg.passY), x0 = rg.x - edge + CAVE_MOUTH, x1 = rg.x + edge - CAVE_MOUTH, y0 = rg.passY - rg.passHw - 30, y1 = rg.passY + rg.passHw + 20;
+      if (x1 < v.x - 60 || x0 > v.x + v.w + 60 || y1 < v.y - 60 || y0 > v.y + v.h + 120) continue;
+      // The mouths: the road darkens as it goes in.
+      for (const [mx, dir] of [[x0, 1], [x1, -1]] as Array<[number, number]>) {
+        const gr = ctx.createLinearGradient(mx - dir * 140, 0, mx, 0); gr.addColorStop(0, 'rgba(14,6,8,0)'); gr.addColorStop(1, 'rgba(14,6,8,.75)');
+        ctx.fillStyle = gr; ctx.fillRect(Math.min(mx, mx - dir * 140), rg.passY - rg.passHw, 140, rg.passHw * 2);
+      }
+      const inside = this.caveDark(e.world, e.hero) / .86, a = 1 - Math.min(1, inside * 1.2) * .94;
+      if (a <= .02) continue;
+      const roof = this.roofOf(rg, x0, x1, y0, y1);
+      ctx.globalAlpha = a; ctx.drawImage(roof, x0 - 40, y0 - 40, x1 - x0 + 80, y1 - y0 + 80); ctx.globalAlpha = 1;
+      // Lava glowing in the roof's cracks.
+      for (let x = x0 + 60; x < x1 - 40; x += 210) this.lights.push({ x, y: rg.passY - 20, r: 110, color: '#ff7a3d', a: .5 * a });
+    }
+  }
+  private roofs = new Map<Range, HTMLCanvasElement>();
+  private roofOf(rg: Range, x0: number, x1: number, y0: number, y1: number) {
+    let c = this.roofs.get(rg); if (c) return c;
+    const W = x1 - x0 + 80, H = y1 - y0 + 80; c = document.createElement('canvas'); c.width = Math.ceil(W); c.height = Math.ceil(H);
+    const g = c.getContext('2d')!; g.translate(40 - x0, 40 - y0);
+    // A slab of basalt with a ragged edge over each mouth, heaped in sheets, with lava in its cracks.
+    const outline = (pad: number, dx = 0, dy = 0) => {
+      g.beginPath(); g.moveTo(x0 - pad + dx, y0 - pad + dy);
+      for (let y = y0 - pad; y <= y1 + pad; y += 18) g.lineTo(x0 - pad + Math.sin(y * .09) * 10 + dx, y + dy);
+      for (let x = x0; x <= x1; x += 22) g.lineTo(x + dx, y1 + pad + Math.sin(x * .07) * 8 + dy);
+      for (let y = y1 + pad; y >= y0 - pad; y -= 18) g.lineTo(x1 + pad + Math.cos(y * .08) * 10 + dx, y + dy);
+      for (let x = x1; x >= x0; x -= 22) g.lineTo(x + dx, y0 - pad + Math.cos(x * .06) * 6 + dy);
+      g.closePath();
+    };
+    outline(4, 6, 10); g.fillStyle = 'rgba(20,10,12,.6)'; g.fill();
+    outline(8); g.fillStyle = '#5e4c4c'; g.fill();
+    outline(4); g.fillStyle = '#3e3036'; g.fill();
+    g.save(); outline(4); g.clip();
+    const lo: Blob[] = [], hi: Blob[] = [];
+    for (let y = y0 - 20; y < y1 + 20; y += 36) for (let x = x0; x < x1; x += 36) { const n = fbm(x * 1.7, y * 1.7, 29), j = hash(x * .3 + y) * 8 - 4; if (n > .52) hi.push([x + j, y - j, 24 + (n - .52) * 50]); if (n < .4) lo.push([x - j, y + j, 22 + (.4 - n) * 50]); }
+    sheet(g, lo, '#2a1e24', '#3e3036', 3, 4); sheet(g, hi, '#4e3e42', '#3e3036');
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let k = 0; k < 9; k++) {
+      const sx = x0 + 40 + hash(k * 7.7) * (x1 - x0 - 80), sy = y0 + hash(k * 3.3) * (y1 - y0), pts = [0, 1, 2, 3].map(i => [sx + i * 26 + hash(k + i) * 12, sy + (hash(k * 2 + i) - .5) * 30]);
+      for (const [w, col] of [[7, '#1e1418'], [3.4, '#e2592a'], [1.3, '#ffd27a']] as Array<[number, string]>) { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); pts.forEach(([px, py], i) => i ? g.lineTo(px, py) : g.moveTo(px, py)); g.stroke(); }
+    }
+    g.restore();
+    // Stalactites hanging over each mouth.
+    for (const [mx, dir] of [[x0, -1], [x1, 1]] as Array<[number, number]>) for (let i = 0; i < 7; i++) {
+      const y = y0 + 10 + i * (y1 - y0 - 20) / 6, len = 16 + hash(i * 5 + mx) * 22;
+      g.fillStyle = '#2a1e24'; g.beginPath(); g.moveTo(mx + dir * 2, y - 9); g.lineTo(mx + dir * (len + 4), y); g.lineTo(mx + dir * 2, y + 9); g.closePath(); g.fill();
+    }
+    this.roofs.set(rg, c);
+    return c;
+  }
+  /** A fallen star: its crater (scorched earth, a ring of thrown-up rock, the star itself glowing at its heart while it
+   *  shines) and the fragments scattered round it. */
+  private drawFallenStar(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
+    const s = e.fallen; if (!s || s.phase !== 'landed') return;
+    const t = this.time, fade = clamp(s.t / 20, 0, 1);
+    if (Math.abs(s.x - (v.x + v.w / 2)) < v.w + 400 && Math.abs(s.y - (v.y + v.h / 2)) < v.h + 300) {
+      ellipse(ctx, s.x, s.y, 250, 140, 'rgba(30,18,24,.45)'); ellipse(ctx, s.x, s.y, 190, 104, 'rgba(50,34,40,.55)');
+      for (let i = 0; i < 18; i++) { const a = i / 18 * TAU, rr = 1 + Math.sin(i * 2.3) * .1; ellipse(ctx, s.x + Math.cos(a) * 205 * rr, s.y + Math.sin(a) * 114 * rr, 22, 10, i % 2 ? '#6a5a5a' : '#4a3e40', a); }
+      ellipse(ctx, s.x, s.y, 120, 62, '#1e1418');
+      glow(ctx, s.x, s.y - 10, 160, '#fff1b8', (.5 + Math.sin(t * 3) * .15) * fade);
+      ctx.fillStyle = alpha('#fffbe8', fade); star(ctx, s.x, s.y - 16, 30, 5, .45, t * .4); ctx.fill(); ctx.fillStyle = alpha('#ffd35c', fade); star(ctx, s.x, s.y - 16, 16, 5, .45, t * .4); ctx.fill();
+      this.lights.push({ x: s.x, y: s.y, r: 420, color: '#fff1b8', a: .9 * fade });
+      if (Math.random() < .3 * this.quality) this.pushAmbient({ x: s.x + rand(-90, 90), y: s.y + rand(-30, 30), vx: rand(-10, 10), vy: rand(-50, -26), life: 1.8, max: 1.8, size: 2.4, rot: 0, vr: 0, kind: 'mote', color: pick(['#fff1b8', '#8ee8ff', '#ffffff']), phase: 0 });
+    }
+    for (const f of s.frags) {
+      if (f.got || Math.abs(f.x - (v.x + v.w / 2)) > v.w || Math.abs(f.y - (v.y + v.h / 2)) > v.h) continue;
+      const bob = Math.sin(t * 3 + f.x) * 4, y = f.y - 14 + bob;
+      shadow(ctx, f.x, f.y + 6, 10, 4, .25); glow(ctx, f.x, y, 34, '#fff1b8', .7);
+      ctx.fillStyle = '#fffbe8'; ctx.beginPath(); ctx.moveTo(f.x, y - 12); ctx.lineTo(f.x + 7, y); ctx.lineTo(f.x, y + 10); ctx.lineTo(f.x - 7, y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#8ee8ff'; ctx.beginPath(); ctx.moveTo(f.x, y - 12); ctx.lineTo(f.x + 7, y); ctx.lineTo(f.x, y - 2); ctx.closePath(); ctx.fill();
+      this.lights.push({ x: f.x, y, r: 90, color: '#fff1b8', a: .8 });
+    }
+  }
+  /** The moment a star falls: a blazing streak across the whole sky, toward where it comes down. */
+  private drawSkyStar(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine) {
+    const k = 1 - e.skyStar.t / 2.8, dir = e.skyStar.dx, x0 = dir > 0 ? -w * .1 : w * 1.1, x1 = dir > 0 ? w * 1.05 : -w * .05;
+    const x = x0 + (x1 - x0) * k, y = -h * .1 + h * .55 * k, tx = x - dir * w * .35, ty = y - h * .2;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createLinearGradient(tx, ty, x, y); g.addColorStop(0, 'rgba(255,241,184,0)'); g.addColorStop(1, `rgba(255,250,230,${.9 * (1 - k * .5)})`);
+    ctx.strokeStyle = g; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke();
+    glow(ctx, x, y, 90, '#fff1b8', 1); ctx.restore();
+  }
+  /** How dark it is inside the cave through the volcano at a point (0 outside it). */
+  private caveDark(world: WorldDefinition, p: Point) {
+    for (const rg of world.ranges) {
+      if (rg.kind !== 'volcano' || Math.abs(p.y - rg.passY) > rg.passHw + 80) continue;
+      const e = rangeEdge(rg, rg.passY) - CAVE_MOUTH, d = e - Math.abs(p.x - rg.x);
+      if (d > 0) return .86 * clamp(d / 220, 0, 1);
+    }
+    return 0;
+  }
   /** The Gloomwater Bridge across the river: broken stumps on both banks until it is rebuilt, then a plank deck with rails. */
-  private drawRiverBridge(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean) {
+  private drawRiverBridge(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean, plan = false) {
     const L = 128, t = this.time;
     if (open) {
-      shadow(ctx, x, y + 46, L + 10, 12, .3);
+      if (!plan) shadow(ctx, x, y + 46, L + 10, 12, .3);
       for (let i = 0; i < 15; i++) { const px = x - L + i * (L * 2 / 15); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 76, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 3, '#c9a06a'); }
       for (const sy of [-40, 38]) {
         ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - L - 4, y + sy - 22); ctx.quadraticCurveTo(x, y + sy - 6, x + L + 4, y + sy - 22); ctx.stroke();
@@ -1780,6 +2132,12 @@ export class Renderer {
         ctx.restore();
       }
     }
+    if (en.starborn && en.burrowT <= 0) {
+      // Touched by a fallen star: a gold glow and motes of starlight circling it.
+      glow(ctx, en.x, en.y - en.r * .4, en.r * 3, '#fff1b8', .5);
+      for (let i = 0; i < 4; i++) { const a = t * 2.4 + i * TAU / 4; ctx.fillStyle = i % 2 ? '#fff1b8' : '#8ee8ff'; star(ctx, en.x + Math.cos(a) * en.r * 1.4, en.y - en.r * .4 + Math.sin(a) * en.r * .5, 4, 4, .35, t * 3); ctx.fill(); }
+      this.lights.push({ x: en.x, y: en.y - 10, r: 120, color: '#fff1b8', a: .7 });
+    }
     const R = en.r * (en.boss ? 1.25 : 1) * Math.max(1, spawn), box = reachBox(bv ? undefined : ENEMY_REACH[en.kind], R);
     const a0 = ctx.globalAlpha; if (en.stunT > 0) ctx.globalAlpha = a0 * .85;
     this.living(ctx, en, en.x, en.y, box, en.boss ? BOSS : STICKER, ctx => {
@@ -1807,6 +2165,12 @@ export class Renderer {
       case 'brambleWarden': this.drawWarden(ctx, en, t, look, flash, e); break;
       case 'hollowStar': this.drawHollowStar(ctx, en, t, flash, e); break;
       case 'eclipse': this.drawEclipse(ctx, en, t, flash); break;
+      case 'umbralKnight': this.drawUmbralKnight(ctx, base, t, look, flash, trem); break;
+      case 'duskwing': this.drawDuskwing(ctx, base, t, look, flash); break;
+      case 'hollowArcher': this.drawHollowArcher(ctx, base, t, look, flash); break;
+      case 'shardback': this.drawShardback(ctx, base, t, look, flash, trem); break;
+      case 'acolyte': this.drawAcolyte(ctx, base, t, look, flash); break;
+      case 'starbeast': this.drawStarbeast(ctx, en, t, look, flash); break;
     }
     });
     ctx.globalAlpha = a0;
@@ -1835,6 +2199,10 @@ export class Renderer {
     else if (en.ai === 'wisp' || en.kind === 'hollowStar' || en.kind === 'eclipse') this.lights.push({ x: en.x, y: en.y, r: en.boss ? 300 : 90, color: SKIN[en.kind]?.glow || '#a78bfa', a: .8 });
     else if (en.kind === 'cinderhound') this.lights.push({ x: en.x, y: en.y - 6, r: 80, color: '#ff8a3d', a: .6 });
     if (bv) { /* lit above */ } else if (en.kind === 'frostwraith' || en.kind === 'cragGolem') this.lights.push({ x: en.x, y: en.y - 10, r: 90, color: '#8ee8ff', a: .7 });
+    if (en.kind === 'umbralKnight' || en.kind === 'hollowArcher') this.lights.push({ x: en.x, y: en.y - en.r, r: 90, color: '#8a7aff', a: .6 });
+    else if (en.kind === 'duskwing' || en.kind === 'acolyte') this.lights.push({ x: en.x, y: en.y - en.r, r: 80, color: en.kind === 'acolyte' ? '#ff6b9a' : '#c98aff', a: .6 });
+    else if (en.kind === 'shardback') this.lights.push({ x: en.x, y: en.y - en.r, r: 150, color: '#c9b6ff', a: .8 });
+    else if (en.kind === 'starbeast') this.lights.push({ x: en.x, y: en.y - en.r * .5, r: 360, color: '#fff1b8', a: .9 });
     if (!bv && (en.kind === 'emberImp' || en.kind === 'magmaHulk' || en.kind === 'cinderTyrant')) this.lights.push({ x: en.x, y: en.y - 10, r: en.boss ? 320 : en.kind === 'magmaHulk' ? 130 : 90, color: '#ff8a3d', a: .85 });
     if (en.boss && en.aggro) this.lights.push({ x: en.x, y: en.y, r: 180, color: '#ff8f7a', a: .4 });
   }
@@ -1861,7 +2229,7 @@ export class Renderer {
   private drawLevelTags(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     const h = e.hero, me = e.profile.level;
     for (const en of e.enemies) {
-      if (en.dead || en.boss || en.spawnT > 0 || en.x < v.x - 40 || en.x > v.x + v.w + 40 || en.y < v.y - 40 || en.y > v.y + v.h + 60) continue;
+      if (en.dead || en.boss || en.wall || en.spawnT > 0 || en.x < v.x - 40 || en.x > v.x + v.w + 40 || en.y < v.y - 40 || en.y > v.y + v.h + 60) continue;
       if (!en.aggro && Math.abs(en.x - h.x) + Math.abs(en.y - h.y) > 620) continue;
       const d = en.level - me, c = d >= 5 ? '#ff4d4d' : d >= 3 ? '#ff9a4a' : d >= -2 ? '#fff1b8' : d >= -4 ? '#9fe870' : '#9aa0aa';
       const text = en.heroic ? `Heroic · Lv ${en.level}` : `Lv ${en.level}`, y = en.y - en.r * (en.heroic ? 1.45 : en.elite ? 1.6 : 1) - (en.hp < en.maxHp || en.heroic ? 28 : 18) - (en.elite ? 14 : 0);
@@ -2093,6 +2461,121 @@ export class Renderer {
       else { ctx.fillStyle = '#c9b6ff'; star(ctx, ox, oy, 14, 5, .45, t * 2); ctx.fill(); circle(ctx, ox, oy, 5, '#1a1030'); glow(ctx, ox, oy, 28, '#c9b6ff', .8); }
     }
     ctx.globalAlpha = 1;
+  }
+// ───────────────────────────── the creatures of the depths, and the beast of a fallen star
+  /** Umbral knight: a hollow suit of black plate with violet light in its visor, a tower shield and a great blade. */
+  private drawUmbralKnight(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
+    const r = en.r, raise = en.windup > 0 ? 1 - en.windup / .7 : 0, step = en.aggro ? Math.sin(t * 6) : Math.sin(t * 2) * .3;
+    shadow(ctx, 0, r * .95, r * 1.05, r * .36);
+    ctx.translate(trem, 0);
+    const plate = flash ? '#fff' : enrage(en.elite ? '#2a2034' : '#3a3048', en.rage), trim = flash ? '#fff' : '#8a7aff';
+    for (const s of [-1, 1]) { ctx.fillStyle = plate; ctx.beginPath(); ctx.roundRect(s * r * .3 - r * .16, r * .25 + step * s * 3, r * .32, r * .6, 4); ctx.fill(); }
+    ctx.fillStyle = plate; ctx.beginPath(); ctx.moveTo(-r * .62, r * .35); ctx.lineTo(-r * .72, -r * .55); ctx.lineTo(0, -r * .82); ctx.lineTo(r * .72, -r * .55); ctx.lineTo(r * .62, r * .35); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = trim; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -r * .7); ctx.lineTo(0, r * .3); ctx.stroke();
+    // The helm, with violet light in its visor slit.
+    ctx.fillStyle = plate; ctx.beginPath(); ctx.moveTo(-r * .42, -r * .65); ctx.quadraticCurveTo(-r * .48, -r * 1.45, 0, -r * 1.5); ctx.quadraticCurveTo(r * .48, -r * 1.45, r * .42, -r * .65); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#0a0612'; ctx.fillRect(-r * .3 + look.x * 2, -r * 1.1, r * .6, r * .1);
+    const eye = en.windup > 0 ? '#ffffff' : '#b9a6ff'; ctx.fillStyle = eye; ctx.fillRect(-r * .22 + look.x * 2, -r * 1.08, r * .44, r * .05); glow(ctx, look.x * 2, -r * 1.05, r * .8, '#8a7aff', .7);
+    ctx.fillStyle = trim; ctx.beginPath(); ctx.moveTo(-r * .06, -r * 1.48); ctx.lineTo(r * .06, -r * 1.48); ctx.lineTo(0, -r * 1.85); ctx.closePath(); ctx.fill();
+    // The tower shield on its left, the great blade raised on its right.
+    ctx.fillStyle = flash ? '#fff' : '#241c30'; ctx.beginPath(); ctx.moveTo(-r * 1.25, -r * .7); ctx.lineTo(-r * .55, -r * .78); ctx.lineTo(-r * .55, r * .35); ctx.quadraticCurveTo(-r * .9, r * .75, -r * 1.25, r * .35); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = trim; ctx.lineWidth = 2; ctx.stroke(); circle(ctx, -r * .9, -r * .1, r * .12, trim);
+    ctx.save(); ctx.translate(r * .78, -r * .4); ctx.rotate(-.4 - raise * 1.6);
+    ctx.fillStyle = '#4a3a5a'; ctx.fillRect(-r * .06, -r * .1, r * .12, r * .32);
+    ctx.fillStyle = '#2a2034'; ctx.fillRect(-r * .28, -r * .14, r * .56, r * .08);
+    ctx.fillStyle = flash ? '#fff' : '#cfc6ee'; ctx.beginPath(); ctx.moveTo(-r * .09, -r * .14); ctx.lineTo(-r * .07, -r * 1.55); ctx.lineTo(0, -r * 1.72); ctx.lineTo(r * .07, -r * 1.55); ctx.lineTo(r * .09, -r * .14); ctx.closePath(); ctx.fill();
+    if (en.windup > 0) glow(ctx, 0, -r * 1, r * 1.1, '#b9a6ff', .6);
+    ctx.restore();
+  }
+  /** Duskwing: a little shadow bat with a violet glow and too many eyes, its wings beating hard. */
+  private drawDuskwing(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, flap = Math.sin(t * (en.aggro ? 22 : 12)), hover = Math.sin(t * 3) * 5 - r * 1.3;
+    shadow(ctx, 0, r * 1.2, r * .8, r * .25, .18);
+    ctx.translate(0, hover);
+    const body = flash ? '#fff' : enrage(en.elite ? '#2a1a3a' : '#3a2a4a', en.rage), wing = flash ? '#fff' : enrage('#2a1e38', en.rage);
+    glow(ctx, 0, 0, r * 2.4, '#c98aff', .45);
+    for (const s of [-1, 1]) {
+      ctx.save(); ctx.scale(s, 1); ctx.rotate(-.2 + flap * .5);
+      ctx.fillStyle = wing; ctx.beginPath(); ctx.moveTo(r * .3, -r * .1); ctx.quadraticCurveTo(r * 1.4, -r * 1.2, r * 2.1, -r * .3);
+      ctx.quadraticCurveTo(r * 1.7, -r * .1, r * 1.6, r * .3); ctx.quadraticCurveTo(r * 1.2, r * .05, r * 1, r * .45); ctx.quadraticCurveTo(r * .7, r * .1, r * .3, r * .3); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#6a4a8a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(r * .35, 0); ctx.lineTo(r * 1.9, -r * .3); ctx.moveTo(r * .35, .1); ctx.lineTo(r * 1.55, r * .28); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, r * .55, r * .7, 0, 0, TAU); ctx.fill();
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .2, -r * .5); ctx.lineTo(s * r * .42, -r * 1); ctx.lineTo(s * r * .45, -r * .4); ctx.fill(); }
+    for (const [ex, ey] of [[-.2, -.15], [.2, -.15], [0, .05]] as Array<[number, number]>) { circle(ctx, ex * r + look.x * 2, ey * r, r * .1, en.windup > 0 ? '#ffffff' : '#e8a0ff'); }
+    glow(ctx, look.x * 2, -r * .1, r * .6, '#e8a0ff', .5);
+  }
+  /** Hollow archer: a pale shade in a ragged hood, nothing but two lights under it, with a bow of black bone. */
+  private drawHollowArcher(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, draw = en.windup > 0 ? 1 - en.windup / .55 : 0, sway = Math.sin(t * 2.2) * 2;
+    shadow(ctx, 0, r * .95, r * .9, r * .3);
+    const robe = flash ? '#fff' : enrage(en.elite ? '#4a4060' : '#5a5070', en.rage), pale = flash ? '#fff' : '#d8d0e8';
+    ctx.fillStyle = robe; ctx.beginPath(); ctx.moveTo(-r * .55, r * .9); ctx.quadraticCurveTo(-r * .7, -r * .2, -r * .4, -r * .9); ctx.quadraticCurveTo(0, -r * 1.6, r * .4, -r * .9); ctx.quadraticCurveTo(r * .7, -r * .2, r * .55, r * .9);
+    for (let i = 0; i < 5; i++) ctx.lineTo(r * .55 - (i + .5) * r * .22, r * (.7 + (i % 2) * .25));
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#0a0612'; ctx.beginPath(); ctx.ellipse(sway * .3 + look.x * 2, -r * .75, r * .3, r * .32, 0, 0, TAU); ctx.fill();
+    for (const s of [-1, 1]) { circle(ctx, sway * .3 + look.x * 3 + s * r * .12, -r * .78, r * .07, en.windup > 0 ? '#ffffff' : '#b9a6ff'); glow(ctx, look.x * 3 + s * r * .12, -r * .78, 9, '#8a7aff', .9); }
+    ctx.strokeStyle = pale; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(-r * .4, -r * .2); ctx.lineTo(r * .1, -r * .1); ctx.stroke();
+    // The bow, drawn harder the closer it is to loosing.
+    ctx.save(); ctx.translate(r * .55, -r * .25); ctx.rotate(look.x * .3);
+    ctx.strokeStyle = '#1e1826'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * .8, -1.2, 1.2); ctx.stroke();
+    ctx.strokeStyle = '#cfc6ee'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.cos(-1.2) * r * .8, Math.sin(-1.2) * r * .8); ctx.lineTo(-draw * r * .5, 0); ctx.lineTo(Math.cos(1.2) * r * .8, Math.sin(1.2) * r * .8); ctx.stroke();
+    if (draw > 0) { ctx.strokeStyle = '#b9a6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-draw * r * .5, 0); ctx.lineTo(r * .9, 0); ctx.stroke(); glow(ctx, r * .9, 0, 14, '#b9a6ff', draw); }
+    ctx.restore();
+  }
+  /** Shardback: a hulking beast of rock with a forest of crystal growing from its back, glowing brighter as it rears up. */
+  private drawShardback(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean, trem: number) {
+    const r = en.r, raise = en.windup > 0 ? 1 - en.windup : 0, step = en.aggro ? Math.sin(t * 4) : 0;
+    shadow(ctx, 0, r * .75, r * 1.35, r * .42);
+    ctx.translate(trem * 2, -raise * 12);
+    const rock = flash ? '#fff' : enrage(en.elite ? '#3a3050' : '#4a4060', en.rage), dark = flash ? '#fff' : enrage('#2e2840', en.rage);
+    for (const s of [-1, 1]) for (const f of [-.6, .45]) { ctx.fillStyle = dark; ctx.beginPath(); ctx.roundRect(f * r - r * .14, r * .2 + step * s * 3, r * .28, r * .5, 5); ctx.fill(); }
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.ellipse(0, -r * .05, r * 1.05, r * .62, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(r * .3, r * .1, r * .7, r * .4, 0, 0, TAU); ctx.fill();
+    // Crystals growing out of its back.
+    for (let i = 0; i < 7; i++) {
+      const x = -r * .7 + i * r * .23, h = r * (.6 + ((i * 37) % 5) * .14) * (1 + raise * .2), col = i % 3 === 0 ? '#8ee8ff' : i % 3 === 1 ? '#c9b6ff' : '#ff9ad8';
+      ctx.fillStyle = flash ? '#fff' : col; ctx.beginPath(); ctx.moveTo(x - r * .1, -r * .45); ctx.lineTo(x, -r * .45 - h); ctx.lineTo(x + r * .1, -r * .45); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.moveTo(x - r * .05, -r * .47); ctx.lineTo(x, -r * .45 - h * .85); ctx.lineTo(x + r * .01, -r * .47); ctx.fill();
+    }
+    glow(ctx, 0, -r * .9, r * 1.2, '#c9b6ff', .45 + raise * .5);
+    // Its head, low and heavy, with two cold eyes.
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.ellipse(r * .95 * Math.sign(look.x || 1), -r * .05, r * .42, r * .34, 0, 0, TAU); ctx.fill();
+    for (const s of [-1, 1]) circle(ctx, r * 1.05 * Math.sign(look.x || 1) + s * r * .12, -r * .12, r * .07, en.windup > 0 ? '#ffffff' : '#8ee8ff');
+  }
+  /** Eclipse acolyte: a robed cultist with a mask like a black sun, its hands full of void light. */
+  private drawAcolyte(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, cast = en.windup > 0 ? 1 - en.windup / .7 : 0, hover = Math.sin(t * 2.6) * 3 - 6;
+    shadow(ctx, 0, r * .95, r * .85, r * .3, .2);
+    ctx.translate(0, hover);
+    const robe = flash ? '#fff' : enrage(en.elite ? '#1a1030' : '#2a1a44', en.rage);
+    ctx.fillStyle = robe; ctx.beginPath(); ctx.moveTo(-r * .7, r * .9); ctx.quadraticCurveTo(-r * .55, -r * .4, -r * .35, -r * .9); ctx.lineTo(r * .35, -r * .9); ctx.quadraticCurveTo(r * .55, -r * .4, r * .7, r * .9); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#ff6b9a'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-r * .62, r * .7); ctx.lineTo(r * .62, r * .7); ctx.stroke();
+    ctx.fillStyle = robe; ctx.beginPath(); ctx.moveTo(-r * .45, -r * .8); ctx.quadraticCurveTo(0, -r * 1.85, r * .45, -r * .8); ctx.closePath(); ctx.fill();
+    // The mask: a black sun with a burning rim.
+    circle(ctx, look.x * 2, -r * 1.02, r * .3, '#05020c'); ctx.strokeStyle = '#ff6b9a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(look.x * 2, -r * 1.02, r * .3, 0, TAU); ctx.stroke();
+    for (const s of [-1, 1]) circle(ctx, look.x * 2 + s * r * .1, -r * 1.05, r * .045, '#ffd0e0');
+    // Void light gathering in its hands.
+    for (const s of [-1, 1]) { const hx = s * r * (.65 + cast * .2), hy = -r * (.2 + cast * .5); circle(ctx, hx, hy, r * (.12 + cast * .12), '#1a1030'); glow(ctx, hx, hy, r * (.6 + cast * .8), '#ff6b9a', .5 + cast * .5); }
+  }
+  /** The beast that fell with a star: a hulk of meteor rock and star crystal, with a burning star where its heart should be. */
+  private drawStarbeast(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, step = en.aggro ? Math.sin(t * 4) : Math.sin(t * 1.5) * .3, pulse = .7 + Math.sin(t * 3) * .3;
+    shadow(ctx, 0, r * .9, r * 1.5, r * .45, .35);
+    glow(ctx, 0, -r * .6, r * 2.2, '#fff1b8', .15);
+    const rock = flash ? '#fff' : '#3a3450', lit = flash ? '#fff' : '#5a5478';
+    for (const s of [-1, 1]) { ctx.fillStyle = rock; ctx.beginPath(); ctx.roundRect(s * r * .45 - r * .2, r * .1 + step * s * 4, r * .4, r * .75, 8); ctx.fill(); }
+    ctx.fillStyle = rock; ctx.beginPath(); ctx.moveTo(-r * 1, r * .3); ctx.lineTo(-r * 1.15, -r * .7); ctx.lineTo(-r * .5, -r * 1.35); ctx.lineTo(r * .5, -r * 1.35); ctx.lineTo(r * 1.15, -r * .7); ctx.lineTo(r * 1, r * .3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = lit; ctx.beginPath(); ctx.moveTo(-r * 1.05, -r * .6); ctx.lineTo(-r * .48, -r * 1.25); ctx.lineTo(0, -r * 1.2); ctx.lineTo(-r * .4, -r * .4); ctx.closePath(); ctx.fill();
+    // Craters on its hide, and star crystals bursting through.
+    for (const [cx, cy, cr] of [[-.55, -.2, .16], [.5, -.55, .12], [.6, .05, .1]] as Array<[number, number, number]>) { ellipse(ctx, cx * r, cy * r, cr * r, cr * r * .8, '#2a2440'); ellipse(ctx, cx * r - 2, cy * r - 2, cr * r * .6, cr * r * .45, '#4a4468'); }
+    for (let i = 0; i < 5; i++) { const x = -r * .8 + i * r * .4, h = r * (.4 + (i % 3) * .2); ctx.fillStyle = i % 2 ? '#8ee8ff' : '#fff1b8'; ctx.beginPath(); ctx.moveTo(x - r * .1, -r * 1.25); ctx.lineTo(x, -r * 1.25 - h); ctx.lineTo(x + r * .1, -r * 1.25); ctx.closePath(); ctx.fill(); }
+    // The star heart.
+    glow(ctx, 0, -r * .45, r * .9, '#ffd35c', .45 * pulse); ctx.fillStyle = '#fffbe8'; star(ctx, 0, -r * .45, r * .32, 5, .45, t * .8); ctx.fill(); ctx.fillStyle = '#ffd35c'; star(ctx, 0, -r * .45, r * .18, 5, .45, t * .8); ctx.fill();
+    for (const s of [-1, 1]) { ellipse(ctx, s * r * .32 + look.x * 3, -r * .95, r * .12, r * .07, '#fff1b8'); glow(ctx, s * r * .32 + look.x * 3, -r * .95, 16, '#fff1b8', .9); }
+    // Arms of rock.
+    for (const s of [-1, 1]) { ctx.save(); ctx.translate(s * r * 1.05, -r * .65); ctx.rotate(s * (.35 + (en.action === 'slam' ? -.8 : 0)) + step * .1); ctx.fillStyle = rock; ctx.beginPath(); ctx.roundRect(-r * .24, 0, r * .48, r * .95, 10); ctx.fill(); ctx.fillStyle = '#8ee8ff'; ctx.beginPath(); ctx.moveTo(-r * .1, r * .9); ctx.lineTo(0, r * 1.25); ctx.lineTo(r * .1, r * .9); ctx.fill(); ctx.restore(); }
   }
   private eyes(ctx: CanvasRenderingContext2D, x: number, y: number, gap: number, size: number, look: Point, t: number, angry: boolean, color = '#fff8e6') {
     const blink = Math.sin(t * 1.7) > .97;
@@ -2835,16 +3318,16 @@ export class Renderer {
     this.pushAmbient({ x, y, vx: rand(10, 40), vy: rand(20, 40), life: 6, max: 6, size: rand(3.5, 6), rot: rand(0, 6), vr: rand(-3, 3), kind: 'leaf', color: c, phase: rand(0, 6) });
   }
   private updateAmbient(e: GameEngine, v: View, dt: number) {
-    const kind = regionOf(e.world, v.x + v.w / 2).ambient, area = (v.w * v.h) / (1280 * 800);
+    const kind: string = e.inDepths ? 'depths' : regionOf(e.world, v.x + v.w / 2).ambient, area = (v.w * v.h) / (1280 * 800);
     const counts: Partial<Record<AmbientKind, number>> = {};
     for (const a of this.ambient) counts[a.kind] = (counts[a.kind] || 0) + 1;
     const reduce = (this.reduced ? .3 : 1) * this.quality;
-    const want: Array<[AmbientKind, number]> = kind === 'petals' ? [['petal', 30], ['butterfly', 6], ['mote', 14]] : kind === 'leaves' ? [['leaf', 24], ['firefly', 34], ['mote', 10]] : kind === 'embers' ? [['ash', 46], ['mote', 30]] : [['snow', 70], ['mote', 20]];
+    const want: Array<[AmbientKind, number]> = kind === 'depths' ? [['mote', 30], ['ash', 8]] : kind === 'petals' ? [['petal', 30], ['butterfly', 6], ['mote', 14]] : kind === 'leaves' ? [['leaf', 24], ['firefly', 34], ['mote', 10]] : kind === 'embers' ? [['ash', 46], ['mote', 30]] : [['snow', 70], ['mote', 20]];
     for (const [k, n] of want) {
       let have = counts[k] || 0;
       while (have < n * area * reduce) {
         const x = v.x + rand(-100, v.w + 50), y = v.y + rand(-40, v.h * .6);
-        const c = k === 'petal' ? pick(['#f7c5d5', '#ffffff', '#ffd6e5']) : k === 'leaf' ? pick(['#e8a54b', '#c9713d', '#a3c46a']) : k === 'firefly' ? pick(['#ffe38a', '#d8ff9a']) : k === 'butterfly' ? pick(['#ffb35c', '#9fd8ff', '#f2a1b8', '#fff49b']) : k === 'snow' ? '#eef2ff' : k === 'ash' ? pick(['#8a8078', '#5a524e', '#b0a498']) : kind === 'stars' ? pick(['#c9b6ff', '#8ee8ff']) : kind === 'embers' ? pick(['#ffb347', '#ff7a3d', '#ffd27a']) : '#fff8c0';
+        const c = k === 'petal' ? pick(['#f7c5d5', '#ffffff', '#ffd6e5']) : k === 'leaf' ? pick(['#e8a54b', '#c9713d', '#a3c46a']) : k === 'firefly' ? pick(['#ffe38a', '#d8ff9a']) : k === 'butterfly' ? pick(['#ffb35c', '#9fd8ff', '#f2a1b8', '#fff49b']) : k === 'snow' ? '#eef2ff' : k === 'ash' ? pick(['#8a8078', '#5a524e', '#b0a498']) : kind === 'stars' || kind === 'depths' ? pick(['#c9b6ff', '#8ee8ff']) : kind === 'embers' ? pick(['#ffb347', '#ff7a3d', '#ffd27a']) : '#fff8c0';
         const life = rand(6, 14), rising = kind === 'embers' && k === 'mote';
         this.ambient.push({ x, y: rising ? v.y + rand(v.h * .3, v.h + 40) : y, vx: k === 'snow' || k === 'ash' ? rand(-8, 12) : rand(10, 30), vy: k === 'snow' ? rand(18, 40) : k === 'ash' ? rand(12, 26) : rising ? rand(-40, -18) : k === 'petal' || k === 'leaf' ? rand(20, 38) : rand(-6, 6), life, max: life, size: k === 'snow' || k === 'ash' ? rand(1, 2.6) : k === 'butterfly' ? rand(5, 7) : k === 'firefly' ? rand(1.8, 2.8) : k === 'mote' ? rand(1, 2) : rand(3.5, 6), rot: rand(0, 6), vr: rand(-3, 3), kind: k, color: c, phase: rand(0, 6.28) });
         have++;
@@ -3000,8 +3483,9 @@ export class Renderer {
       const c = m.c; if (m.key !== key) { c.width = Math.ceil(CW * dpr); c.height = Math.ceil(CH * dpr); }
       const g = c.getContext('2d')!, map = worldMapCanvas(e.world), MS = MAP_SCALE, vx = h.x - (CW / S) / 2, vy = h.y - (CH / S) / 2;
       g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = MAP_PAPER; g.fillRect(0, 0, CW, CH);
-      g.drawImage(map, vx * MS, vy * MS, (CW / S) * MS, (CH / S) * MS, 0, 0, CW, CH);
-      drawFog(g, e, -vx * S, -vy * S, S);
+      if (e.world.depths && e.inDepths) { g.fillStyle = DEPTHS_PAPER; g.fillRect(0, 0, CW, CH); paintDepths(g, e.world.depths, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), S); }
+      else g.drawImage(map, vx * MS, vy * MS, (CW / S) * MS, (CH / S) * MS, 0, 0, CW, CH);
+      if (!e.inDepths) drawFog(g, e, -vx * S, -vy * S, S);
       drawMapMarkers(g, e, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), 1, this.time, vx - 40, vx + CW / S + 40, vy - 40, vy + CH / S + 40, false);
       m.key = key; m.beat = beat; m.cx = h.x; m.cy = h.y;
     }
@@ -3044,6 +3528,14 @@ function worldMapCanvas(world: WorldDefinition) {
     m.save(); m.scale(S, S); riverBand(m, rv, rv.hw * 1.15, 0, world.height); m.restore();
     m.fillStyle = mix(p.water, MAP_PAPER, .25); m.fill(); m.strokeStyle = MAP_INK; m.lineWidth = 1.2; m.stroke();
   }
+  for (const rg of world.ranges) {
+    const snow = rg.kind === 'snow';
+    m.beginPath(); for (let y = 0; y <= world.height; y += 80) { const x = (rg.x - rangeEdge(rg, y)) * S; if (!y) m.moveTo(x, y * S); else m.lineTo(x, y * S); }
+    for (let y = world.height; y >= 0; y -= 80) m.lineTo((rg.x + rangeEdge(rg, y)) * S, y * S);
+    m.closePath(); m.fillStyle = snow ? mix('#8d93ad', MAP_PAPER, .3) : mix('#3e3036', MAP_PAPER, .28); m.fill(); m.strokeStyle = MAP_INK; m.lineWidth = 1.3; m.stroke();
+    const e = rangeEdge(rg, rg.passY) + 30;
+    m.fillStyle = snow ? mix('#d4dbea', MAP_PAPER, .3) : mix('#2e2226', MAP_PAPER, .4); m.fillRect((rg.x - e) * S, (rg.passY - rg.passHw) * S, e * 2 * S, rg.passHw * 2 * S);
+  }
   // Roads as dashed ink.
   m.setLineDash([4, 3]); m.lineWidth = 2;
   for (const r of world.roads) { m.strokeStyle = alpha(shade(regionOf(world, r[0].x).palette.pathEdge, -.35), .85); m.beginPath(); r.forEach((pt, i) => i ? m.lineTo(pt.x * S, pt.y * S) : m.moveTo(pt.x * S, pt.y * S)); m.stroke(); }
@@ -3053,7 +3545,17 @@ function worldMapCanvas(world: WorldDefinition) {
     const p = regionOf(world, o.x).palette, x = o.x * S, y = o.y * S;
     if (o.kind === 'tree' || o.kind === 'bush' || o.kind === 'mushroom') { const r = Math.max(1.4, o.r * S * 1.1); m.fillStyle = mix(p.foliage[1], MAP_PAPER, .25); m.beginPath(); m.arc(x, y, r, 0, TAU); m.fill(); m.strokeStyle = alpha(MAP_INK, .7); m.lineWidth = .7; m.stroke(); }
     else if (o.kind === 'pine' || o.kind === 'deadtree') { const r = Math.max(1.6, o.r * S * 1.2); m.fillStyle = mix(p.foliage[0], MAP_PAPER, .2); m.beginPath(); m.moveTo(x - r, y + r * .6); m.lineTo(x, y - r * 1.2); m.lineTo(x + r, y + r * .6); m.closePath(); m.fill(); m.strokeStyle = alpha(MAP_INK, .7); m.lineWidth = .7; m.stroke(); }
-    else if (o.kind === 'rock' || o.kind === 'crystal' || o.kind === 'cliff') { const r = Math.max(1.5, o.r * S * (o.kind === 'cliff' ? 1.7 : 1.1)); m.fillStyle = mix(p.rock.startsWith('#') ? p.rock : '#8c8f80', MAP_PAPER, .3); m.beginPath(); m.moveTo(x - r, y + r * .5); m.lineTo(x - r * .2, y - r); m.lineTo(x + r * .3, y - r * .3); m.lineTo(x + r, y + r * .5); m.closePath(); m.fill(); m.strokeStyle = alpha(MAP_INK, .75); m.lineWidth = .8; m.stroke(); }
+    else if (o.kind === 'peak' || o.kind === 'basalt' || o.kind === 'volcano') {
+      const r = Math.max(3, o.r * S * (o.kind === 'volcano' ? 1.5 : 1.3)), snow = o.kind === 'peak';
+      m.fillStyle = snow ? mix('#7d84a0', MAP_PAPER, .2) : mix('#3e3036', MAP_PAPER, .15); m.beginPath(); m.moveTo(x - r, y + r * .4); m.lineTo(x - r * .1, y - r * (o.kind === 'volcano' ? .9 : 1.3)); m.lineTo(x + r, y + r * .4); m.closePath(); m.fill(); m.strokeStyle = alpha(MAP_INK, .8); m.lineWidth = .8; m.stroke();
+      if (o.kind === 'volcano') { m.fillStyle = '#ff7a3d'; m.beginPath(); m.ellipse(x - r * .1, y - r * .9, r * .25, r * .09, 0, 0, TAU); m.fill(); m.strokeStyle = '#e2592a'; m.lineWidth = 1.2; m.beginPath(); m.moveTo(x - r * .1, y - r * .85); m.lineTo(x + r * .2, y); m.stroke(); }
+      else { m.fillStyle = snow ? '#ffffff' : '#ff9a3d'; m.beginPath(); m.moveTo(x - r * .4, y - r * .55); m.lineTo(x - r * .1, y - r * 1.3); m.lineTo(x + r * .25, y - r * .55); m.closePath(); m.fill(); }
+    }
+    else if (o.kind === 'oak' || o.kind === 'fruittree') { const r = Math.max(1.8, o.r * S * 1.2); m.fillStyle = mix(o.kind === 'oak' ? p.foliage[0] : p.foliage[1], MAP_PAPER, .2); m.beginPath(); m.arc(x, y, r, 0, TAU); m.fill(); m.strokeStyle = alpha(MAP_INK, .7); m.lineWidth = .7; m.stroke(); if (o.kind === 'fruittree') { m.fillStyle = '#e0525c'; m.fillRect(x - .6, y - .6, 1.2, 1.2); } }
+    else if (o.kind === 'hedge') { m.strokeStyle = mix(p.foliage[0], MAP_PAPER, .1); m.lineWidth = 2; m.beginPath(); m.moveTo(x - (o.w || 0) * S * 1.1, y - (o.h || 0) * S * 1.1); m.lineTo(x + (o.w || 0) * S * 1.1, y + (o.h || 0) * S * 1.1); m.stroke(); }
+    else if (o.kind === 'obsidian') { const r = Math.max(1.4, o.r * S); m.fillStyle = '#1e1826'; m.beginPath(); m.moveTo(x - r * .6, y + r * .4); m.lineTo(x, y - r * 1.6); m.lineTo(x + r * .6, y + r * .4); m.closePath(); m.fill(); }
+    else if (o.kind === 'fumarole') { m.fillStyle = '#e8d25a'; m.beginPath(); m.arc(x, y, 1.4, 0, TAU); m.fill(); }
+    else if (o.kind === 'rock' || o.kind === 'crystal' || o.kind === 'cliff' || o.kind === 'crag' || o.kind === 'cairn') { const r = Math.max(1.5, o.r * S * (o.kind === 'cliff' ? 1.7 : 1.1)); m.fillStyle = mix(p.rock.startsWith('#') ? p.rock : '#8c8f80', MAP_PAPER, .3); m.beginPath(); m.moveTo(x - r, y + r * .5); m.lineTo(x - r * .2, y - r); m.lineTo(x + r * .3, y - r * .3); m.lineTo(x + r, y + r * .5); m.closePath(); m.fill(); m.strokeStyle = alpha(MAP_INK, .75); m.lineWidth = .8; m.stroke(); }
   }
   for (const o of world.obstacles) if (o.kind === 'house' || o.kind === 'manor' || o.kind === 'windmill' || o.kind === 'tower' || o.kind === 'tent') {
     const s = o.kind === 'manor' ? 10 : 7, x = o.x * S, y = o.y * S;
@@ -3064,6 +3566,48 @@ function worldMapCanvas(world: WorldDefinition) {
   mapCache = { world, c };
   return c;
 }
+/** The depths are mapped on dark paper, apart from the valley: they lie underground, not in it. */
+const DEPTHS_PAPER = '#2a2230';
+/** The chambers and halls of the depths, as ink on dark paper, with `P` mapping world points onto the map. */
+function paintDepths(ctx: CanvasRenderingContext2D, dp: Depths, P: (p: Point) => Point, S: number) {
+  const shape = (pad: number, color: string) => {
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineCap = 'round';
+    ctx.beginPath(); for (const r of dp.rooms) { const q = P(r); ctx.moveTo(q.x + (r.rx + pad) * S, q.y); ctx.ellipse(q.x, q.y, (r.rx + pad) * S, (r.ry + pad) * S, 0, 0, TAU); } ctx.fill();
+    for (const h of dp.halls) { const a = P(h.a), b = P(h.b); ctx.lineWidth = (h.hw + pad) * 2 * S; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  };
+  shape(26, '#140e18'); shape(14, '#8a7a90'); shape(0, '#4a3e52');
+}
+/**
+ * The map of the depths beneath the Dawn Forge, fitted to the screen: its chambers by name, the ways out, the fire to rest
+ * at, the hoard, Umbra on its throne, and the hero. It is opened from the hole on the valley's map, or by itself while
+ * the hero is down there.
+ */
+export function drawDepthsMap(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, t: number) {
+  const dp = e.world.depths; ctx.clearRect(0, 0, w, h); if (!dp) return;
+  const W = dp.x1 - dp.x0, H = dp.y1 - dp.y0, S = Math.min((w - 40) / W, (h - 70) / H), ox = (w - W * S) / 2, oy = 50 + (h - 60 - H * S) / 2;
+  const P = (p: Point) => ({ x: ox + (p.x - dp.x0) * S, y: oy + (p.y - dp.y0) * S });
+  ctx.fillStyle = DEPTHS_PAPER; ctx.beginPath(); ctx.roundRect(ox - 14, oy - 14, W * S + 28, H * S + 28, 14); ctx.fill();
+  ctx.globalAlpha = .35; ctx.fillStyle = grainPattern(ctx); ctx.fillRect(ox - 14, oy - 14, W * S + 28, H * S + 28); ctx.globalAlpha = 1;
+  paintDepths(ctx, dp, P, S);
+  ctx.textAlign = 'center';
+  for (const r of dp.rooms) { const q = P(r), size = Math.round(clamp(S * 120, 11, 18)); ctx.font = `700 ${size}px ${DISPLAY}`; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(20,14,24,.9)'; ctx.strokeText(r.name, q.x, q.y - r.ry * S * .55); ctx.fillStyle = r.id === 'throne' ? '#ff9ac0' : '#efe0c0'; ctx.fillText(r.name, q.x, q.y - r.ry * S * .55); }
+  const dot = (p: Point, r: number, c: string) => { const q = P(p); circle(ctx, q.x, q.y, r + 1.2, '#140e18'); circle(ctx, q.x, q.y, r, c); };
+  for (const o of e.getObjects()) {
+    if (!inDepthsArea(dp, o)) continue;
+    if (o.kind === 'exit') { const q = P(o); glow(ctx, q.x, q.y, 18, o.variant === 'throne' ? '#fff1b8' : '#c9e8a8', .9); dot(o, 4, o.variant === 'throne' ? '#fff1b8' : '#c9e8a8'); }
+    else if (o.kind === 'campfire') dot(o, 3.5, '#ffb347');
+    else if (o.kind === 'chest' && !e.isOpened(o.id)) dot(o, 3.2, '#ffd35c');
+    else if (o.kind === 'lore' && !e.read.has(o.id)) dot(o, 2.6, '#c9b6ff');
+  }
+  for (const en of e.enemies) if (!en.dead && en.boss && inDepthsArea(dp, en)) { const q = P(en); glow(ctx, q.x, q.y, 18, '#ff6b9a', .6 + Math.sin(t * 5) * .3); dot(en, 5, '#ff6b9a'); }
+  { const q = P(dp.throne); ctx.strokeStyle = 'rgba(255,107,154,.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(q.x, q.y, 22 + Math.sin(t * 3) * 3, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+  if (e.inDepths) { const q = P(e.hero); heroArrow(ctx, e, q.x, q.y, 1.6); }
+  else { const q = P(dp.landing); ctx.font = `800 12px ${UI}`; ctx.fillStyle = '#c9e8a8'; ctx.fillText('↓ You fall in here', q.x, q.y + 30); }
+  ctx.font = `900 ${Math.round(clamp(w / 40, 16, 26))}px ${DISPLAY}`; ctx.fillStyle = '#efe0c0'; ctx.strokeStyle = 'rgba(20,14,24,.9)'; ctx.lineWidth = 4;
+  ctx.strokeText('The Depths', w / 2, 34); ctx.fillText('The Depths', w / 2, 34);
+}
+/** Where the hole into the depths is, once the ground has opened. */
+export function depthsHole(e: GameEngine) { const o = e.world.objects.find(x => x.kind === 'hole'); return o && e.isVisible(o) ? o : null; }
 /** One pixel per explore cell, scaled up with smoothing so the fog has soft edges. */
 const fogCache = new WeakMap<GameEngine, { c: HTMLCanvasElement; v: number }>();
 function drawFog(ctx: CanvasRenderingContext2D, e: GameEngine, ox: number, oy: number, S: number) {
@@ -3098,7 +3642,9 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'questItem') dot(o, 2, e.quest(o.questId!)?.main ? MAIN_COLOR : SIDE_COLOR);
     else if (o.kind === 'cage') { const q = P(o); glow(ctx, q.x, q.y, 9 * size, '#ff6b5b', .7); dot(o, 2.8, e.quest(o.questId!)?.main ? MAIN_COLOR : SIDE_COLOR); }
     else if (o.kind === 'campfire' || o.kind === 'fountain') dot(o, 2, o.kind === 'fountain' ? '#9fd8ff' : '#ffb347');
+    else if (o.kind === 'hole') { const q = P(o); glow(ctx, q.x, q.y, 14 * size, '#6a4bd6', .8); circle(ctx, q.x, q.y, 5.5 * size, MAP_INK); circle(ctx, q.x, q.y, 4.2 * size, '#140a1e'); }
   }
+  const fs = e.fallen; if (fs && fs.phase === 'landed' && inside(fs)) { const q = P(fs); glow(ctx, q.x, q.y, (14 + Math.sin(t * 4) * 3) * size, STAR_COLOR, .9); ctx.fillStyle = STAR_COLOR; star(ctx, q.x, q.y, 6 * size, 5, .45, t); ctx.fill(); ctx.strokeStyle = MAP_INK; ctx.lineWidth = 1; ctx.stroke(); }
   for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.heroic) { const q = P(en); glow(ctx, q.x, q.y, 8 * size, '#c98aff', .55 + Math.sin(t * 4) * .25); dot(en, 2.8, '#e8a0ff'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }

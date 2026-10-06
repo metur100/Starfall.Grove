@@ -457,8 +457,8 @@ export const RIVEN: HeroStory = {
     ember: {
       m12: { title: 'The Ashen Broker', summary: 'Defeat the Ashen Broker, Umbra’s hand in the Wastes, at the Dawn Forge.',
         text: { offer: ['(The ash rises into Pyrrhus’s old armour, with the Broker’s cracked mask where his face should be.)', 'It throws fire, rains lava and strikes from the shadows. Like me, with worse manners.', 'Umbra had a buyer in every land. This is the last one.'], progress: ['Defeat the Ashen Broker at the Dawn Forge.'], complete: [], after: ['No more buyers.'] } },
-      m13: { title: 'The Shadow That Chose', summary: 'Defeat Umbra and light the Dawn Forge.',
-        text: { offer: ['(The Broker falls into ash, and the ash turns black and begins to crawl. Out of the Beacon, the Bell and the Star, every guardian’s shadow gathers into one.)', '(“I am the shadow you were born with, both of you,” Umbra says, with Sable’s voice and yours. “I chose you. You are mine.”)', 'It’s wrong. The shadow was never the enemy. The choosing is. And I choose.'], progress: ['Defeat Umbra at the Dawn Forge.'], complete: [], after: [] } },
+      m13: { title: 'The Shadow That Chose', summary: 'Fight through the depths beneath the Dawn Forge, defeat Umbra, then light the Forge.',
+        text: { offer: ['(The Broker falls into ash, and the ash turns black and begins to crawl. Out of the Beacon, the Bell and the Star, every guardian’s shadow pours toward the Forge, and down into the earth.)', '(“I am the shadow you were born with, both of you,” Umbra says from somewhere under your feet, with Sable’s voice and yours. “Come down to me. You are mine.”)', 'It’s wrong. The shadow was never the enemy. The choosing is. And I choose.'], progress: ['Find Umbra on its throne in the depths beneath the Dawn Forge.'], complete: [], after: [] } },
     },
   },
   npcs: {

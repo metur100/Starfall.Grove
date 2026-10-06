@@ -25,17 +25,21 @@ export type Profile = {
   mounts: MountId[]; mount: MountId | null;
   /** The cosmetic trail chosen in the stable (null: none). */
   trail: TrailId | null;
+  /** Star fragments gathered from fallen stars toward the next Starheart, and the Starhearts made (each +1 heart). */
+  fragments: number; starhearts: number;
 };
+/** Star fragments that fuse into a Starheart, and how many Starhearts a hero can make. */
+export const FRAGMENTS_PER_HEART = 8, MAX_STARHEARTS = 6;
 /** Bag slots: every kind of consumable held takes one, every piece of equipment takes one. */
 export const BAG_SIZE = 36;
 export const bagUsed = (p: Profile) => p.gear.length + ITEM_ORDER.filter(id => (p.items[id] || 0) > 0).length;
 
-export const MAX_LEVEL = 25;
+export const MAX_LEVEL = 30;
 /** Health is shown as a bar; one "heart" of the old design is worth this many points. */
 export const HP_UNIT = 20;
 /** Mira keeps the original key so older saves carry over. */
 const keyOf = (hero: HeroId) => hero === 'mira' ? 'starfall-grove-hero-v1' : `starfall-grove-hero-${hero}-v1`;
-const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mounts: [], mount: null, trail: null });
+const blank = (hero: HeroId): Profile => ({ version: 1, hero, level: 1, xp: 0, gold: 40, bonusHearts: 0, bonusMana: 0, regen: 0, claimed: [], items: { healthPotion: 3, manaPotion: 1, fireBomb: 2 }, upgrades: {}, gear: [], equipped: {}, stars: {}, quick: 'manaPotion', bought: [], ach: { got: {}, n: {} }, mounts: [], mount: null, trail: null, fragments: 0, starhearts: 0 });
 export const practiceProfile = (hero: HeroId): Profile => ({ ...blank(hero), gold: 0, items: {} });
 
 /** Smith upgrades: each has five ranks, bought in cities with gold. */
@@ -52,7 +56,7 @@ export const rankOf = (p: Profile, id: UpgradeId) => p.upgrades[id] || 0;
 
 /** Experience needed to go from `level` to `level + 1`. */
 export const xpToNext = (level: number) => level >= MAX_LEVEL ? 0 : Math.round(60 * Math.pow(level, 1.5) / 5) * 5;
-const heartsAt = (p: Profile) => Math.min(26, HEROES[p.hero].hearts + Number(p.level >= 4) + Number(p.level >= 8) + Number(p.level >= 12) + Number(p.level >= 16) + Number(p.level >= 20) + p.bonusHearts);
+const heartsAt = (p: Profile) => Math.min(30, HEROES[p.hero].hearts + Number(p.level >= 4) + Number(p.level >= 8) + Number(p.level >= 12) + Number(p.level >= 16) + Number(p.level >= 20) + Number(p.level >= 25) + Number(p.level >= 30) + p.bonusHearts + p.starhearts);
 export const gearOf = (p: Profile) => sumGear(p.equipped);
 export const healthAt = (p: Profile) => heartsAt(p) * HP_UNIT + (p.level - 1) * HEROES[p.hero].hpPerLevel + rankOf(p, 'amulet') * 30 + gearOf(p).health;
 export const manaAt = (p: Profile) => 100 + (p.level - 1) * 6 + p.bonusMana + gearOf(p).mana;
@@ -95,6 +99,8 @@ export function loadProfile(hero: HeroId = 'mira'): Profile {
     p.mounts = Array.isArray(raw.mounts) ? MOUNT_ORDER.filter(id => raw.mounts!.includes(id)) : MOUNT_ORDER.filter(id => p.ach.got[OLD_MOUNT_ACH[id]]);
     p.mount = p.mounts.includes(raw.mount as MountId) ? raw.mount as MountId : null;
     p.trail = TRAIL_ORDER.includes(raw.trail as TrailId) ? raw.trail as TrailId : null;
+    p.fragments = Math.max(0, Math.min(FRAGMENTS_PER_HEART - 1, Math.floor(Number(raw.fragments) || 0)));
+    p.starhearts = Math.max(0, Math.min(MAX_STARHEARTS, Math.floor(Number(raw.starhearts) || 0)));
     p.quick = ITEM_ORDER.includes(raw.quick as ItemId) && raw.quick !== 'healthPotion' ? raw.quick as ItemId : 'manaPotion';
     return p;
   } catch { return blank(hero); }

@@ -50,12 +50,12 @@ export function worldForHero(base: WorldDefinition, hero: HeroId, quests: QuestD
   const moved = new Set(quests.filter(q => q.kind === 'key' && q.hero === hero && q.place).flatMap(q => (q.keys || []).map(i => `${q.region}:key-${i}`)));
   const objects = base.objects.filter(o => (!o.questId || o.kind === 'barrier' || byId.has(o.questId)) && !(o.kind === 'key' && moved.has(o.id))).map(o => {
     // A land's gate opens when the hero's own chapter there ends.
-    if (o.kind === 'barrier' && s) { const last = s.chains[o.region]?.at(-1); return last ? { ...o, questId: inLand(o.region, last) } : o; }
+    if (o.kind === 'barrier' && s && o.questId) { const last = s.chains[o.region]?.at(-1); return last ? { ...o, questId: inLand(o.region, last) } : o; }
     const q = o.questId ? byId.get(o.questId) : null; if (!q || o.kind === 'barrier') return o;
     if (o.kind === 'questItem' && q.item) return { ...o, name: q.item, icon: q.icon || o.icon };
     if (o.kind === 'cage' && q.captive) return { ...o, name: `${q.captive.name}’s cage`, captive: q.captive };
     if (o.kind === 'site' && q.siteName) return { ...o, name: q.siteName };
-    if (o.kind === 'ward' && q.ward) return { ...o, name: q.ward };
+    if (o.kind === 'ward' && q.ward && o.variant !== 'town') return { ...o, name: q.ward };
     if (o.kind === 'switch' && q.order?.[o.step ?? -1]) return { ...o, name: q.order[o.step!] };
     return o;
   });

@@ -23,6 +23,12 @@ export function propShadow(g: CanvasRenderingContext2D, o: Obstacle) {
     case 'tent': s(5, 20, 50, 13); break;
     case 'stall': s(5, 20, 56, 12); break;
     case 'cliff': s(8, r * .45, r * 1.3, r * .42, .32); break;
+    case 'oak': s(8, r * .5, r * 1.6, r * .5, .3); break;
+    case 'peak': case 'basalt': s(10, r * .45, r * 1.5, r * .45, .3); break;
+    case 'volcano': s(14, r * .42, r * 1.55, r * .45, .32); break;
+    case 'hedge': if (o.w! > o.h!) s(4, 6, 50, 9, .2); else s(4, 0, 18, 44, .2); break;
+    case 'crag': s(6, r * .35, r * 1.1, r * .36, .26); break;
+    case 'fumarole': break;
     case 'campfire': break;
     case 'fence': s(0, 4, o.w! > o.h! ? 36 : 8, o.w! > o.h! ? 5 : 30, .16); break;
     case 'lamppost': s(2, 3, 10, 4); break;
@@ -66,8 +72,160 @@ export function paintProp(g: CanvasRenderingContext2D, o: Obstacle, p: Palette, 
     case 'planter': return planter(g, f1, seed);
     case 'cliff': return cliff(g, r, rock, snow ? '#eef2ff' : woods ? '#3f6a48' : ash ? '#4a3430' : f2, seed);
     case 'fountain': return fountain(g, p, rock);
+    case 'hedge': return hedge(g, o, f0, f1, f2);
+    case 'fruittree': return fruitTree(g, r, seed, trunk, f0, f1, f2);
+    case 'beehive': return beehive(g, seed);
+    case 'oak': return oak(g, r, seed, trunk, f0, f1, f2);
+    // A crag of a mountain range keeps the range's own colours, whichever land it stands in.
+    case 'crag': return crag(g, r, seed, o.color === 'snow' ? '#8d93ad' : o.color === 'ash' ? '#3e3036' : o.color === 'cave' ? '#3a2e3e' : rock, o.color === 'cave' ? '#5a4a62' : o.color === 'snow' || (!o.color && snow) ? '#f2f5ff' : o.color === 'ash' || ash ? '#6e5a54' : f2);
+    case 'cairn': return cairn(g, seed, rock, snow);
+    case 'peak': return mountain(g, r, seed, false);
+    case 'basalt': return mountain(g, r, seed, true);
+    case 'volcano': return volcano(g, r, seed);
+    case 'obsidian': return obsidian(g, r, seed);
+    case 'fumarole': return fumarole(g, seed);
   }
 }
+
+// ───────────────────────────── each land's own scenery
+/** A hedgerow: a long clipped bush, along the row (w > h) or running away from you (h > w). */
+function hedge(g: CanvasRenderingContext2D, o: Obstacle, f0: string, f1: string, f2: string) {
+  const along = o.w! > o.h!, seed = o.seed;
+  if (along) {
+    const B: Array<[number, number, number]> = []; for (let i = 0; i < 7; i++) B.push([-42 + i * 14, -18 - hash(i + seed * 30) * 6, 13 + hash(i * 3 + seed) * 3]);
+    rrect(g, -48, -22, 96, 26, 10, f0); cloud(g, B, f0, 0, 4); cloud(g, B, f1);
+    cloud(g, B.map(([x, y, r]) => [x - 3, y - 5, r * .55] as [number, number, number]), f2);
+    if (seed > .5) for (let i = 0; i < 6; i++) { circle(g, -38 + i * 15, -22 + Math.sin(i * 2) * 6, 2.4, i % 2 ? '#fff4f8' : '#f7c5d5'); }
+  } else {
+    for (let i = 0; i < 5; i++) { const y = -36 + i * 18; cloud(g, [[0, y - 10, 15], [-7, y - 4, 11], [7, y - 4, 11]], i % 2 ? f1 : mix(f0, f1, .5)); }
+    cloud(g, [[-3, -52, 9], [4, -44, 7]], f2);
+  }
+}
+function fruitTree(g: CanvasRenderingContext2D, r: number, seed: number, trunk: string, f0: string, f1: string, f2: string) {
+  g.fillStyle = trunk; g.beginPath(); g.moveTo(-r * .22, r * .45); g.quadraticCurveTo(-r * .1, 0, -r * .14, -r * .7); g.lineTo(r * .14, -r * .7); g.quadraticCurveTo(r * .1, 0, r * .24, r * .45); g.closePath(); g.fill();
+  const cy = -r * 1.15, B: Array<[number, number, number]> = [[0, cy, r * .95], [-r * .6, cy + r * .2, r * .62], [r * .6, cy + r * .22, r * .62], [0, cy - r * .5, r * .6]];
+  cloud(g, B, f0, 0, r * .12); cloud(g, B, mix(f1, '#7fbf5a', .3)); cloud(g, B.slice(0, 2).map(([x, y, rr]) => [x - r * .15, y - r * .2, rr * .55] as [number, number, number]), f2);
+  const fruit = seed < .34 ? '#e0525c' : seed < .67 ? '#f2b84b' : '#ff9b73';
+  for (let i = 0; i < 9; i++) { const a = i * 2.39 + seed * 7, d = r * (.25 + hash(i + seed * 13) * .6), x = Math.cos(a) * d, y = cy + Math.sin(a) * d * .75 + r * .12; circle(g, x, y, r * .13, fruit); circle(g, x - r * .04, y - r * .04, r * .045, 'rgba(255,255,255,.7)'); }
+}
+function beehive(g: CanvasRenderingContext2D, seed: number) {
+  rrect(g, -12, -4, 24, 8, 2, '#6f5337'); rrect(g, -10, 2, 4, 8, 1, '#5a4130'); rrect(g, 6, 2, 4, 8, 1, '#5a4130');
+  const straw = '#d9b45a';
+  for (let i = 0; i < 4; i++) { const w = 15 - i * 3, y = -8 - i * 7.5; g.fillStyle = i % 2 ? straw : shade(straw, -.1); g.beginPath(); g.ellipse(0, y, w, 6, 0, Math.PI, TAU); g.lineTo(w, y + 2); g.lineTo(-w, y + 2); g.fill(); }
+  circle(g, 0, -37, 4, shade(straw, .1)); ellipse(g, 0, -8, 4, 3, '#3a2a1a');
+  for (let i = 0; i < 3; i++) { const x = 10 + i * 6 + seed * 4, y = -26 - i * 7; ellipse(g, x, y, 2.2, 1.6, '#ffd35c'); g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); g.ellipse(x - 1, y - 2, 1.6, 1, -.6, 0, TAU); g.fill(); }
+}
+/** A great oak of the deep woods: a trunk as wide as a cart, roots like walls, a canopy like a storm cloud. */
+function oak(g: CanvasRenderingContext2D, r: number, seed: number, trunk: string, f0: string, f1: string, f2: string) {
+  const tw = r * .34;
+  for (const s of [-1, 1]) { g.fillStyle = shade(trunk, -.08); g.beginPath(); g.moveTo(s * tw * .6, -r * .1); g.quadraticCurveTo(s * tw * 1.6, r * .25, s * tw * 2.2, r * .5); g.lineTo(s * tw * 1.2, r * .5); g.quadraticCurveTo(s * tw, r * .2, s * tw * .3, r * .1); g.closePath(); g.fill(); }
+  g.fillStyle = trunk; g.beginPath(); g.moveTo(-tw, r * .45); g.quadraticCurveTo(-tw * .7, -r * .2, -tw * .8, -r * .9); g.lineTo(tw * .8, -r * .9); g.quadraticCurveTo(tw * .7, -r * .2, tw, r * .45); g.closePath(); g.fill();
+  g.fillStyle = shade(trunk, -.25); g.fillRect(tw * .2, -r * .85, tw * .45, r * 1.25);
+  g.strokeStyle = shade(trunk, -.3); g.lineWidth = 1.6; for (let i = 0; i < 4; i++) { const x = -tw * .6 + i * tw * .4; g.beginPath(); g.moveTo(x, r * .4); g.quadraticCurveTo(x + 3, -r * .2, x - 2, -r * .8); g.stroke(); }
+  if (seed > .55) { ellipse(g, -tw * .1, -r * .2, tw * .32, tw * .45, '#2a1e1a'); ellipse(g, -tw * .1, -r * .16, tw * .2, tw * .3, '#120c0a'); }
+  const cy = -r * 1.25, v = Math.floor(seed * 3);
+  const base: Array<[number, number, number]> = v === 0 ? [[0, 0, 1], [-.8, .25, .72], [.8, .2, .74], [-.4, -.55, .7], [.42, -.5, .66], [0, .42, .7], [-1.1, -.1, .5], [1.1, -.05, .5]]
+    : v === 1 ? [[0, -.1, 1.05], [-.85, .3, .66], [.86, .3, .64], [-.3, -.62, .64], [.5, -.4, .72], [.05, .45, .74], [1.15, .1, .45]]
+      : [[0, 0, .95], [-.7, .1, .8], [.72, .05, .82], [0, -.66, .7], [-.25, .45, .7], [.45, .45, .64], [-1.12, .25, .48]];
+  const B = base.map(([x, y, rr]) => [x * r * 1.05, y * r + cy, rr * r] as [number, number, number]);
+  cloud(g, B, mix(f0, '#0e1a12', .3), 0, r * .14); cloud(g, B, f0); cloud(g, B.map(([x, y, rr]) => [x - r * .08, y - r * .1, rr * .82] as [number, number, number]), f1);
+  cloud(g, B.slice(0, 5).map(([x, y, rr]) => [x - r * .2, y - r * .22, rr * .48] as [number, number, number]), f2);
+  g.strokeStyle = shade(f1, -.22); g.lineWidth = 1.5; for (let i = 0; i < 11; i++) { const a = i * 2.3 + seed * 9, d = r * (.4 + hash(i + seed * 50) * .6), x = Math.cos(a) * d * 1.05, y = cy + Math.sin(a) * d * .75 + r * .1; g.beginPath(); g.arc(x, y, r * .14, Math.PI * .15, Math.PI * .85); g.stroke(); }
+  // Hanging moss and a few acorns.
+  g.strokeStyle = '#8fae6a'; g.lineWidth = 2.2; for (let i = 0; i < 5; i++) { const x = (i - 2) * r * .42 + seed * 8; g.beginPath(); g.moveTo(x, cy + r * .62); g.quadraticCurveTo(x + 4, cy + r * .9, x - 2, cy + r * 1.15); g.stroke(); }
+  for (let i = 0; i < 5; i++) { const x = Math.cos(i * 2.1 + seed * 10) * r * .75, y = cy + Math.sin(i * 2.1) * r * .5; ellipse(g, x, y, 3, 4, '#a8744a'); ellipse(g, x, y - 3, 3.4, 2, '#6f5337'); }
+}
+/** A rock spire, or a cluster of them, with snow on its top. */
+function crag(g: CanvasRenderingContext2D, r: number, seed: number, rock: string, cap: string) {
+  const v = Math.floor(seed * 3), spires: Array<[number, number, number]> = v === 0 ? [[-.45, 1.5, .5], [.3, 2.2, .55], [.85, 1.2, .38]] : v === 1 ? [[-.6, 1.1, .4], [0, 2.4, .6], [.6, 1.6, .45]] : [[-.3, 2, .6], [.5, 1.3, .45]];
+  for (const [ox, h, w] of spires) {
+    const x = ox * r, top = -h * r, wd = w * r;
+    poly(g, [x - wd, r * .3, x - wd * .55, top * .55, x - wd * .1, top, x + wd * .4, top * .7, x + wd, r * .3], rock);
+    poly(g, [x - wd * .1, top, x + wd * .4, top * .7, x + wd, r * .3, x + wd * .1, r * .3], shade(rock, -.22));
+    poly(g, [x - wd * .85, r * .1, x - wd * .5, top * .5, x - wd * .1, top, x - wd * .3, top * .4], shade(rock, .16));
+    g.strokeStyle = shade(rock, -.35); g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - wd * .4, top * .2); g.lineTo(x - wd * .1, top * .5); g.moveTo(x + wd * .2, r * .1); g.lineTo(x + wd * .3, top * .3); g.stroke();
+    g.fillStyle = cap; g.beginPath(); g.moveTo(x - wd * .52, top * .62); g.lineTo(x - wd * .1, top); g.lineTo(x + wd * .4, top * .7); g.quadraticCurveTo(x + wd * .1, top * .58, x - wd * .2, top * .66); g.quadraticCurveTo(x - wd * .35, top * .56, x - wd * .52, top * .62); g.fill();
+  }
+}
+function cairn(g: CanvasRenderingContext2D, seed: number, rock: string, snow: boolean) {
+  const sizes = [[17, 6], [14, 5.4], [11, 5], [8, 4.4], [5, 3.6]];
+  let y = 4;
+  sizes.forEach(([w, h], i) => { const x = Math.sin(i * 2.3 + seed * 9) * 2.4; y -= h * 1.6; ellipse(g, x, y + 2, w, h, shade(rock, -.2)); ellipse(g, x, y, w, h, i % 2 ? rock : shade(rock, .12)); ellipse(g, x - w * .3, y - h * .3, w * .35, h * .3, 'rgba(255,255,255,.3)'); });
+  if (snow) ellipse(g, 0, y - 2, 6, 3, '#f4f7ff');
+}
+/**
+ * A mountain peak: a great wedge of rock with a lit west face, a shaded east face and ridges between, and a cap of snow
+ * (`snow`) or a crown of ash with glowing lava cracks (`basalt`).
+ */
+function mountain(g: CanvasRenderingContext2D, r: number, seed: number, volcanic: boolean) {
+  const v = Math.floor(seed * 3), rock = volcanic ? '#4a3a3e' : '#7d84a0', lit = volcanic ? '#625055' : '#a2a8c0', dark = volcanic ? '#2e2228' : '#5a6080';
+  // Broad shoulders and one or two summits each: a range, not a row of spikes.
+  const peaks: Array<[number, number, number]> = v === 0 ? [[-.6, 1.45, 1.05], [.35, 2.1, 1.2], [1.05, 1.15, .78]] : v === 1 ? [[-.95, 1.2, .9], [-.1, 2.25, 1.3], [.8, 1.6, 1]] : [[-.55, 1.85, 1.2], [.55, 1.4, 1], [-1.15, .95, .62]];
+  for (const [ox, h, w] of peaks.sort((a, b) => a[1] - b[1])) {
+    const x = ox * r, top = -h * r, wd = w * r, base = r * .45;
+    poly(g, [x - wd, base, x - wd * .35, top * .55, x - wd * .05, top, x + wd * .3, top * .6, x + wd, base], rock);
+    poly(g, [x - wd * .05, top, x + wd * .3, top * .6, x + wd, base, x + wd * .05, base], dark);
+    poly(g, [x - wd * .9, base * .6, x - wd * .4, top * .52, x - wd * .05, top, x - wd * .25, top * .3, x - wd * .5, base * .2], lit);
+    // Ridges and gullies.
+    g.strokeStyle = shade(rock, -.3); g.lineWidth = 1.6; g.lineCap = 'round';
+    for (let i = 0; i < 3; i++) { const sx = x - wd * .05 + (i - 1) * wd * .1, ex = x - wd * .7 + i * wd * .62; g.beginPath(); g.moveTo(sx, top * (.85 - i * .05)); g.quadraticCurveTo((sx + ex) / 2 + 6, top * .4, ex, base * .8); g.stroke(); }
+    if (volcanic) {
+      // Ash on the summit and lava glowing in the cracks.
+      g.fillStyle = '#7a6a68'; g.beginPath(); g.moveTo(x - wd * .3, top * .7); g.lineTo(x - wd * .05, top); g.lineTo(x + wd * .25, top * .68); g.quadraticCurveTo(x, top * .6, x - wd * .3, top * .7); g.fill();
+      g.strokeStyle = '#ff7a3d'; g.lineWidth = 2.2; for (let i = 0; i < 2; i++) { const sx = x - wd * .2 + i * wd * .35; g.beginPath(); g.moveTo(sx, top * .55); g.lineTo(sx + 6, top * .3); g.lineTo(sx - 3, top * .05); g.lineTo(sx + 5, base * .5); g.stroke(); }
+      g.strokeStyle = '#ffd27a'; g.lineWidth = .9; for (let i = 0; i < 2; i++) { const sx = x - wd * .2 + i * wd * .35; g.beginPath(); g.moveTo(sx, top * .55); g.lineTo(sx + 6, top * .3); g.lineTo(sx - 3, top * .05); g.stroke(); }
+    } else {
+      // A jagged cap of snow, with streaks running down the gullies.
+      g.fillStyle = '#f4f7ff'; g.beginPath(); g.moveTo(x - wd * .42, top * .55); g.lineTo(x - wd * .05, top); g.lineTo(x + wd * .32, top * .55);
+      for (let k = 0; k < 5; k++) { const kx = x + wd * .32 - k * wd * .148; g.lineTo(kx - wd * .05, top * (.42 + (k % 2) * .1)); g.lineTo(kx - wd * .148, top * .55); }
+      g.closePath(); g.fill();
+      g.fillStyle = '#d8e0f4'; g.beginPath(); g.moveTo(x - wd * .05, top); g.lineTo(x + wd * .32, top * .55); g.lineTo(x + wd * .1, top * .5); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(244,247,255,.85)'; g.lineWidth = 2.4; for (let i = 0; i < 2; i++) { const sx = x - wd * .2 + i * wd * .2; g.beginPath(); g.moveTo(sx, top * .5); g.lineTo(sx - 4 + i * 8, top * .2); g.stroke(); }
+    }
+  }
+  if (!volcanic && seed > .6) for (let i = 0; i < 3; i++) pineTiny(g, -r * .9 + i * r * .4, r * .38, r * .22);
+}
+function pineTiny(g: CanvasRenderingContext2D, x: number, y: number, s: number) { poly(g, [x - s * .6, y, x, y - s * 1.6, x + s * .6, y], '#2e4a63'); poly(g, [x, y - s * 1.6, x + s * .6, y, x + s * .15, y], '#1c2b45'); poly(g, [x - s * .25, y - s * .9, x, y - s * 1.6, x + s * .25, y - s * .9], '#f4f7ff'); }
+/** A volcano: a wide cone of dark rock, lava running down from a glowing crater. */
+function volcano(g: CanvasRenderingContext2D, r: number, seed: number) {
+  const top = -r * 1.5, rim = r * .32, base = r * .4;
+  poly(g, [-r * 1.45, base, -rim * 1.1, top + 10, rim * 1.1, top + 10, r * 1.45, base], '#3e3036');
+  poly(g, [rim * .2, top + 10, rim * 1.1, top + 10, r * 1.45, base, r * .2, base], '#2a1e24');
+  poly(g, [-r * 1.3, base * .7, -rim * .9, top + 16, -rim * .3, top + 14, -r * .5, base * .4], '#56464a');
+  // Ridged flanks.
+  g.strokeStyle = '#1e161a'; g.lineWidth = 2; g.lineCap = 'round';
+  for (let i = 0; i < 7; i++) { const f = (i + .5) / 7 * 2 - 1, sx = f * rim, ex = f * r * 1.3; g.beginPath(); g.moveTo(sx, top + 16); g.quadraticCurveTo((sx + ex) / 2 + 8, (top + base) / 2, ex, base * .85); g.stroke(); }
+  // The crater: its rim, the lava inside and the glow.
+  ellipse(g, 0, top + 10, rim * 1.15, rim * .38, '#1e161a'); ellipse(g, 0, top + 12, rim * .95, rim * .28, '#ff6b2d'); ellipse(g, -rim * .2, top + 10, rim * .55, rim * .14, '#ffd27a');
+  // Lava rivers down the flanks.
+  const rivers: Array<[number, number]> = seed > .5 ? [[-.5, .9], [.3, 1.1], [.75, .6]] : [[-.7, 1], [.1, .7], [.55, 1.05]];
+  for (const [ex, len] of rivers) {
+    const x0 = ex * rim * .8, x1 = ex * r * 1.1, y1 = top + (base - top) * len;
+    g.strokeStyle = '#c8401e'; g.lineWidth = r * .09; g.beginPath(); g.moveTo(x0, top + 14); g.quadraticCurveTo((x0 + x1) / 2 - 10, (top + y1) / 2, x1, Math.min(base, y1)); g.stroke();
+    g.strokeStyle = '#ff9a3d'; g.lineWidth = r * .045; g.stroke(); g.strokeStyle = '#ffd27a'; g.lineWidth = r * .015; g.stroke();
+  }
+  // Ash scree around the foot.
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI, x = Math.cos(a) * r * 1.3, y = base - Math.sin(a) * 4; ellipse(g, x, y, 12 + hash(i + seed) * 10, 5, i % 2 ? '#56464a' : '#3e3036'); }
+}
+/** Spires of volcanic glass, black with a violet sheen. */
+function obsidian(g: CanvasRenderingContext2D, r: number, seed: number) {
+  const v = Math.floor(seed * 3), shards: Array<[number, number, number]> = v === 0 ? [[-.45, 1.4, -.25], [.15, 2.1, .08], [.6, 1.1, .35]] : v === 1 ? [[-.5, 1.8, -.15], [.4, 1.5, .25]] : [[-.3, 1.2, -.3], [.25, 2.4, .05], [.7, 1.4, .3], [-.75, .9, -.4]];
+  for (const [ox, h, rot] of shards) {
+    g.save(); g.translate(ox * r, r * .3); g.rotate(rot);
+    poly(g, [-r * .3, 0, -r * .2, -r * h * .7, 0, -r * h, r * .22, -r * h * .6, r * .3, 0], '#1e1826');
+    poly(g, [0, -r * h, r * .22, -r * h * .6, r * .3, 0, r * .05, 0], '#120e18');
+    poly(g, [-r * .2, -2, -r * .14, -r * h * .66, 0, -r * h * .92, -r * .04, -2], 'rgba(168,132,232,.55)');
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(-r * .1, -r * h * .2); g.lineTo(-r * .05, -r * h * .75); g.stroke();
+    g.restore();
+  }
+}
+/** A steaming crack in the ground, ringed with yellow sulphur. */
+function fumarole(g: CanvasRenderingContext2D, seed: number) {
+  ellipse(g, 0, 2, 22, 10, '#5a4440'); ellipse(g, 0, 0, 18, 8, '#7a6058');
+  for (let i = 0; i < 7; i++) { const a = i / 7 * TAU + seed; ellipse(g, Math.cos(a) * 15, Math.sin(a) * 6.5, 4, 2.4, i % 2 ? '#e8d25a' : '#c9b23a'); }
+  ellipse(g, 0, -1, 9, 4, '#2a1a16'); ellipse(g, 0, -1, 5, 2, '#ff7a3d');
+}
+
 
 // ───────────────────────────── trees and plants
 /** A cloud of overlapping circles filled as one shape. */

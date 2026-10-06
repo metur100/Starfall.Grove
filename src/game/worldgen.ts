@@ -4,7 +4,7 @@
 import { Grid } from './spatial';
 import type { StoryQuest } from './story';
 import type {
-  Ambient, BarrierKind, HeroId, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
+  Range, Ambient, BarrierKind, HeroId, CritterKind, CritterSeed, Decor, DecorKind, EnemyKind, EnemySeed, Ground, ItemIcon, NpcActivity, NpcDef, NpcLook, NpcRole, Obstacle, ObstacleKind,
   Palette, Point, Poi, Pond, QuestDef, RegionId, River, WorldDefinition, WorldObject, WorldScript,
 } from './types';
 
@@ -29,7 +29,21 @@ export type RegionSpec = {
   quests: StoryQuest[]; script: WorldScript;
   /** What blocks the road east until the quest `quest` is done. */
   barrier?: { kind: BarrierKind; quest: string; name: string };
+  /** What lies along the land's eastern border: a river, a snowy mountain range, or volcanic mountains with a cave through. */
+  border?: 'river' | 'snow' | 'volcano';
+  /** How thickly the wild grows trees: the forest noise level above which they stand (lower is denser; .56 by default). */
+  forest?: number;
+  /** The land's own kind of country (see addFeatures). */
+  features?: Feature[];
 };
+/**
+ * What makes each land its own country, besides its trees and creatures:
+ * meadows (great patches of wildflowers), orchards, hedgerows and beehives in the Meadow; giant oaks, bogs and fairy
+ * rings in the Woods; crag ridges, small mountains, cairns, frozen tarns and snowdrifts on the Summit; volcanoes with
+ * lava flows, lava pools, obsidian spires, fumaroles and old bones in the Ember Wastes; fallen leaves in the Woods.
+ */
+export type Feature = 'meadows' | 'orchards' | 'hedgerows' | 'beehives' | 'oaks' | 'bogs' | 'rings' | 'litter' | 'crags' | 'peaks' | 'cairns' | 'tarns' | 'drifts'
+  | 'volcanoes' | 'lavapools' | 'obsidian' | 'fumaroles' | 'bones';
 
 // ───────────────────────────── deterministic helpers
 export const rng = (seed: number) => { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; };
@@ -53,6 +67,21 @@ export function inRiver(rivers: River[], x: number, y: number, pad = 0) {
   return null;
 }
 export const inPond = (ponds: Pond[], x: number, y: number, pad = 0) => ponds.some(p => Math.hypot((x - p.x) / (p.r + pad), (y - p.y) / (p.r * .58 + pad)) < 1);
+
+/** How far inside a volcanic range's edge its cave begins: the rock roof over the canyon runs from there to the far side. */
+export const CAVE_MOUTH = 150;
+/** How far a mountain range reaches either side of its middle at a height: its edge wanders like a real one. */
+export const rangeEdge = (rg: Range, y: number) => rg.hw - 70 + Math.sin(y / 530 + rg.x * .001) * 48 + Math.sin(y / 170 + rg.x * .003) * 16;
+/** Inside a range's mountains (not its canyon), with `pad` of room around them. */
+export function inRange(ranges: Range[], x: number, y: number, pad = 0) {
+  for (const rg of ranges) if (Math.abs(x - rg.x) < rangeEdge(rg, y) + pad && Math.abs(y - rg.passY) > rg.passHw - pad) return rg;
+  return null;
+}
+/** In a range's canyon (between its two edges, inside the pass). */
+export function inCanyon(ranges: Range[], x: number, y: number) {
+  for (const rg of ranges) if (Math.abs(x - rg.x) < rangeEdge(rg, rg.passY) + 40 && Math.abs(y - rg.passY) < rg.passHw + 40) return rg;
+  return null;
+}
 
 /** Nearest-road distance lookups over a segment grid. */
 export class RoadIndex {
@@ -81,9 +110,11 @@ export class RoadIndex {
 
 const SKINS = ['#f0c8a2', '#e2b089', '#c98f66', '#9c6a4a', '#f5d6bc', '#7a5037'];
 const HAIRS = ['#6b3f2a', '#2e2420', '#b8743c', '#d9c08a', '#8a8a8a', '#e8e2d0', '#4a2f24'];
+/** Places a siege falls on as a whole. */
+const TOWN_KINDS = new Set(['village', 'city', 'start', 'camp', 'farm']);
 const ROBES = ['#6f8fb8', '#b86a5a', '#7a9a5a', '#c9a24c', '#8a6fb0', '#5a8a8a', '#b07a9a', '#a0785a', '#7d8f5a', '#c07850'];
 
-type RegionPart = Omit<WorldDefinition, 'width' | 'height' | 'spawn' | 'regions' | 'rivers'> & { start: Point };
+type RegionPart = Omit<WorldDefinition, 'width' | 'height' | 'spawn' | 'regions' | 'rivers' | 'ranges'> & { start: Point };
 
 function buildRegion(spec: RegionSpec): RegionPart {
   const rand = rng(spec.seed), W = REGION_W, H = WORLD_H;
@@ -95,10 +126,15 @@ function buildRegion(spec: RegionSpec): RegionPart {
   // Lakes first so roads can bend around them.
   const ponds: Pond[] = [];
   for (const p of pois) if (p.kind === 'lake') ponds.push({ x: p.x, y: p.y, r: spec.lakeSize[p.id] || 320 });
-  for (let i = 0; i < 9; i++) {
-    const x = R(500, W - 500), y = R(500, H - 500);
+  const feat = new Set(spec.features || []);
+  // Small lakes of the land's own kind: frozen tarns on the Summit, more of them (and dark bogs) in the Woods, lava pools in
+  // the Ember Wastes.
+  const extra = feat.has('bogs') ? 8 : feat.has('lavapools') ? 9 : feat.has('tarns') ? 5 : 0;
+  for (let i = 0, made = 0; i < 60 && made < 9 + extra; i++) {
+    const x = R(700, W - 700), y = R(500, H - 500);
     if (pois.some(p => d2(p, { x, y }) < p.r + 260) || ponds.some(p => d2(p, { x, y }) < p.r + 400) || Math.abs(y - GATE_Y) < 300) continue;
-    ponds.push({ x, y, r: R(90, 170) });
+    const bog = feat.has('bogs') && made % 2 === 0;
+    ponds.push({ x, y, r: bog ? R(120, 210) : R(90, 170), kind: bog ? 'bog' : feat.has('tarns') ? 'ice' : undefined }); made++;
   }
 
   // ── road network: minimum spanning tree over the places plus a few loops
@@ -364,7 +400,9 @@ function buildRegion(spec: RegionSpec): RegionPart {
   // Quest places: build sites, switches to light, a trail of clues, sheep pens and what a siege attacks.
   for (const q of spec.quests) {
     const p = q.place ? poi(q.place) : null, near = q.near ? poi(q.near) : null;
-    if (q.kind === 'build' && p) { const s = spot(p.x, p.y, 30, 170, 50) || spot(p.x, p.y, 30, 800, 50, 0, 200) || { x: p.x + 70, y: p.y + 40 }; obj({ id: `${q.id}-site`, kind: 'site', x: s.x, y: s.y, name: q.siteName || 'Building site', questId: q.id, variant: q.site }, 70); }
+    // A bridge is built where the bridge goes: on the broken crossing over the river at the land's eastern gate.
+    const onRiver = q.site === 'bridge' && spec.barrier?.kind === 'bridge' && p?.kind === 'gate';
+    if (q.kind === 'build' && p) { const s = onRiver ? { x: W - 80, y: GATE_Y } : spot(p.x, p.y, 30, 170, 50) || spot(p.x, p.y, 30, 800, 50, 0, 200) || { x: p.x + 70, y: p.y + 40 }; obj({ id: `${q.id}-site`, kind: 'site', x: s.x, y: s.y, name: q.siteName || 'Building site', questId: q.id, variant: q.site }, onRiver ? 0 : 70); }
     if (q.kind === 'activate' && near) (q.order || []).forEach((name, i, all) => {
       const a = i / all.length * 6.28 + .4, s = spot(near.x + Math.cos(a) * 190, near.y + Math.sin(a) * 150, 0, 90, 34) || spot(near.x, near.y, 150, 800, 34, 0, 200) || { x: near.x + Math.cos(a) * 190, y: near.y + Math.sin(a) * 150 };
       obj({ id: `${q.id}-switch-${i}`, kind: 'switch', x: s.x, y: s.y, name, questId: q.id, variant: q.switches || 'brazier', step: i }, 40);
@@ -375,7 +413,12 @@ function buildRegion(spec: RegionSpec): RegionPart {
       obj({ id: `${q.id}-clue-${i}`, kind: 'clue', x: s.x, y: s.y, name: 'Clue', questId: q.id, step: i }, 10);
     });
     if (q.kind === 'herd' && p) { const s = spot(p.x, p.y, 40, 200, 120) || spot(p.x, p.y, 40, 800, 120, 0, 200) || { x: p.x, y: p.y + 120 }; obj({ id: `${q.id}-pen`, kind: 'pen', x: s.x, y: s.y, name: `${q.animal === 'goat' ? 'Goat' : 'Sheep'} pen`, questId: q.id }, 110); }
-    if (q.kind === 'defend' && p) { const s = spot(p.x, p.y, 40, 180, 60) || spot(p.x, p.y, 40, 800, 60, 0, 200) || { x: p.x, y: p.y + 80 }; obj({ id: `${q.id}-ward`, kind: 'ward', x: s.x, y: s.y, name: q.ward || 'Barricade', questId: q.id }, 60); }
+    // A siege on a village, city, camp or farm falls on the whole town (its heart marks where); anywhere else it falls on
+    // the one thing the quest guards.
+    if (q.kind === 'defend' && p) {
+      const town = TOWN_KINDS.has(p.kind), s = town ? { x: p.x, y: p.y } : spot(p.x, p.y, 40, 180, 60) || spot(p.x, p.y, 40, 800, 60, 0, 200) || { x: p.x, y: p.y + 80 };
+      obj({ id: `${q.id}-ward`, kind: 'ward', x: s.x, y: s.y, name: town ? p.name : q.ward || 'Barricade', questId: q.id, variant: town ? 'town' : undefined }, town ? 0 : 60);
+    }
   }
   for (const q of spec.quests) {
     if (q.kind !== 'collect' && q.kind !== 'build') continue;
@@ -387,23 +430,25 @@ function buildRegion(spec: RegionSpec): RegionPart {
     }
   }
 
+  addFeatures({ spec, feat, rand, R, W, H, pois, ponds, roadDist, blocked, put, solid, addDecor, decor });
+
   // ── wilderness: forests shaped by noise, thick around the map edge
   const treeGrid = 88;
   for (let gy = 0; gy < H; gy += treeGrid) for (let gx = 0; gx < W; gx += treeGrid) {
     const x = gx + R(8, treeGrid - 8), y = gy + R(8, treeGrid - 8);
     const edge = Math.min(x, y, W - x, H - y);
-    const density = fbm(x, y, spec.seed) + (edge < 380 ? .6 : edge < 700 ? .2 : 0);
-    if (density < .56 || rand() > (density - .5) * 2.2) continue;
+    const density = fbm(x, y, spec.seed) + (edge < 380 ? .6 : edge < 700 ? .2 : 0), thick = spec.forest ?? .56;
+    if (density < thick || rand() > (density - thick + .06) * 2.2) continue;
     const rd = roadDist(x, y);
     if (rd < 80 || pois.some(p => d2(p, { x, y }) < p.r * (p.kind === 'lair' || p.kind === 'grove' ? .6 : 1) + 40)) continue;
     const kind = rand() < .06 ? (rand() < .5 ? 'stump' : 'log') : pickW(rand, spec.trees);
-    const r = kind === 'stump' ? 14 : kind === 'log' ? 12 : kind === 'rock' ? R(16, 26) : kind === 'bush' ? R(16, 24) : R(22, 34);
+    const r = kind === 'stump' ? 14 : kind === 'log' ? 12 : kind === 'rock' ? R(16, 26) : kind === 'bush' ? R(16, 24) : kind === 'oak' ? R(48, 62) : kind === 'crag' ? R(30, 44) : kind === 'obsidian' ? R(22, 32) : R(22, 34);
     if (blocked(x, y, r + 14)) continue;
     put(kind === 'log' ? { x, y, r, kind, seed: rand(), w: 34, h: 10 } : { x, y, r, kind, seed: rand() }, r + 12);
   }
   // scattered lone trees and rocks in the open
   for (let i = 0; i < 520; i++) {
-    const x = R(150, W - 150), y = R(150, H - 150), kind = pickW(rand, spec.trees), r = kind === 'rock' ? R(16, 26) : R(20, 32);
+    const x = R(150, W - 150), y = R(150, H - 150), kind = pickW(rand, spec.trees), r = kind === 'rock' ? R(16, 26) : kind === 'oak' ? R(48, 60) : kind === 'crag' ? R(30, 42) : R(20, 32);
     if (roadDist(x, y) < 90 || pois.some(p => d2(p, { x, y }) < p.r + 30) || blocked(x, y, r + 50)) continue;
     put({ x, y, r, kind, seed: rand() }, r + 12);
   }
@@ -486,13 +531,174 @@ function buildRegion(spec: RegionSpec): RegionPart {
   };
 }
 
+
+// ───────────────────────────── each land's own country
+type FeatureCtx = {
+  spec: RegionSpec; feat: Set<Feature>; rand: () => number; R: (a: number, b: number) => number; W: number; H: number;
+  pois: Poi[]; ponds: Pond[]; roadDist: (x: number, y: number) => number; blocked: (x: number, y: number, r: number) => boolean;
+  put: (o: Obstacle, clearance?: number) => Obstacle; solid: Grid<{ x: number; y: number; r: number }>;
+  addDecor: (x: number, y: number, kind: DecorKind, color?: string) => void; decor: Decor[];
+};
+/** Lays out what makes a land its own country (see Feature), before its forests grow around it. */
+function addFeatures(c: FeatureCtx) {
+  const { feat, rand, R, W, H, pois, ponds, roadDist, blocked, put, solid, addDecor } = c;
+  const pick = <T,>(list: T[]) => list[Math.floor(rand() * list.length)];
+  /** Open country: on the map, off the roads, clear of places and of anything already standing. */
+  const open = (x: number, y: number, r: number, road = 90, poiPad = 120) => !(x < 260 || y < 260 || x > W - 260 || y > H - 260 || roadDist(x, y) < r + road || pois.some(p => d2(p, { x, y }) < p.r + r + poiPad) || blocked(x, y, r) || Math.abs(y - GATE_Y) < 220 && (x < 900 || x > W - 900));
+  const find = (r: number, road: number, poiPad: number) => { const x = R(260, W - 260), y = R(260, H - 260); return open(x, y, r, road, poiPad) ? { x, y } : null; };
+  const scatter = (n: number, kind: DecorKind, colors: string[], road = 44) => { for (let i = 0; i < n; i++) { const x = R(30, W - 30), y = R(30, H - 30); if (roadDist(x, y) < road || inPond(ponds, x, y, 8)) continue; addDecor(x, y, kind, pick(colors)); } };
+
+  // ── Sunpetal Meadow: open, flowering country
+  if (feat.has('meadows')) {
+    // Great patches of wildflowers, each its own colour: lavender, poppies, buttercups and daisies. No tree grows in them.
+    const themes = [['#b48ae8', '#c9a6f2', '#9a70d8', '#e8dcff'], ['#e0525c', '#ff7a6e', '#c83a44', '#ffd0c8'], ['#ffd35c', '#ffe38a', '#f2b84b', '#fff6c4'], ['#ffffff', '#f7d774', '#f2a1b8', '#fff4f8']];
+    for (let i = 0, n = 0; i < 400 && n < 13; i++) {
+      const rr = R(230, 400), s = find(rr * .45, 40, 60); if (!s) continue;
+      const theme = themes[n % themes.length];
+      for (let k = 0; k < Math.round(rr * .55); k++) { const a = rand() * 6.28, d = Math.sqrt(rand()) * rr, x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d * .7; if (roadDist(x, y) < 46 || inPond(ponds, x, y, 6)) continue; addDecor(x, y, 'flower', pick(theme)); }
+      solid.insert({ x: s.x, y: s.y, r: rr * .7 }); n++;
+    }
+  }
+  if (feat.has('orchards')) for (const p of pois.filter(q => q.kind === 'farm' || q.kind === 'village')) {
+    // A little orchard of fruit trees in rows beside the farm or village.
+    for (let t = 0; t < 40; t++) {
+      const a = rand() * 6.28, d = p.r + R(80, 240), ox = p.x + Math.cos(a) * d, oy = p.y + Math.sin(a) * d * .8, cols = 4, rows = 3;
+      let ok = true;
+      for (let i = 0; i < cols && ok; i++) for (let j = 0; j < rows && ok; j++) if (!open(ox + i * 118, oy + j * 96, 34, 50, -p.r * .2)) ok = false;
+      if (!ok) continue;
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) put({ x: ox + i * 118 + R(-6, 6), y: oy + j * 96 + R(-6, 6), r: 26, kind: 'fruittree', seed: rand() }, 44);
+      for (let k = 0; k < 40; k++) addDecor(ox + R(-40, cols * 118), oy + R(-30, rows * 96), 'clover');
+      break;
+    }
+  }
+  if (feat.has('hedgerows')) for (let i = 0, made = 0; i < 300 && made < 14; i++) {
+    // Hedgerows between the fields, each with a gap to walk through.
+    const s = find(30, 60, 40); if (!s) continue;
+    const horiz = rand() < .6, n = 4 + Math.floor(rand() * 5), gap = 1 + Math.floor(rand() * (n - 2));
+    let placed = 0;
+    for (let k = 0; k < n; k++) {
+      if (k === gap) continue;
+      const x = s.x + (horiz ? k * 92 : R(-4, 4)), y = s.y + (horiz ? R(-4, 4) : k * 78);
+      if (!open(x, y, 30, 56, 30)) continue;
+      put(horiz ? { x, y, r: 30, kind: 'hedge', seed: rand(), w: 46, h: 12 } : { x, y, r: 30, kind: 'hedge', seed: rand(), w: 12, h: 40 }, 44); placed++;
+    }
+    if (placed > 1) made++;
+  }
+  if (feat.has('beehives')) for (const p of pois.filter(q => q.kind === 'farm' || q.kind === 'village' || q.kind === 'start')) for (let k = 0, n = 0; k < 40 && n < 3; k++) {
+    const a = rand() * 6.28, d = R(p.r * .75, p.r + 90), x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d * .8;
+    if (blocked(x, y, 24) || roadDist(x, y) < 60) continue;
+    put({ x, y, r: 15, kind: 'beehive', seed: rand() }, 26); n++;
+  }
+
+  // ── Whisperroot Woods: deep forest
+  if (feat.has('oaks')) for (let i = 0, n = 0; i < 900 && n < 54; i++) { const r = R(54, 76), s = find(r, 60, 50); if (!s) continue; put({ x: s.x, y: s.y, r, kind: 'oak', seed: rand() }, r + 24); n++; }
+  if (feat.has('rings')) for (let i = 0, n = 0; i < 300 && n < 9; i++) {
+    // Fairy rings: a circle of glowing toadstools with four great mushrooms standing round it.
+    const s = find(150, 70, 80); if (!s) continue;
+    for (let k = 0; k < 18; k++) { const a = k / 18 * 6.28; addDecor(s.x + Math.cos(a) * 96, s.y + Math.sin(a) * 66, 'shroom', pick(['#9fe3c9', '#d6a3f0', '#86d4ff'])); }
+    for (let k = 0; k < 4; k++) { const a = k / 4 * 6.28 + .5; put({ x: s.x + Math.cos(a) * 160, y: s.y + Math.sin(a) * 112, r: 24, kind: 'mushroom', seed: rand() }, 30); }
+    solid.insert({ x: s.x, y: s.y, r: 120 }); n++;
+  }
+  if (feat.has('litter')) scatter(5200, 'litter', ['#c9713d', '#e8a54b', '#a3c46a', '#8a5a34', '#d9b45a'], 36);
+
+  // ── Starfall Summit: crags and peaks
+  if (feat.has('crags')) for (let i = 0, n = 0; i < 500 && n < 14; i++) {
+    // Ridges of crags across the slopes; a road always finds a gap through.
+    const s = find(40, 110, 100); if (!s) continue;
+    const a = rand() * 6.28, len = 6 + Math.floor(rand() * 8); let placed = 0;
+    for (let k = 0; k < len; k++) { const x = s.x + Math.cos(a) * k * 64 + R(-10, 10), y = s.y + Math.sin(a) * k * 50 + R(-10, 10); if (!open(x, y, 38, 100, 70)) continue; put({ x, y, r: R(32, 48), kind: 'crag', seed: rand() }, 48); placed++; }
+    if (placed > 2) n++;
+  }
+  if (feat.has('peaks')) for (let i = 0, n = 0; i < 4000 && n < 7; i++) {
+    // Small mountains of their own, piled up in the wild between the roads.
+    const s = find(190, 150, 140); if (!s) continue;
+    const m = 3 + Math.floor(rand() * 3);
+    for (let k = 0; k < m; k++) { const a = rand() * 6.28, d = k ? R(110, 180) : 0, x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d * .7; put({ x, y, r: k ? R(72, 92) : R(108, 126), kind: 'peak', seed: rand() }, k ? 100 : 140); }
+    n++;
+  }
+  if (feat.has('cairns')) for (let i = 0, n = 0; i < 2000 && n < 26; i++) {
+    // Stacked stones marking the trails.
+    const x = R(300, W - 300), y = R(300, H - 300), d = roadDist(x, y); if (d < 80 || d > 170 || blocked(x, y, 24)) continue;
+    put({ x, y, r: 15, kind: 'cairn', seed: rand() }, 26); n++;
+  }
+  if (feat.has('drifts')) scatter(1400, 'drift', ['#ffffff', '#eef2ff', '#dfe8ff'], 50);
+
+  // ── The Ember Wastes: volcanoes and lava
+  if (feat.has('volcanoes')) for (let i = 0, n = 0; i < 4000 && n < 4; i++) {
+    const r = R(170, 220), s = find(r, 110, 150); if (!s) continue;
+    put({ x: s.x, y: s.y, r, kind: 'volcano', seed: rand() }, r + 90);
+    // Lava runs down its flanks in glowing cracks, and the ground around it steams.
+    for (let k = 0; k < 6; k++) {
+      const a = rand() * 6.28; let x = s.x + Math.cos(a) * r * .95, y = s.y + Math.sin(a) * r * .55 + r * .1;
+      for (let j = 0; j < 16; j++) { const b = a + R(-.45, .45); x += Math.cos(b) * 30; y += Math.sin(b) * 22; if (roadDist(x, y) < 50 || inPond(ponds, x, y, 10)) break; addDecor(x, y, 'vein', pick(['#ff7a3d', '#ffb347', '#ff5f3d'])); }
+    }
+    for (let k = 0; k < 4; k++) { const a = rand() * 6.28, x = s.x + Math.cos(a) * (r + R(80, 180)), y = s.y + Math.sin(a) * (r * .6 + R(60, 140)); if (!blocked(x, y, 24) && roadDist(x, y) > 60) put({ x, y, r: 16, kind: 'fumarole', seed: rand() }, 26); }
+    n++;
+  }
+  if (feat.has('obsidian')) for (let i = 0, n = 0; i < 900 && n < 22; i++) {
+    const s = find(30, 80, 60); if (!s) continue;
+    for (let k = 0; k < 3; k++) { const x = s.x + R(-60, 60), y = s.y + R(-40, 40); if (!blocked(x, y, 26)) put({ x, y, r: R(20, 32), kind: 'obsidian', seed: rand() }, 36); }
+    n++;
+  }
+  if (feat.has('fumaroles')) for (let i = 0, n = 0; i < 900 && n < 22; i++) { const s = find(20, 60, 50); if (!s) continue; put({ x: s.x, y: s.y, r: 16, kind: 'fumarole', seed: rand() }, 26); n++; }
+  if (feat.has('bones')) scatter(160, 'bone', ['#efe4c8', '#e0d6bc'], 60);
+  if (feat.has('volcanoes')) scatter(700, 'vein', ['#ff7a3d', '#ffb347', '#ff5f3d'], 50);
+}
+
 /**
- * Lays the regions side by side, west to east, and walls the borders with cliffs broken only by the gate road. The border
+ * A mountain range along a border at `X`: a wall of peaks along both of its faces the whole height of the valley, great
+ * peaks behind them, and one canyon through it at the gate road (its north wall tall, its south wall low so it doesn't
+ * hide the road). Whatever stood there is cleared, and creatures, people and things to find move out to the nearer foot
+ * of the mountains. A volcanic range has a volcano towering over its canyon, which runs through the mountain as a cave
+ * with an arch at each mouth.
+ */
+function range(out: WorldDefinition, X: number, kind: 'snow' | 'volcano', rand: () => number, west: RegionId) {
+  const rg: Range = { x: X, hw: 560, kind, passY: GATE_Y, passHw: 168 };
+  out.ranges.push(rg);
+  const band = (p: Point, pad: number) => Math.abs(p.x - X) < rangeEdge(rg, p.y) + pad;
+  out.obstacles = out.obstacles.filter(o => !band(o, o.r + (o.w || 0) + 24));
+  out.decor = out.decor.filter(d => !band(d, 14));
+  out.pods = out.pods.filter(p => !band(p, 50));
+  out.critters = out.critters.filter(c => !band(c, 40));
+  const foot = <T extends Point>(p: T, pad: number): T => band(p, pad) ? { ...p, x: X + Math.sign(p.x - X || -1) * (rangeEdge(rg, p.y) + pad) } : p;
+  out.enemies = out.enemies.map(e => foot(e, 150));
+  out.objects = out.objects.map(o => foot(o, 80));
+  out.npcs = out.npcs.map(n => ({ ...foot(n, 70), route: n.route?.map(p => foot(p, 70)) }));
+  const peak: ObstacleKind = kind === 'snow' ? 'peak' : 'basalt', style = kind === 'snow' ? 'snow' : 'ash', edge = rangeEdge(rg, rg.passY);
+  const volcano = kind === 'volcano' ? { x: X, y: rg.passY - 760, r: 320 } : null;
+  // Both faces: a wall of peaks all the way up and down the valley, so nothing gets over the mountains.
+  for (const side of [-1, 1]) for (let y = -50; y < WORLD_H + 80; y += 84) {
+    if (Math.abs(y - rg.passY) < rg.passHw + 50) continue;
+    out.obstacles.push({ x: X + side * (rangeEdge(rg, y) - 12), y, r: 62 + rand() * 18, kind: peak, seed: rand() });
+  }
+  // The canyon's walls.
+  for (let x = X - edge + 10; x <= X + edge - 10; x += 82) {
+    out.obstacles.push({ x: x + (rand() - .5) * 12, y: rg.passY - rg.passHw - 34, r: 62 + rand() * 14, kind: peak, seed: rand() });
+    out.obstacles.push({ x: x + (rand() - .5) * 12, y: rg.passY + rg.passHw + 30, r: 40 + rand() * 8, kind: 'crag', seed: rand(), color: style });
+  }
+  // Great peaks behind the faces, toward the middle of the range.
+  for (let y = 120; y < WORLD_H; y += 230) for (const f of [-.52, 0, .52]) {
+    const x = X + f * rangeEdge(rg, y) + (rand() - .5) * 60, yy = y + (rand() - .5) * 80, dy = yy - rg.passY;
+    // Kept back from the canyon, further on its south side: a tall peak there would stand in front of the road.
+    if ((dy > 0 && dy < rg.passHw + 480) || (dy <= 0 && -dy < rg.passHw + 230) || (volcano && Math.hypot(x - volcano.x, (yy - volcano.y) * 1.4) < volcano.r + 260)) continue;
+    out.obstacles.push({ x, y: yy, r: 108 + rand() * 40, kind: peak, seed: rand() });
+  }
+  if (volcano) out.obstacles.push({ x: volcano.x, y: volcano.y, r: volcano.r, kind: 'volcano', seed: .8 });
+  out.pois.push(kind === 'snow'
+    ? { id: `${west}:pass`, name: 'Frostspine Pass', kind: 'pass', x: X - 160, y: rg.passY, r: 340, region: west }
+    : { id: `${west}:cindermaw`, name: 'The Cindermaw', kind: 'pass', x: X - 120, y: rg.passY, r: 380, region: west });
+  return rg;
+}
+
+/**
+ * Lays the regions side by side, west to east. The Meadow and the Woods are split by a river, the Woods and the Summit by
+ * a snowy mountain range, the Summit and the Ember Wastes by volcanic mountains with a cave through them (see range); any
+ * other border is a wall of cliffs broken only by the gate road. The border
  * whose gate is a bridge (the Meadow and the Woods) is a river instead, running the whole height of the valley: the
  * Gloomwater can only be crossed on its bridge.
  */
 export function buildValley(specs: RegionSpec[]): WorldDefinition {
-  const out: WorldDefinition = { width: REGION_W * specs.length, height: WORLD_H, spawn: { x: 0, y: 0 }, regions: [], pois: [], roads: [], obstacles: [], decor: [], pods: [], ponds: [], rivers: [], enemies: [], critters: [], npcs: [], objects: [], quests: [] };
+  const out: WorldDefinition = { width: REGION_W * specs.length, height: WORLD_H, spawn: { x: 0, y: 0 }, regions: [], pois: [], roads: [], obstacles: [], decor: [], pods: [], ponds: [], rivers: [], ranges: [], enemies: [], critters: [], npcs: [], objects: [], quests: [] };
   specs.forEach((spec, i) => {
     const ox = i * REGION_W, part = buildRegion(spec);
     const sx = <T extends Point>(p: T): T => ({ ...p, x: p.x + ox });
@@ -506,19 +712,26 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
   });
   const rand = rng(991);
   for (let k = 1; k < specs.length; k++) {
-    const bx = k * REGION_W, b0 = specs[k - 1].barrier;
-    if (b0?.kind === 'bridge') river(out, bx - 80, `${specs[k - 1].id}:barrier`, rand);
+    const bx = k * REGION_W, left = specs[k - 1], border = left.border || (left.barrier?.kind === 'bridge' ? 'river' : undefined);
+    let rg: Range | null = null;
+    if (border === 'river') river(out, bx - 80, `${left.id}:barrier`, rand);
+    else if (border === 'snow' || border === 'volcano') rg = range(out, bx, border, rand, left.id);
     else for (let y = 40; y < WORLD_H - 20; y += 56) {
       if (Math.abs(y - GATE_Y) < 200) continue;
       out.obstacles.push({ x: bx + (rand() - .5) * 40, y, r: 40 + rand() * 12, kind: 'cliff', seed: rand() });
     }
-    // A collapsed bridge, a wall of thorns or a seal of ice closes the gate until the story opens it.
-    const b = specs[k - 1].barrier, id = specs[k - 1].id;
+    // A collapsed bridge, a wall of thorns or a seal of ice closes the gate until the story opens it. A range has it at the
+    // west mouth of its canyon, and deeper in, something the hero has to smash: a rockfall burying the pass, or the
+    // collapsed mouth of the cave through the volcano.
+    const b = left.barrier, id = left.id;
     if (b) {
-      const x = bx - 80;
-      out.obstacles = out.obstacles.filter(o => o.kind === 'cliff' || Math.abs(o.x - x) > 200 || Math.abs(o.y - GATE_Y) > 260);
+      // Thorns grow across the canyon's mouth; the black ice seals the cave's, just outside it.
+      const x = rg ? bx - rangeEdge(rg, GATE_Y) + (rg.kind === 'volcano' ? -14 : 40) : bx - 80;
+      if (!rg) out.obstacles = out.obstacles.filter(o => o.kind === 'cliff' || Math.abs(o.x - x) > 200 || Math.abs(o.y - GATE_Y) > 260);
       out.objects.push({ id: `${id}:barrier`, kind: 'barrier', x, y: GATE_Y, name: b.name, region: id, questId: `${id}:${b.quest}`, variant: b.kind });
     }
+    if (rg?.kind === 'snow') out.objects.push({ id: `${id}:rockfall`, kind: 'barrier', x: bx - 60, y: GATE_Y, name: 'Rockfall', region: id, variant: 'rocks' });
+    if (rg?.kind === 'volcano') out.objects.push({ id: `${id}:cavemouth`, kind: 'barrier', x: bx - rangeEdge(rg, GATE_Y) + CAVE_MOUTH - 50, y: GATE_Y, name: 'Collapsed cave mouth', region: id, variant: 'cave' });
   }
   out.decor.sort((a, b) => a.y - b.y);
   return out;
@@ -541,6 +754,6 @@ function river(out: WorldDefinition, x: number, barrier: string, rand: () => num
   out.critters = out.critters.filter(c => !wet(c, 30));
   const bank = <T extends Point>(p: T, pad: number): T => { const cx = riverX(rv, p.y); return Math.abs(p.x - cx) < hw + pad ? { ...p, x: cx + Math.sign(p.x - cx || -1) * (hw + pad) } : p; };
   out.enemies = out.enemies.map(e => bank(e, 140));
-  out.objects = out.objects.map(o => o.kind === 'barrier' ? o : bank(o, 70));
+  out.objects = out.objects.map(o => o.kind === 'barrier' || (o.kind === 'site' && o.variant === 'bridge') ? o : bank(o, 70));
   out.npcs = out.npcs.map(n => bank(n, 60));
 }

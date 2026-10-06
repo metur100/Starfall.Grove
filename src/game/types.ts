@@ -23,18 +23,33 @@ export type GearItem = { uid: string; slot: GearSlot; rarity: Rarity; ilvl: numb
 export type UpgradeId = 'staff' | 'mantle' | 'amulet';
 
 // ───────────────────────────── world layout
-export type PoiKind = 'start' | 'village' | 'city' | 'farm' | 'camp' | 'ruins' | 'lake' | 'lair' | 'grove' | 'shrine' | 'lookout' | 'finale' | 'gate';
+/** `pass` is the canyon through a mountain range between two lands (and the cave through the volcano). */
+export type PoiKind = 'start' | 'village' | 'city' | 'farm' | 'camp' | 'ruins' | 'lake' | 'lair' | 'grove' | 'shrine' | 'lookout' | 'finale' | 'gate' | 'pass'
+  /** A chamber of the depths beneath the Dawn Forge. */
+  | 'depths';
 export type Poi = { id: string; name: string; kind: PoiKind; x: number; y: number; r: number; region: RegionId; pack?: EnemyKind[] };
 
 export type ObstacleKind =
   | 'tree' | 'pine' | 'rock' | 'bush' | 'crystal' | 'mushroom' | 'deadtree' | 'stump' | 'log'
   | 'house' | 'manor' | 'well' | 'fountain' | 'windmill' | 'tent' | 'stall' | 'pillar' | 'statue' | 'lamppost' | 'crate' | 'hay' | 'fence' | 'tower' | 'campfire'
-  | 'barrel' | 'cart' | 'bench' | 'banner' | 'planter' | 'cliff';
+  | 'barrel' | 'cart' | 'bench' | 'banner' | 'planter' | 'cliff'
+  /** Each land's own scenery: hedgerows, fruit trees and beehives in the Meadow; great oaks in the Woods; crags, cairns and
+   *  snowy peaks on the Summit; basalt peaks, volcanoes, obsidian spires and steaming fumaroles in the Ember Wastes. */
+  | 'hedge' | 'fruittree' | 'beehive' | 'oak' | 'crag' | 'cairn' | 'peak' | 'basalt' | 'volcano' | 'obsidian' | 'fumarole';
 /** Round obstacles collide as circles; ones with w/h collide as boxes (half extents). */
 export type Obstacle = { x: number; y: number; r: number; kind: ObstacleKind; seed: number; w?: number; h?: number; color?: string };
-export type DecorKind = 'grass' | 'flower' | 'fern' | 'pebble' | 'shroom' | 'shard' | 'crop' | 'reed' | 'clover';
+export type DecorKind = 'grass' | 'flower' | 'fern' | 'pebble' | 'shroom' | 'shard' | 'crop' | 'reed' | 'clover'
+  /** Pasted flat into the ground: fallen leaves (Woods), snowdrifts (Summit), glowing lava cracks and old bones (Ember). */
+  | 'litter' | 'drift' | 'vein' | 'bone';
 export type Decor = { x: number; y: number; kind: DecorKind; seed: number; color: string };
-export type Pond = { x: number; y: number; r: number };
+/** A lake. `bog` is a dark, lily-choked marsh pool (Woods), `ice` a frozen tarn (Summit). */
+export type Pond = { x: number; y: number; r: number; kind?: 'bog' | 'ice' };
+/**
+ * A mountain range along a border between two lands, running the whole height of the valley: `x` its middle, `hw` about
+ * half its width (the edge wanders, see rangeEdge). It can only be crossed by the canyon at `passY`, `passHw` either
+ * side. A `volcano` range's canyon is a dark cave through the mountain.
+ */
+export type Range = { x: number; hw: number; kind: 'snow' | 'volcano'; passY: number; passHw: number };
 /** A river running the whole height of the valley along a border: its centre line, top to bottom, and half its width.
  *  It can only be crossed on the bridge at `bridgeY` (when `barrier` is open). */
 export type River = { pts: Point[]; hw: number; bridgeY: number; barrier: string };
@@ -46,11 +61,25 @@ export type EnemyKind =
    *  named for theirs: boglings, briarlings, mirecaps and marsh lights in the Woods, snowfangs and rimelings on the Summit, cinderhounds
    *  and pyre wisps in the Ember Wastes. */
   | 'bogling' | 'briarling' | 'mirecap' | 'marshlight' | 'snowfang' | 'rimeling' | 'cinderhound' | 'pyrewisp'
-  | 'mossback' | 'brambleWarden' | 'hollowStar' | 'cinderTyrant' | 'eclipse';
+  | 'mossback' | 'brambleWarden' | 'hollowStar' | 'cinderTyrant' | 'eclipse'
+  /** Not a creature: the rockfall or caved-in cave mouth that has to be smashed to get through (see EnemySeed.wall). */
+  | 'rubble'
+  /** The creatures of the depths beneath the Dawn Forge, met nowhere else: umbral knights, duskwings, hollow archers,
+   *  shardbacks and eclipse acolytes. */
+  | 'umbralKnight' | 'duskwing' | 'hollowArcher' | 'shardback' | 'acolyte'
+  /** The world boss that comes down with a fallen star (see Starfall events). */
+  | 'starbeast';
 /** `guard` names the rescue quest whose captive this creature keeps caged. */
 export type EnemySeed = { id: string; kind: EnemyKind; x: number; y: number; level: number; region: RegionId; boss?: boolean; elite?: boolean; guard?: string;
   /** A heroic creature: a named little boss that leads a lair's pack (it also counts as an elite). */
-  heroic?: string };
+  heroic?: string;
+  /** The barrier this is the breakable body of (a rockfall or a caved-in cave mouth): it never moves, never fights back,
+   *  and when it breaks the way is open. */
+  wall?: string;
+  /** One of the creatures of the depths (their levels follow the hero's, and they all come back on each descent). */
+  depths?: boolean;
+  /** Touched by a fallen star: tougher, gleaming gold, and it leaves a star fragment behind. */
+  starborn?: boolean };
 
 export type CritterKind = 'rabbit' | 'deer' | 'bird' | 'duck' | 'frog' | 'goat' | 'squirrel' | 'sheep';
 export type CritterSeed = { kind: CritterKind; x: number; y: number };
@@ -74,11 +103,15 @@ export type NpcDef = {
 export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | 'sign' | 'lore' | 'well' | 'fountain' | 'campfire' | 'cage' | 'crack' | 'waterfall'
   /** Quest places: something to build, things to light in turn, clues on a trail, a sheep pen, what a siege attacks,
    *  and the broken crossing between two lands. */
-  | 'site' | 'switch' | 'clue' | 'pen' | 'ward' | 'barrier';
+  | 'site' | 'switch' | 'clue' | 'pen' | 'ward' | 'barrier'
+  /** The hole that leads down into the depths, and the way back up out of them. */
+  | 'hole' | 'exit';
 /** What a build site becomes; how a switch looks; what blocks a land's eastern gate. */
 export type SiteKind = 'bridge' | 'tower' | 'barricade' | 'well' | 'lantern' | 'bellows';
 export type SwitchKind = 'brazier' | 'lantern' | 'rune' | 'totem' | 'vent';
-export type BarrierKind = 'bridge' | 'thorns' | 'ice';
+/** A broken bridge, a wall of thorns, a seal of black ice; and the two things that must be smashed: a rockfall burying
+ *  a mountain pass and the collapsed mouth of a cave. */
+export type BarrierKind = 'bridge' | 'thorns' | 'ice' | 'rocks' | 'cave';
 export type ItemIcon = 'herb' | 'flower' | 'bottle' | 'bundle' | 'gem' | 'letter' | 'mushroom' | 'feather' | 'toy' | 'bug';
 export type Captive = { name: string; portrait: string; look: NpcLook };
 /** Secrets: a `crack` (a cracked wall, broken with a bomb) or a `waterfall` (a cave behind it) hides the object whose
@@ -160,7 +193,9 @@ export type Region = {
 
 export type WorldDefinition = {
   width: number; height: number; spawn: Point; regions: Region[];
-  pois: Poi[]; roads: Point[][]; obstacles: Obstacle[]; decor: Decor[]; pods: Point[]; ponds: Pond[]; rivers: River[];
+  pois: Poi[]; roads: Point[][]; obstacles: Obstacle[]; decor: Decor[]; pods: Point[]; ponds: Pond[]; rivers: River[]; ranges: Range[];
+  /** The depths beneath the Dawn Forge, laid out beside the valley (see depths.ts). */
+  depths?: import('./depths').Depths;
   enemies: EnemySeed[]; critters: CritterSeed[]; npcs: NpcDef[]; objects: WorldObject[]; quests: QuestDef[];
 };
 
@@ -195,6 +230,12 @@ export type GameSnapshot = {
   discovered: number; totalPlaces: number; chests: number; totalChests: number; lore: number; totalLore: number;
   /** A cutscene playing, a siege under way, and something being built. */
   cine: CineState | null; siege: SiegeState | null; work: { label: string; t: number } | null;
+  /** A fallen star waiting to be found: near which place, seconds left, and its fragments found of those that fell. */
+  starfall: { place: string; left: number; found: number; total: number; boss: boolean } | null;
+  /** Star fragments carried toward the next Starheart (every eight fuse into one), and Starhearts made. */
+  fragments: number; starhearts: number;
+  /** In the depths beneath the Dawn Forge. */
+  depths: boolean;
 };
 export type CineState = { key: string; text: string; speaker: string; portrait: string; title: string; sub: string; last: boolean };
 export type SiegeState = { title: string; ward: string; wave: number; waves: number; hp: number; max: number; left: number; resting: number };
@@ -228,4 +269,8 @@ export type EngineEvent =
   | { type: 'bossIntro'; name: string; title: string }
   | { type: 'zone'; name: string; discovered: boolean }
   | { type: 'region'; region: RegionId; danger: boolean }
-  | { type: 'shop'; kind: ShopKind; name: string; portrait: string };
+  | { type: 'shop'; kind: ShopKind; name: string; portrait: string }
+  /** A star has fallen somewhere in the valley: where (near which place, in which land). */
+  | { type: 'starfall'; place: string; region: RegionId }
+  /** The hero went down into the depths (`first`: the ground gave way under them). */
+  | { type: 'depths'; first: boolean };

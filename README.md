@@ -23,20 +23,30 @@ The website for promoting the game (landing page, privacy policy, terms, support
 
 ## The world
 
-The valley is **one continuous world** (38,912 × 6,720 px) made of four lands laid side by side. You walk from one to the next through a gate: the Meadow and the Woods are split by the **Gloomwater**, a river that runs the whole height of the valley and can only be crossed on the Gloomwater Bridge once it is rebuilt (a Frost Step or a leap can't hop over it either); the other borders are cliffs. Each land keeps its own look, lighting, weather, music and difficulty:
+The valley is **one continuous world** (38,912 × 6,720 px) made of four lands laid side by side. You walk from one to the next, and every border is a journey of its own:
+- **The Meadow and the Woods** are split by the **Gloomwater**, a river that runs the whole height of the valley and can only be crossed on the Gloomwater Bridge once it is rebuilt. Every hero's bridge quest builds it on the river itself: its plan glows across the water, and the timber piles up on the bank. A Frost Step or a leap can't hop the river.
+- **The Woods and the Summit** are split by a **snowy mountain range** (`range` in `worldgen.ts`): a wall of peaks along both of its faces, great peaks behind them, and one canyon through it, **Frostspine Pass**. Past the thorn wall at its mouth, a **rockfall** buries the pass: the hero has to smash it (any attack works, bombs and thunder three times as hard; it has 1,800 health and a bar over it). The main arrow leads to it and the quest tracker says *Break through the rockfall*.
+- **The Summit and the Ember Wastes** are split by **volcanic mountains** with a great volcano over the canyon, which runs through the mountain as a cave, **the Cindermaw**. A rock roof covers it, fading away while the hero is inside, where it is dark but for the lava in the cracks. The black ice seal stands at its mouth; behind it the **cave mouth has caved in** and has to be smashed open the same way (3,200 health).
+Nothing gets over the mountains: the hero, creatures and people are kept out of them, and no teleport passes a rockfall still standing. A save from before the mountains that is already past one counts it as broken. Each land keeps its own look, lighting, weather, music and difficulty:
 
 | Chapter | Land | Creature levels | Guardian |
 | --- | --- | --- | --- |
 | I · The Broken Beacon | Sunpetal Meadow | 1–6 | Mossback (Lv 7) — each hero meets their own, see Story |
 | II · The Bell Beneath the Roots | Whisperroot Woods | 7–12 | Bramble Warden (Lv 13) |
 | III · The Hollow Star | Starfall Summit | 13–18 | The Hollow Star (Lv 19) |
-| IV · The Dawn Forge | The Ember Wastes | 19–24 | Pyrrhus, the Cinder Tyrant (Lv 25), then **Umbra** (Lv 26), the final boss of all bosses |
+| IV · The Dawn Forge | The Ember Wastes | 19–24 | Pyrrhus, the Cinder Tyrant (Lv 25), then **Umbra** (Lv 27–30), the final boss of all bosses, in the depths beneath the Dawn Forge |
 
 The Ember Wastes are an ash desert with lava lakes, falling ash and rising embers, a smoky red night and their own desert theme and soundscape. Its creatures are new: **ember imps** (hover out of reach and throw fire), **ash scorpions** (burrow under the sand and burst up beneath you; the ring on the ground is the warning) and **magma hulks** (crack the ground open around themselves and under you). Its city is Brasshaven.
 
 Creature levels rise from a land's entrance to its far side. Every creature shows a coloured **Lv** tag (grey, green, white, orange, red with a skull), and a banner warns you when you walk into a land that is too strong for you. Creatures above your level take less damage from you and hit much harder.
 
 Each land has a **main city** (Goldenhearth, Lanternmarket, Cloudcrest, Brasshaven): a fountain plaza, manors, rows of houses, market stalls, a **merchant** (potions), a **smith** (upgrades) and an **inn** (rest and resting point). Each land also has villages, a farm, camps, ruins, lakes, lairs, a grove, a shrine and its finale.
+
+**Each land is its own country** (`features` and `forest` on each land in `worlds.ts`, laid out by `addFeatures` in `worldgen.ts`):
+- **Sunpetal Meadow:** open green country with fewer woods: great meadows of wildflowers, each its own colour (lavender, poppies, buttercups, daisies) where no tree grows, orchards of fruit trees beside the farms and villages, hedgerows with a gap to walk through, and beehives.
+- **Whisperroot Woods:** a much denser forest with giant mossy oaks, dark bogs full of lily pads, fairy rings of glowing toadstools ringed by great mushrooms, and fallen leaves everywhere.
+- **Starfall Summit:** mountains: ridges of crags across the slopes (a road always finds a gap), small snowy mountains of their own, cairns along the trails, frozen tarns and snowdrifts.
+- **The Ember Wastes:** four volcanoes, smoking and glowing, with lava running down their flanks in cracks; more lava pools, clusters of obsidian spires, steaming fumaroles and old bones.
 
 Things to find: chests (potions, bombs, gear, gold, XP), runestones with lore, wells and fountains, campfires, glow pods and caged captives.
 
@@ -122,13 +132,13 @@ Night scenes darken the world, so lamps and fires glow. Tap or Enter moves to th
 - **Chapter II** ends by lighting the Bell-lanterns that wither a wall of thorns, after holding Lanternmarket against the shadow's counterattack.
 - **Chapter III** ends by walking Orrin to the gate, where he and Sable break Umbra's black-ice seal together.
 
-The last chapter ends with Umbra, then an epilogue shows every light shining. There is no chapter-complete screen: the chapter's achievement pops up, its closing cutscene plays (ending on the next chapter's title), and the next land's first quest begins. Older saves are carried onto the longer chains: quests added before the point a save has reached count as done.
+The last chapter ends with Umbra, then an epilogue shows every light shining. Umbra no longer rises at the Dawn Forge: when Pyrrhus falls, the ground shakes, every shadow in the valley sinks into the earth beneath the Forge, and the ground gives way under the hero (see **The depths** below). There is no chapter-complete screen: the chapter's achievement pops up, its closing cutscene plays (ending on the next chapter's title), and the next land's first quest begins. Older saves are carried onto the longer chains: quests added before the point a save has reached count as done.
 
 ## Levels, spells and quests
 
 No ability, item, hero, guardian, mount or place shares its name with one from another well-known game: the spells were renamed in this version (Sunfire → Sunflare, Starfall → Comet Shower, Charge → Lion’s Rush, Shield Wall → Bulwark, Bladestorm → Steel Cyclone, Frost Bolt → Rime Shard, Blink → Frost Step, Frost Nova → Glacial Burst, Ice Block → Glacier Shell, Blizzard → Whiteout, Shadowstep → Shade Step, Fan of Knives → Dagger Burst, Stealth → Nightveil, Death Mark → Doom Sigil, Quick Shot → Swift Arrow, Volley → Arrow Fan, Call of the Wild → Howl of the Pack), and so were Skyhold (now Cloudcrest), Moonfang (Snowmoon), Skyhorn (Starhorn), Shadowmane (Duskmane), the Frostmane Wolf (Rimecoat Wolf), Barkskin Brew (Oakhide Brew), the Frost Bomb (Ice Bomb), the Smoke Bomb (Smoke Pouch) and the Sunfire Elixir (Dawnfire Elixir).
 
-There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands as a paper puppet on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
+There are five heroes, each with their own level, gold, bag, quests, achievements and chapter stars. The title screen has one **Play** button; it leads to the character select screen, where the chosen hero stands as a paper puppet on a rune pedestal (drag to turn them), wearing the gear they have equipped, and **Enter world** starts or continues that hero's adventure. Levels go up to 30 (they used to stop at 25, so a hero who had finished the story could not grow any more). Gear and the last land's armourer go up to item level 30; fallen stars and the depths are where a hero grows past 25. Mira travels with Tuft the fox and Wren with Fenn the wolf; the others travel alone, and the story's nudges come from their own thoughts.
 
 The pedestal (`src/ui/paperStage.ts`) draws the same figure the world uses, only larger: it breathes, turns in four steps when dragged, shows off a spell now and then and wears the equipped gear. Tuft or Fenn sit beside Mira and Wren.
 
@@ -194,7 +204,7 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 
 **Journal:** the book button in the top bar (O, U or Y) opens the journal, with its three tabs: quests, spellbook and achievements.
 
-**Achievements (Y, or the journal's Achievements tab):** 53 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 985 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
+**Achievements (Y, or the journal's Achievements tab):** 60 achievements in six categories (Story, Guardians, Combat, Exploration, Quests, Character), worth 1,140 points, in the spirit of WoW. They cover finishing each chapter and beating each guardian, creatures and elites defeated, combos, critical hits, places, chests and runestones, the fog lifted off the world map, side quests and rescues, levels, gold, a full set of gear, epic and legendary finds, five-star abilities, and more. Earning one shows a gold pop-up; the tab shows points, a filter per category and the progress of every achievement. Progress an older save already made is counted when it loads.
 
 **World map (M, the map button, or a tap on the minimap):** the whole valley at once, all four lands side by side, with the fog lifted wherever the hero has been. It opens zoomed on the current land; drag to pan, pinch or scroll to zoom, or jump with the buttons (Whole valley or one land).
 
@@ -206,7 +216,7 @@ Levelling is paced so you reach Whisperroot at about level 7 and the Summit at a
 - **Collect, slay, deliver, visit, talk, relic and boss.**
 - **Rescue:** defeat the guards around a cage, then open it. Many captives then have to be **walked home**.
 - **Escort:** someone walks with you (green ring and ♥ over their head). They won't move while creatures are near (the ring turns red), wait if you run too far ahead, and two ambushes lie in wait along the road.
-- **Defend:** a siege. Stand by a barricade while three waves march on it. A bar at the top shows its health, the wave and how many attackers are left; if it falls, you can regroup and try again.
+- **Defend:** a siege. When the quest's place is a village, city, camp or farm, the creatures come for **the town itself**: there is no fence, they pour out of the dark from three or four sides at once, each goes for one of the houses, stalls or tents on its side of town, and the ones that reach it tear at it and set it alight while the villagers cry for help. Each wave is 2.6 times what the quest names (at most 20 at once), each raider frailer than a creature of the wild (60% health, 75% damage) and worth less experience. A bar at the top shows the town's health, the wave and how many attackers are left; if the town burns down, you can regroup and try again. Winning puts the fires out. A quest that guards one thing (a cart, a lantern, a song-stone, a knight) shows that thing on a ward ring, and its waves come twice over.
 - **Build:** gather materials, then stand still at the site while you build (a progress bar, hammering and dust). The plan glows faintly until it's built.
 - **Light:** braziers, lanterns, runes, totems or vents. Some are puzzles that must be lit in the right order (the clue is in the quest's words); a wrong one puts them all out.
 - **Chase:** a thief runs from you, circling back toward their hideout. They tire every few seconds, which is your chance to catch them.
@@ -225,12 +235,32 @@ Some conversations end with **a choice** of two answers. The answer changes what
 | Whisperroot Woods | shadewolves (circling packs), webspinners (slowing silk), boglings, briarlings, mirecaps, marsh lights |
 | Starfall Summit | void wisps, frost wraiths (blink and ice shards), crag golems (ground slam), snowfangs, rimelings |
 | The Ember Wastes | ember imps, ash scorpions, magma hulks, cinderhounds, pyre wisps |
+| The depths | umbral knights (a telegraphed great-blade cleave), duskwings (circling, diving bats), hollow archers (volleys of shadow bolts), shardbacks (ground slam and a ring of crystal shards), eclipse acolytes (blink, rings of void orbs, call duskwings) |
 
 The newer kinds fight like a cousin from another land (`ENEMY_AI` in `engine.ts`: a bogling lunges like a gloomling, a briarling or rimeling spits like a thornling, a mirecap puffs spores, marsh lights and pyre wisps dart and shoot like wisps, snowfangs and cinderhounds circle and dart like shadewolves) but are drawn in their land's colours, with their own details (a lily leaf, frost, embers). Any creature a quest, siege, guardian or cutscene calls into a land it doesn't live in comes as that land's own kin (`localKind`). The one exception is Wren's own shadow-bound pack, which comes back for her at the Hunter's Camp. Lairs hold packs led by a gold-starred elite. Defeated creatures **respawn after 4 minutes** (heroic ones after 10), and the clock keeps running while the game is closed: each hero's save remembers when every creature fell, so leaving the game and coming straight back doesn't bring a pack back early.
 
 **Falling in battle** sends the hero to the last resting place and costs 10% of their gold. Every creature and guardian still standing is back at full health, at home, and calm: a lost fight starts over.
 
 **Aggro:** a creature that is after the hero turns red, glows red and stands in a pulsing red ring, so it is easy to see who is fighting you.
+
+## The depths
+
+When Pyrrhus falls and the last quest begins, the ground shakes and gives way, and the hero falls into **the depths beneath the Dawn Forge** (`depths.ts`): seven chambers joined by halls (The Fall, Hall of Bones, the Sunken Hoard, the Crystal Gallery with a fire to rest at, the Ember Vaults, the Hall of Echoes and **Umbra's Throne**), about five minutes of fighting through creatures found nowhere else. They are stronger than anything in the four lands: levels 26 to 30, following the hero's own. Walking into the throne room wakes Umbra (each hero's own Umbra, with their own scene, such as Kael's black knight).
+
+The depths lie in a space of their own beside the valley, count as part of the Ember Wastes, have their own dark music (`depths` in `music.ts`), and are **not on the valley's map**: once the ground has opened, the hole beside the Dawn Forge shows there, and tapping it (or the map's *The Depths* tab) opens a map of the depths on dark paper. Down there the minimap and the map show the depths.
+
+Roots at the Fall climb back up at any time; once Umbra is beaten a **shaft of dawnlight** in the throne room does too, and the story ends at the Dawn Forge as before. **The hole stays open**: going down again brings every creature back as strong as the hero has grown, and an **echo of Umbra** rises on the empty throne (60% of Umbra's health and experience, with Umbra's loot and the chance of the Starlit Unicorn). The arrows lead through the hole and back out, and a save made down there loads down there.
+
+## Starfall events
+
+Every ten to twenty minutes of play, three times in four, **a star falls** (`updateStarfall` in `engine.ts`) on open ground somewhere the hero can reach, mostly in their own land, away from every town: a streak across the sky, a banner (*A star has fallen, near …*), a gold-white arrow, a star on the minimap and the map, and a line in the quest tracker with the time left. Where it lands:
+- **a meteor crater**, the star still glowing at its heart;
+- **star fragments** scattered round it, picked up by walking over them: experience, gold, and every eight fuse into a **Starheart** (one more heart of health, up to six); creatures touched by the star leave another behind;
+- **rare creatures**: six of the land's own kinds touched by the star, gleaming gold, with more health and two and a half times the experience;
+- **a world boss** that fell with the star (Astralith, the Comet-Eater, Meteorgeist…): a hulk of meteor rock with a star for a heart, raining meteors, spiralling void light, blinking and charging, calling the land's creatures;
+- **a star-forged chest**, sealed until the beast falls, with a legendary piece every time, star fragments and a heap of gold.
+
+All of it is as strong as the hero (or the land, if that is stronger). The star shines for six minutes (not while its beast is being fought), then fades with everything it brought. Achievements: Stargazer, Starchaser, Star Collector and Starheart.
 
 **Secrets:** every land hides four. Three **cracked walls** stand near old places: the cracks glow faintly, and inspecting one says a bomb could break it. A Fire Bomb, Ice Bomb or Thunder Jar thrown nearby (bombs aim at a close cracked wall when no creature is closer) shatters it and reveals a hidden runestone (one per land, with lore about the lights and the Dawn Forge) or a **Hidden cache** with better loot: always a rare or better piece, extra gold and an item. At each land's biggest lake a **waterfall** (a lava fall in the Ember Wastes) hides a cave: explore it to reveal the **Cave hoard**. Achievements: Something Hidden (the first) and Keeper of Secrets (all 16).
 
@@ -363,7 +393,8 @@ src/
     cutscenes.ts       The cutscenes: shots, captions, world effects and the hero intros
     achievements.ts    The achievements, their categories, goals and points
     worlds.ts          Region layouts: places, people, side quests, lore and scripts
-    worldgen.ts        Builds each region and stitches them into one valley: roads, cities, villages, forests, creatures, loot
+    worldgen.ts        Builds each region and stitches them into one valley: roads, cities, villages, forests, each land's own country, the river and the mountain ranges, creatures, loot
+    depths.ts          The depths beneath the Dawn Forge: chambers, halls, their creatures, the hole and the ways out
     spatial.ts         Uniform grid for fast proximity and view queries
     engine.ts          Movement, combat, bosses, quests, villagers, wildlife, exploration, saves
     render.ts          Canvas renderer: ground chunks, sprites, characters, lighting, minimap, world map
