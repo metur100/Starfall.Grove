@@ -816,8 +816,8 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
   const gold = snapshot.gold, refresh = () => setTick(t => t + 1);
   const junk = snapshot.gear.filter(g => g.rarity === 'common' || g.rarity === 'uncommon');
   return <aside className="side-panel shop-panel">
-    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : shop.kind === 'armorer' ? 'Armoury' : shop.kind === 'stable' ? 'Stable' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
-    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy anything you don’t need — gear, potions, the lot.”' : shop.kind === 'armorer' ? '“Fine gear, fine prices. My best pieces wait until you have grown into them. I’ll take your spare pieces off your hands, too.”' : shop.kind === 'stable' ? '“Nobody rides for free. Every one of these is worth the gold, and yours for good.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
+    <div className="journal-head"><strong>{shop.portrait} {shop.kind === 'merchant' ? 'Merchant' : shop.kind === 'armorer' ? 'Armoury' : shop.kind === 'stable' ? 'Stable' : shop.kind === 'flight' ? 'Flight Master' : 'Smithy'}</strong><span className="gold-chip big"><i />{gold}</span><button className="icon-button" onClick={onClose} aria-label="Close shop">✕</button></div>
+    <p className="panel-note">{shop.name}: {shop.kind === 'merchant' ? '“Potions, bombs and oddities. I buy anything you don’t need — gear, potions, the lot.”' : shop.kind === 'armorer' ? '“Fine gear, fine prices. My best pieces wait until you have grown into them. I’ll take your spare pieces off your hands, too.”' : shop.kind === 'stable' ? '“Nobody rides for free. Every one of these is worth the gold, and yours for good.”' : shop.kind === 'flight' ? '“Where to? My griffons fly faster than a falling star. Hold on tight.”' : '“Every rank makes you stronger for the rest of your journey.”'}</p>
     {shop.kind === 'merchant' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell <small>{snapshot.gear.length + snapshot.items.filter(i => i.count > 0).length}</small></button></div>}
     {shop.kind === 'armorer' && <div className="journal-tabs"><button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>Buy</button><button className={tab === 'sell' ? 'on' : ''} onClick={() => setTab('sell')}>Sell <small>{snapshot.gear.length}</small></button></div>}
     <div className="bag-list">
@@ -874,6 +874,14 @@ function ShopPanel({ shop, snapshot, engine, onClose }: { shop: Shop; snapshot: 
           </div>;
         })}
         <p className="panel-note">The {MOUNT_ORDER.filter(id => !MOUNTS[id].price).map(id => MOUNTS[id].name).join(' and the ')} can’t be bought: they are won in battle.</p>
+      </>}
+      {shop.kind === 'flight' && <>
+        {engine.flightOffers().map(o => <div key={o.id} className={`bag-item flight-item ${o.why ? 'sold' : ''}`} style={{ '--c': '#9fd8ff' } as CSSProperties}>
+          <span className="bag-icon"><b className="up-icon">{o.here ? '📍' : '🦅'}</b></span>
+          <div><strong>{o.city}</strong><em>{o.land}{o.why && !o.here ? ` · ${o.why}` : ''}</em></div>
+          <button className="btn ghost price" disabled={!!o.why || gold < o.cost} onClick={() => { if (engine.fly(o.id)) onClose(); }}>{o.here ? 'Here' : o.why ? '🔒' : <><i className="coin" />{o.cost}</>}</button>
+        </div>)}
+        <p className="panel-note">Griffons fly between the flight masters of the four cities, high over the river and the mountains. A city is on the list once you have reached it on foot.</p>
       </>}
       {shop.kind === 'smith' && UPGRADE_ORDER.map(id => {
         const info = UPGRADES[id], rank = engine.upgradeRank(id), cost = upgradeCost(rank), maxed = rank >= MAX_RANK;

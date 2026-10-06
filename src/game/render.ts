@@ -5,7 +5,8 @@ import { TRAILS } from './trails';
 import { RARITY, SLOT_ORDER, lookOf, type Look } from './gear';
 import { Grid } from './spatial';
 import { CAVE_MOUTH, REGION_W, fbm, rangeEdge, riverX } from './worldgen';
-import { inDepthsArea, type Depths } from './depths';
+import { DEPTH_AMBUSHES, inDepthsArea, type DepthTheme, type Depths } from './depths';
+const DEPTH_AMBUSH_ROOMS = Object.keys(DEPTH_AMBUSHES);
 import type { BossLook, BossVariant } from './bosses';
 import type { Captive, Decor, ItemIcon, Obstacle, Palette, Point, Poi, Range, Region, River, WorldDefinition, WorldObject } from './types';
 
@@ -56,7 +57,9 @@ const SIZE_STEP: Partial<Record<string, number>> = { oak: 10, peak: 20, basalt: 
 const SHARED_ART = new Set(['peak', 'basalt', 'volcano']);
 const RES_CAP: Partial<Record<string, number>> = { peak: 1.25, basalt: 1.25, volcano: .85, oak: 1.5 };
 /** A building site on a river: the bridge itself is built there. */
-const riverSite = (o: WorldObject, world: WorldDefinition) => o.variant === 'bridge' && world.rivers.some(rv => Math.abs(riverX(rv, o.y) - o.x) < 60);
+const riverSite = (o: WorldObject, world: WorldDefinition) => o.variant === 'bridge' && !!riverAt(o, world);
+/** The river a bridge site or broken bridge stands at the head of. */
+const riverAt = (o: Point, world: WorldDefinition) => world.rivers.find(rv => Math.abs(riverX(rv, o.y) - o.x) < rv.hw + 160);
 /** The region a world x position belongs to. */
 const regionOf = (world: WorldDefinition, x: number): Region => world.regions[clamp(Math.floor(x / REGION_W), 0, world.regions.length - 1)];
 
@@ -202,7 +205,7 @@ const ENEMY_REACH: Partial<Record<Enemy['kind'], [number, number, number, number
   emberImp: [-1.9, -2.73, 1.92, .77], ashScorpion: [-1.78, -1.3, 1.31, 1.05], magmaHulk: [-1.62, -1.34, 1.77, .98],
   bogling: [-1.79, -2.31, 1.24, .91], briarling: [-1.58, -1.63, 1.56, 1.37], rimeling: [-1.58, -1.63, 1.56, 1.37], mirecap: [-1.4, -1.31, 1.38, 1.16],
   marshlight: [-1.3, -2.75, 1.29, 2.06], pyrewisp: [-1.3, -2.75, 1.29, 2.06], snowfang: [-1.97, -1.2, 1.7, 1.09], cinderhound: [-1.97, -1.2, 1.7, 1.09],
-  umbralKnight: [-1.5, -2.6, 1.9, 1.15], duskwing: [-2.3, -2.7, 2.3, 1.4], hollowArcher: [-1.1, -1.75, 1.75, 1.15], shardback: [-1.6, -2.1, 1.7, 1], acolyte: [-1.6, -2.2, 1.6, 1.25],
+  umbralKnight: [-1.5, -2.6, 1.9, 1.15], duskwing: [-2.3, -2.7, 2.3, 1.4], hollowArcher: [-1.1, -1.75, 1.75, 1.15], shardback: [-1.6, -2.1, 1.7, 1], acolyte: [-1.6, -2.2, 1.6, 1.25], bonewalker: [-1.3, -2, 2, 1.2], gloomstalker: [-2.4, -1.6, 2.4, 1.2],
 };
 /**
  * The colours of each land's own creatures, drawn with the body of the kind they take after (ENEMY_AI): boglings and
@@ -412,7 +415,9 @@ export class Renderer {
     const camX = this.cam.x, camY = this.cam.y;
     const view: View = { x: camX, y: camY, w: vw, h: vh }; this.view = view;
     this.lights = [];
-    this.near = e.nearest();
+    // High above the clouds on a griffon, the valley below is out of sight.
+    if (e.flight && e.flightCloud >= 1) { this.near = null; this.nearScreen = null; this.drawSkyFlight(ctx, w, h, e, scale); return; }
+    this.near = e.flight ? null : e.nearest();
 
     ctx.save();
     ctx.scale(scale, scale); ctx.translate(-camX + sx, -camY + sy);
@@ -422,6 +427,7 @@ export class Renderer {
     this.drawDecor(ctx, e, view);
     this.drawPlaceNames(ctx, e, view);
     this.drawCaveRoofs(ctx, e, view);
+    if (world.depths && view.x + view.w > world.width) this.drawDepthsFx(ctx, e, world.depths, view);
     this.drawFallenStar(ctx, e, view);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
     for (const w of e.wells) this.drawWell(ctx, w);
@@ -431,15 +437,24 @@ export class Renderer {
     const m = 140, x0 = camX - m, x1 = camX + vw + m, y0 = camY - m, y1 = camY + vh + 260;
     const inView = (x: number, y: number) => x > x0 && x < x1 && y > y0 && y < y1;
     for (const o of e.obstacleGrid.rect(x0 - 60, y0, x1 + 60, y1)) draws.push({ y: o.y + (o.h || o.r * .5), run: () => this.drawObstacle(ctx, o, e) });
-    for (const o of world.objects) if (inView(o.x, o.y) && o.kind !== 'well' && o.kind !== 'campfire' && o.kind !== 'fountain') { if (e.isVisible(o)) draws.push({ y: (o.kind === 'barrier' && o.variant === 'bridge' && world.rivers.length) || (o.kind === 'site' && riverSite(o, world)) ? o.y - 60 : o.y + 10, run: () => this.drawObject(ctx, o, e) }); }
+    for (const o of world.objects) {
+      // The long bridge over the Gloomwater is drawn from its western head but reaches right across the river.
+      const span = o.variant === 'bridge' && (o.kind === 'barrier' || o.kind === 'site') && world.rivers.length > 0;
+      if (!(span ? o.x > x0 - 1100 && o.x < x1 + 200 && o.y > y0 && o.y < y1 : inView(o.x, o.y)) || o.kind === 'well' || o.kind === 'campfire' || o.kind === 'fountain') continue;
+      if (e.isVisible(o)) draws.push({ y: span && (o.kind === 'barrier' || riverSite(o, world)) ? o.y - 60 : o.y + 10, run: () => this.drawObject(ctx, o, e) });
+    }
     for (const p of e.pods) if (!p.dead && inView(p.x, p.y)) draws.push({ y: p.y + 12, run: () => this.drawPod(ctx, p.x, p.y, e) });
-    for (const n of e.npcs) if (inView(n.x, n.y) && e.npcVisible(n)) draws.push({ y: n.y + 22, run: () => this.drawNpc(ctx, n, e) });
+    for (const n of e.npcs) if (inView(n.x, n.y) && e.npcVisible(n)) {
+      draws.push({ y: n.y + 22, run: () => this.drawNpc(ctx, n, e) });
+      // A flight master's griffon rests beside them, saddled and waiting.
+      if (n.role === 'flight') draws.push({ y: n.y + 34, run: () => this.drawGriffon(ctx, n.x + 92, n.y + 14, n.x + 92 < e.hero.x ? 1 : -1, 'sit', 1) });
+    }
     for (const c of e.critters) if (inView(c.x, c.y)) draws.push({ y: c.y + (c.state === 'fly' ? 400 : 6), run: () => this.drawCritter(ctx, c, e) });
     for (const en of e.enemies) if (!en.dead && !en.wall && inView(en.x, en.y)) draws.push({ y: en.y + en.r * .7, run: () => this.drawEnemy(ctx, en, e) });
     // Tuft trots beside Mira; Kael travels alone.
-    if (e.hasPet) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
+    if (e.hasPet && !e.flight) { this.updateFox(e, dt); draws.push({ y: this.fox.y + 8, run: () => this.drawFox(ctx, e) }); }
     for (const p of e.pets) if (inView(p.x, p.y)) draws.push({ y: p.y + 14, run: () => this.drawPet(ctx, p, e) });
-    draws.push({ y: hero.y + 22, run: () => this.drawHeroScaled(ctx, e) });
+    draws.push({ y: hero.y + 22, run: () => e.flight ? this.drawFlyingHero(ctx, e, hero.x, hero.y, e.flightAlt * 300) : this.drawHeroScaled(ctx, e) });
     // A cosmetic trail sparkles behind a walking hero.
     const trail = e.trail; if (trail && Math.hypot(hero.vx, hero.vy) > 40 && Math.random() < dt * 26) { const T = TRAILS[trail]; e.emit(hero.x - hero.faceX * 10 + rand(-8, 8), hero.y + 12 + rand(-6, 6), 1, T.colors, trail === 'clovers' ? { speed: 20, life: .9, kind: 'leaf', size: 5, grav: -10 } : { speed: 25, life: .8, kind: 'star', glow: true, size: trail === 'sparks' ? 3.5 : 3, grav: -30 }); }
     draws.sort((a, b) => a.y - b.y);
@@ -458,7 +473,7 @@ export class Renderer {
     this.drawBubbles(ctx, e, view);
     this.drawLevelTags(ctx, e, view);
     this.drawFloating(ctx, e);
-    if (!e.cine) { this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0); this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1); this.drawArrow(ctx, e, e.starTarget(), STAR_COLOR, 2); }
+    if (!e.cine && !e.flight) { this.drawArrow(ctx, e, e.mainTarget(), MAIN_COLOR, 0); this.drawArrow(ctx, e, e.questTarget(), SIDE_COLOR, 1); this.drawArrow(ctx, e, e.starTarget(), STAR_COLOR, 2); }
     const rich = this.quality > .5, here = regionOf(world, hero.x), amb = e.inDepths ? 'depths' : here.ambient;
     if (amb === 'petals' && rich && this.weather) this.drawCloudShadows(ctx, e, view);
     ctx.restore();
@@ -466,7 +481,7 @@ export class Renderer {
     const toScreen = (p: Point) => ({ x: (p.x - camX + sx) * scale, y: (p.y - camY + sy) * scale });
     // Where the touch "Talk" button goes: just above the head of whoever (or whatever) is in reach.
     const nr = this.near;
-    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'stable' || nr.n.role === 'inn' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
+    if (nr) { const p = nr.kind === 'npc' ? nr.n : nr.o, lift = nr.kind === 'npc' ? (e.npcMarker(nr.n) || nr.n.role === 'merchant' || nr.n.role === 'smith' || nr.n.role === 'armorer' || nr.n.role === 'stable' || nr.n.role === 'inn' || nr.n.role === 'flight' ? 84 : 58) : nr.o.kind === 'cage' ? 130 : 62; this.nearScreen = { x: (p.x - camX) * scale, y: (p.y - lift - camY) * scale }; }
     else this.nearScreen = null;
     // Story scenes at night darken even the sunny meadow, so lamps and fires glow.
     const cave = this.caveDark(world, hero);
@@ -482,7 +497,120 @@ export class Renderer {
     if (amb === 'stars' && this.weather) this.drawShootingStar(ctx, w, h, dt);
     if (amb === 'petals' && this.quality >= 1 && this.weather) this.drawSunGlow(ctx, w, h);
     this.drawScreenFx(ctx, w, h, e);
-    if (!e.cine) this.drawMinimap(ctx, w, h, e);
+    if (e.flight) this.drawCloudVeil(ctx, w, h, e.flightCloud);
+    if (!e.cine && !e.flight) this.drawMinimap(ctx, w, h, e);
+  }
+
+  // ───────────────────────────── griffon flights
+  /**
+   * A griffon, side-on, facing `dir`, its feet at x, y: a tawny lion's body and tail, an eagle's white head and hooked
+   * beak, and great feathered wings. Sitting, it rests on its haunches with its wings folded; flying, its wings beat and
+   * its legs are tucked up. `rider` draws whoever sits in the saddle, between the far wing and the near one.
+   */
+  private drawGriffon(ctx: CanvasRenderingContext2D, x: number, y: number, dir: number, mode: 'sit' | 'fly', s: number, rider?: () => void) {
+    const t = this.time, fly = mode === 'fly', flap = fly ? Math.sin(t * 9) : 0, bob = fly ? flap * 4 : Math.sin(t * 1.6 + x) * 1.2;
+    const fur = '#c9a06a', furDark = '#9a7448', feather = '#efe6d2', featherDark = '#b8a888', beak = '#f2b84b';
+    ctx.save(); ctx.translate(x, y); ctx.scale(dir * s, s);
+    if (!fly) shadow(ctx, 0, 2, 52, 11, .28);
+    ctx.translate(0, -bob);
+    const wing = (near: boolean) => {
+      ctx.save(); ctx.translate(fly ? 2 : 0, fly ? -40 : -34);
+      ctx.rotate(fly ? -.15 + flap * .85 : .25);
+      if (!fly) ctx.scale(1, .55);
+      const c = near ? feather : featherDark;
+      ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(8, 0); ctx.quadraticCurveTo(-10, -36, -64, -58); ctx.lineTo(-74, -44); ctx.lineTo(-62, -40); ctx.lineTo(-70, -28); ctx.lineTo(-54, -26); ctx.lineTo(-58, -14); ctx.lineTo(-40, -14); ctx.lineTo(-40, -2); ctx.lineTo(-22, -6); ctx.quadraticCurveTo(-8, 6, 8, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = shade(c, -.25); ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = near ? furDark : shade(furDark, -.15); ctx.beginPath(); ctx.moveTo(8, 0); ctx.quadraticCurveTo(-8, -26, -40, -40); ctx.quadraticCurveTo(-30, -18, -18, -8); ctx.quadraticCurveTo(-4, 2, 8, 0); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    };
+    wing(false);
+    // The lion's tail with its dark tuft.
+    ctx.strokeStyle = fur; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath();
+    if (fly) { ctx.moveTo(-38, -32); ctx.quadraticCurveTo(-60, -30 + flap * 4, -76, -40); } else { ctx.moveTo(-36, -14); ctx.quadraticCurveTo(-58, -2, -54, -26 + Math.sin(t * 2 + x) * 3); }
+    ctx.stroke(); ellipse(ctx, fly ? -78 : -54, fly ? -41 : -28, 6, 5, '#6a4a2a');
+    // Legs: lion's behind, eagle's talons in front; tucked up in flight.
+    ctx.strokeStyle = furDark; ctx.lineWidth = 7;
+    if (fly) { ctx.beginPath(); ctx.moveTo(-26, -24); ctx.lineTo(-38, -14); ctx.moveTo(20, -26); ctx.lineTo(30, -16); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo(-24, -14); ctx.lineTo(-26, 0); ctx.moveTo(22, -20); ctx.lineTo(26, 0); ctx.stroke(); ellipse(ctx, -24, 0, 8, 3.5, '#6a4a2a'); ctx.strokeStyle = beak; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(34, 1); ctx.moveTo(24, 0); ctx.lineTo(31, -4); ctx.stroke(); }
+    // The body, the feathered breast, and the saddle.
+    ellipse(ctx, 0, fly ? -34 : -22, 42, fly ? 18 : 21, fur);
+    ellipse(ctx, 4, fly ? -28 : -15, 30, 7, 'rgba(255,255,255,.14)');
+    ellipse(ctx, 26, fly ? -38 : -30, 18, 16, feather);
+    ctx.fillStyle = '#8a2a2a'; ctx.beginPath(); ctx.roundRect(-14, fly ? -52 : -42, 26, 12, 4); ctx.fill(); rect(ctx, -14, fly ? -42 : -32, 26, 2, '#e8c46a');
+    rider?.();
+    // Neck and the eagle's head: a white ruff, a hooked golden beak, a fierce eye, two tufted ears.
+    const hx = fly ? 44 : 34, hy = fly ? -50 : -54 + Math.sin(t * 1.3 + x) * 1.5;
+    ctx.fillStyle = feather; ctx.beginPath(); ctx.moveTo(18, fly ? -44 : -34); ctx.quadraticCurveTo(hx - 6, hy + 4, hx - 4, hy - 8); ctx.lineTo(hx + 8, hy - 2); ctx.quadraticCurveTo(hx, hy + 14, 30, fly ? -30 : -22); ctx.closePath(); ctx.fill();
+    circle(ctx, hx, hy, 13, feather);
+    for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hx - 6 + k * 3, hy - 10); ctx.lineTo(hx - 12 + k * 3, hy - 22); ctx.lineTo(hx - 1 + k * 3, hy - 11); ctx.fill(); }
+    ctx.fillStyle = beak; ctx.beginPath(); ctx.moveTo(hx + 9, hy - 6); ctx.quadraticCurveTo(hx + 24, hy - 5, hx + 22, hy + 5); ctx.lineTo(hx + 18, hy + 1); ctx.lineTo(hx + 8, hy + 3); ctx.closePath(); ctx.fill();
+    circle(ctx, hx + 3, hy - 4, 2.6, '#2a1e18'); circle(ctx, hx + 3.8, hy - 4.8, .9, '#ffffff');
+    ctx.strokeStyle = featherDark; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(hx - 2, hy + 2, 9, 1.2, 2.6); ctx.stroke();
+    wing(true);
+    ctx.restore();
+  }
+  /** The hero in the saddle of a griffon `lift` above the ground, with its shadow left below. */
+  private drawFlyingHero(ctx: CanvasRenderingContext2D, e: GameEngine, x: number, y: number, lift: number, ground = true) {
+    const h = e.hero, dir = e.flight?.dir || 1, s = 1.25;
+    if (ground && lift < 400) shadow(ctx, x, y + 14, 60 * (1 - lift / 600), 14 * (1 - lift / 600), .3 * (1 - lift / 400));
+    this.drawGriffon(ctx, x, y - lift, dir, 'fly', s, () => {
+      ctx.save(); ctx.translate(-2, -46); ctx.scale(dir / s, 1 / s); ctx.translate(-h.x, -h.y - 14); this.drawHeroBody(ctx, e, 0, 0); ctx.restore();
+    });
+  }
+  /** One soft cloud: puffs heaped on a flat base. */
+  private cloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color: string) {
+    ctx.fillStyle = color; ctx.beginPath();
+    for (const [dx, dy, r] of [[-1.1, 0, .55], [-.45, -.35, .7], [.25, -.45, .8], [.95, -.1, .6], [.3, .1, .7]] as Array<[number, number, number]>) { ctx.moveTo(x + dx * s + r * s, y + dy * s); ctx.arc(x + dx * s, y + dy * s, r * s, 0, TAU); }
+    ctx.fill();
+  }
+  /**
+   * Above the clouds: the sky, a low sun, three layers of cloud streaming past, wind streaks, and the hero on the
+   * griffon in the middle of it all, with where they are flying and how far along they are.
+   */
+  private drawSkyFlight(ctx: CanvasRenderingContext2D, w: number, h: number, e: GameEngine, scale: number) {
+    const f = e.flight!, t = this.time, dir = f.dir, k = e.flightProgress;
+    const sky = ctx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#4f7fc4'); sky.addColorStop(.55, '#a9cdf2'); sky.addColorStop(1, '#ffe9cf');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    glow(ctx, w * (dir > 0 ? .82 : .18), h * .2, Math.min(w, h) * .35, '#fff3c4', .7); circle(ctx, w * (dir > 0 ? .82 : .18), h * .2, Math.min(w, h) * .05, '#fffbe8');
+    const layer = (n: number, speed: number, y0: number, y1: number, size: number, color: string, seed: number) => {
+      const span = w + size * 5;
+      for (let i = 0; i < n; i++) {
+        const r1 = hash(i * 13.1 + seed), r2 = hash(i * 7.7 + seed * 3);
+        const x = ((((r1 * span - t * speed * dir) % span) + span) % span) - size * 2.5;
+        this.cloud(ctx, x, y0 + (y1 - y0) * r2, size * (.7 + r2 * .6), color);
+      }
+    };
+    layer(9, 60, h * .3, h * .5, 50 * scale, 'rgba(255,255,255,.55)', 1);
+    layer(7, 180, h * .55, h * .8, 80 * scale, 'rgba(255,255,255,.8)', 2);
+    // Wind streaking past.
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath();
+    for (let i = 0; i < 12; i++) { const r = hash(i * 3.3), x = ((((r * (w + 300) - t * 900 * dir) % (w + 300)) + w + 300) % (w + 300)) - 150, y = h * (.15 + hash(i * 9.1) * .7); ctx.moveTo(x, y); ctx.lineTo(x + dir * 70, y); }
+    ctx.stroke();
+    // The griffon and its rider, bobbing on the wind.
+    const S = clamp(Math.min(w, h) / 420, 1, 2.4) * scale * .9, hx = e.hero.x, hy = e.hero.y;
+    ctx.save(); ctx.translate(w / 2, h * .52 + Math.sin(t * 1.4) * 10 * S); ctx.scale(S, S); ctx.translate(-hx, -hy);
+    this.drawFlyingHero(ctx, e, hx, hy, 0, false);
+    ctx.restore();
+    layer(4, 420, h * .85, h * 1.02, 120 * scale, '#ffffff', 3);
+    // Where to, and how far along.
+    const bw = Math.min(360, w * .6), bx = (w - bw) / 2, by = Math.max(54, h * .1);
+    ctx.font = `700 ${Math.round(clamp(w / 32, 18, 30))}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(47,35,48,.55)'; ctx.fillStyle = '#fffbea';
+    ctx.strokeText(`Flying to ${f.dest}`, w / 2, by); ctx.fillText(`Flying to ${f.dest}`, w / 2, by);
+    ctx.fillStyle = 'rgba(47,35,48,.4)'; ctx.beginPath(); ctx.roundRect(bx, by + 16, bw, 8, 4); ctx.fill();
+    ctx.fillStyle = '#ffd35c'; ctx.beginPath(); ctx.roundRect(bx, by + 16, Math.max(8, bw * (dir > 0 ? k : 1)), 8, 4); ctx.fill();
+    if (dir < 0) { ctx.fillStyle = 'rgba(47,35,48,.4)'; ctx.beginPath(); ctx.roundRect(bx, by + 16, bw * (1 - k), 8, 4); ctx.fill(); }
+    ctx.textAlign = 'left';
+  }
+  /** Clouds closing round the griffon as it climbs (or parting as it comes down). */
+  private drawCloudVeil(ctx: CanvasRenderingContext2D, w: number, h: number, c: number) {
+    if (c <= 0) return;
+    const t = this.time;
+    ctx.save(); ctx.globalAlpha = c;
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#a9cdf2'); g.addColorStop(1, '#f4f8ff'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = Math.min(1, c * 1.6);
+    for (let i = 0; i < 10; i++) { const r = hash(i * 5.3), x = (r * w * 1.4 - w * .2) + Math.sin(t * .5 + i) * 30, y = h * (hash(i * 2.7) * 1.1 - .05); this.cloud(ctx, x, y, Math.min(w, h) * (.12 + r * .1) * (.6 + c * .6), 'rgba(255,255,255,.85)'); }
+    ctx.restore();
   }
 
   // ───────────────────────────── ground chunks
@@ -609,6 +737,15 @@ export class Renderer {
       riverBand(g, rv, rv.hw, y0, y1); g.fillStyle = rp.waterDeep; g.fill();
       riverBand(g, rv, rv.hw * .8, y0, y1, -6); g.fillStyle = rp.water; g.fill();
       riverBand(g, rv, rv.hw * .3, y0, y1, -14); g.fillStyle = mix(rp.water, '#ffffff', .1); g.fill();
+      // Wooded islands in the current: a paper rim of sand, then grass, with a lighter shoal round each.
+      for (const s of rv.islands || []) {
+        if (s.y + s.ry + 40 < y0 || s.y - s.ry - 40 > y1) continue;
+        ellipse(g, s.x, s.y, s.rx + 26, s.ry + 18, mix(rp.water, '#ffffff', .18));
+        ellipse(g, s.x + 5, s.y + 7, s.rx + 8, s.ry + 6, mix(rp.ground, INK, .3));
+        ellipse(g, s.x, s.y, s.rx + 8, s.ry + 6, mix(shore, '#fffbea', .3));
+        ellipse(g, s.x, s.y, s.rx, s.ry, rp.ground);
+        ellipse(g, s.x - s.rx * .2, s.y - s.ry * .2, s.rx * .6, s.ry * .5, rp.alternate);
+      }
     }
     // Pebbles, clover and crops: tiny pieces pasted flat.
     for (const d of this.bakedDecor.rect(ox - 20, oy - 20, ox + CHUNK + 20, oy + CHUNK + 20)) {
@@ -655,20 +792,54 @@ export class Renderer {
       for (const h of dp.halls) { g.lineWidth = (h.hw + pad) * 2; g.beginPath(); g.moveTo(h.a.x + dx, h.a.y + dy); g.lineTo(h.b.x + dx, h.b.y + dy); g.stroke(); }
     };
     floor(16, 6, 9, '#050307'); floor(14, 0, 0, '#5a4c56'); floor(10, 0, 0, '#3e3440'); floor(0, 0, 0, '#2e2630');
-    // Lighter flags of stone across the floors.
-    g.save(); g.beginPath(); for (const r of dp.rooms) { g.moveTo(r.x + r.rx, r.y); g.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, TAU); } g.clip();
-    const fl: Blob[] = []; for (let y = Math.floor(oy / 50) * 50; y < oy + CHUNK + 50; y += 50) for (let x = Math.floor(ox / 50) * 50; x < ox + CHUNK + 50; x += 50) { const n = fbm(x * 2, y * 2, 43); if (n > .52) fl.push([x, y, 20 + (n - .52) * 60]); }
-    blobs(fl, '#332a38');
-    g.restore();
-    const throne = dp.rooms.find(r => r.id === 'throne');
-    if (throne && near(throne.x, throne.y, throne.rx)) {
-      paving(g, throne.x, throne.y, throne.rx * .62, throne.ry * .62, '#3a3046', '#1e1828', 34, throne.x);
-      g.strokeStyle = 'rgba(201,182,255,.35)'; g.lineWidth = 3; g.setLineDash([16, 12]);
-      for (const k of [.3, .45]) { g.beginPath(); g.ellipse(throne.x, throne.y, throne.rx * k, throne.ry * k, 0, 0, TAU); g.stroke(); } g.setLineDash([]);
+    // Each chamber has a floor of its own, in sheets of lighter stone, and its own marks on it.
+    for (const r of dp.rooms) {
+      if (!near(r.x, r.y, Math.max(r.rx, r.ry))) continue;
+      const [base, light, mark] = DEPTH_FLOORS[r.theme];
+      g.save(); g.beginPath(); g.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, TAU); g.clip();
+      g.fillStyle = base; g.fillRect(ox - 10, oy - 10, CHUNK + 20, CHUNK + 20);
+      const fl: Blob[] = []; for (let y = Math.floor(oy / 50) * 50; y < oy + CHUNK + 50; y += 50) for (let x = Math.floor(ox / 50) * 50; x < ox + CHUNK + 50; x += 50) { const n = fbm(x * 2, y * 2, 43); if (n > .52) fl.push([x, y, 20 + (n - .52) * 60]); }
+      blobs(fl, light);
+      const seed = r.x * .013 + r.y * .007;
+      if (r.theme === 'lava') {
+        // Cracks in the floor with lava glowing in them.
+        for (let k = 0; k < 7; k++) {
+          let x = r.x + (hash(seed + k) - .5) * r.rx * 1.4, y = r.y + (hash(seed + k * 3.1) - .5) * r.ry * 1.4, a = hash(seed + k * 7.7) * TAU;
+          const pts: Point[] = [{ x, y }]; for (let i = 0; i < 9; i++) { a += (hash(seed + k * 11 + i) - .5) * 1.4; x += Math.cos(a) * 34; y += Math.sin(a) * 22; pts.push({ x, y }); }
+          for (const [w, c] of [[9, '#1a0a08'], [4, '#c43a1a'], [1.6, '#ffb347']] as Array<[number, string]>) { g.strokeStyle = c; g.lineWidth = w; g.lineJoin = 'round'; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.stroke(); }
+        }
+      } else if (r.theme === 'fungi') {
+        const moss: Blob[] = []; for (let k = 0; k < 40; k++) { const a = hash(seed + k) * TAU, d = .55 + hash(seed + k * 2.3) * .4; moss.push([r.x + Math.cos(a) * r.rx * d, r.y + Math.sin(a) * r.ry * d, 26 + hash(seed + k * 5) * 40]); }
+        blobs(moss, mark);
+      } else if (r.theme === 'void' || r.theme === 'throne') {
+        g.strokeStyle = mark; g.lineWidth = 3; g.setLineDash([16, 12]);
+        for (const k of r.theme === 'throne' ? [.3, .45] : [.32, .5]) { g.beginPath(); g.ellipse(r.x, r.y, r.rx * k, r.ry * k, 0, 0, TAU); g.stroke(); }
+        g.setLineDash([]);
+        if (r.theme === 'void') for (let k = 0; k < 8; k++) { const a = k / 8 * TAU; g.fillStyle = mark; g.beginPath(); g.arc(r.x + Math.cos(a) * r.rx * .41, r.y + Math.sin(a) * r.ry * .41, 5, 0, TAU); g.fill(); }
+      } else if (r.theme === 'hoard') {
+        for (let k = 0; k < 90; k++) { const a = hash(seed + k) * TAU, d = Math.sqrt(hash(seed + k * 1.7)) * .8; circle(g, r.x + Math.cos(a) * r.rx * d, r.y + Math.sin(a) * r.ry * d, 2 + hash(k) * 2.5, k % 3 ? '#c9a23c' : '#ffd35c'); }
+      } else if (r.theme === 'water' || r.theme === 'bones') {
+        const wet: Blob[] = []; for (let k = 0; k < 24; k++) { const a = hash(seed + k) * TAU, d = Math.sqrt(hash(seed + k * 1.9)) * .8; wet.push([r.x + Math.cos(a) * r.rx * d, r.y + Math.sin(a) * r.ry * d, 18 + hash(seed + k * 4) * 34]); }
+        blobs(wet, mark);
+      }
+      g.restore();
+      if (r.theme === 'throne') paving(g, r.x, r.y, r.rx * .62, r.ry * .62, '#3a3046', '#1e1828', 34, r.x);
+    }
+    // Pools of still water and of lava, sunk into the floors.
+    for (const pl of dp.pools) {
+      if (!near(pl.x, pl.y, pl.rx + 30)) continue;
+      const lava = pl.kind === 'lava';
+      ellipse(g, pl.x + 4, pl.y + 6, pl.rx + 16, pl.ry + 12, '#050307');
+      ellipse(g, pl.x, pl.y, pl.rx + 12, pl.ry + 9, lava ? '#2a1612' : '#4a4452');
+      ellipse(g, pl.x, pl.y, pl.rx + 4, pl.ry + 3, lava ? '#1a0a08' : '#1a1a24');
+      ellipse(g, pl.x, pl.y, pl.rx, pl.ry, lava ? '#a8341a' : '#12384a');
+      ellipse(g, pl.x - pl.rx * .08, pl.y + pl.ry * .06, pl.rx * .78, pl.ry * .72, lava ? '#ff6a2a' : '#1e5266');
+      ellipse(g, pl.x - pl.rx * .15, pl.y + pl.ry * .1, pl.rx * .45, pl.ry * .38, lava ? '#ffb347' : '#2a6e82');
     }
     for (const d of this.bakedDecor.rect(ox - 20, oy - 20, ox + CHUNK + 20, oy + CHUNK + 20)) {
       if (d.kind === 'bone') { if (d.seed > .5) { ellipse(g, d.x, d.y, 6, 5, d.color); circle(g, d.x - 2, d.y - .5, 1.3, '#2a1e24'); circle(g, d.x + 2, d.y - .5, 1.3, '#2a1e24'); } else { g.strokeStyle = d.color; g.lineWidth = 2; g.lineCap = 'round'; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(d.x - 7 + i * 4.5, d.y - 4); g.quadraticCurveTo(d.x - 9 + i * 4.5, d.y, d.x - 6 + i * 4.5, d.y + 4); g.stroke(); } } }
       else if (d.kind === 'pebble') { const rx = 4.5 + d.seed * 3, ry = 2.8 + d.seed * 1.5; ellipse(g, d.x + 1.5, d.y + 2, rx, ry, '#141018'); ellipse(g, d.x, d.y, rx, ry, '#4a4050'); }
+      else if (d.kind === 'vein') { g.strokeStyle = '#1a0a08'; g.lineWidth = 4; g.lineCap = 'round'; const a = d.seed * TAU; g.beginPath(); g.moveTo(d.x - Math.cos(a) * 12, d.y - Math.sin(a) * 6); g.lineTo(d.x + Math.cos(a) * 12, d.y + Math.sin(a) * 6); g.stroke(); g.strokeStyle = d.color; g.lineWidth = 1.6; g.stroke(); }
     }
   }
   /**
@@ -1065,6 +1236,7 @@ export class Renderer {
     else if (o.kind === 'barrier') this.drawBarrier(ctx, o, e);
     else if (o.kind === 'hole') this.drawHole(ctx, o);
     else if (o.kind === 'exit') this.drawExit(ctx, o);
+    else if (o.kind === 'seal') this.drawEclipseSeal(ctx, o, e);
   }
   /** The hole beside the Dawn Forge: a black pit with broken edges, shadow curling out of it. */
   private drawHole(ctx: CanvasRenderingContext2D, o: WorldObject) {
@@ -1076,6 +1248,103 @@ export class Renderer {
     glow(ctx, x, y, 110, '#6a4bd6', .25 + Math.sin(t * 2) * .08);
     if (Math.random() < .2) this.pushAmbient({ x: x + rand(-70, 70), y: y + rand(-20, 20), vx: rand(-6, 6), vy: rand(-30, -16), life: 2.2, max: 2.2, size: rand(8, 13), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(40,24,60,.5)', phase: 0 });
     this.lights.push({ x, y, r: 160, color: '#6a4bd6', a: .5 });
+  }
+  /**
+   * What lives in the depths' chambers between frames: lava pools that bubble and glow, still water that ripples under
+   * drips, the waterfall pouring into the Drowned Cistern, the moonwell's light, the sealed door to Umbra's throne and
+   * the barriers an ambush raises across its chamber's ways out, and the light of crystals, glowcaps and braziers.
+   */
+  private drawDepthsFx(ctx: CanvasRenderingContext2D, e: GameEngine, dp: Depths, v: View) {
+    const t = this.time, seen = (x: number, y: number, r: number) => x + r > v.x && x - r < v.x + v.w && y + r > v.y - 200 && y - r < v.y + v.h + 100;
+    for (const pl of dp.pools) {
+      if (!seen(pl.x, pl.y, pl.rx + 60)) continue;
+      if (pl.kind === 'lava') {
+        glow(ctx, pl.x, pl.y, pl.rx * 1.3, '#ff7a3d', .35 + Math.sin(t * 1.7 + pl.x) * .08);
+        for (let i = 0; i < 5; i++) { const ph = (t * .7 + i / 5 + hash(pl.x + i)) % 1, a = hash(pl.y + i * 3) * TAU, d = hash(pl.x * 2 + i) * .7; circle(ctx, pl.x + Math.cos(a) * pl.rx * d, pl.y + Math.sin(a) * pl.ry * d, 3 + ph * 7, alpha('#ffd27a', (1 - ph) * .8)); }
+        if (Math.random() < .08) this.pushAmbient({ x: pl.x + rand(-pl.rx * .6, pl.rx * .6), y: pl.y + rand(-pl.ry * .5, pl.ry * .5), vx: rand(-8, 8), vy: rand(-50, -25), life: 1.2, max: 1.2, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#ffb347', phase: 0 });
+        this.lights.push({ x: pl.x, y: pl.y, r: pl.rx * 2.2, color: '#ff7a3d', a: .9 });
+      } else {
+        ctx.strokeStyle = 'rgba(200,240,255,.35)'; ctx.lineWidth = 1.4;
+        for (let i = 0; i < 3; i++) { const ph = (t * .45 + i / 3 + hash(pl.x + i)) % 1, a = hash(pl.y + i * 5) * TAU, d = hash(pl.x + i * 9) * .55; ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.ellipse(pl.x + Math.cos(a) * pl.rx * d, pl.y + Math.sin(a) * pl.ry * d, 6 + ph * 34, (6 + ph * 34) * .45, 0, 0, TAU); ctx.stroke(); }
+        ctx.globalAlpha = 1; glow(ctx, pl.x, pl.y, pl.rx, '#5fd0e8', .18);
+        this.lights.push({ x: pl.x, y: pl.y, r: pl.rx * 1.6, color: '#5fd0e8', a: .55 });
+      }
+    }
+    // The waterfall pouring out of the Drowned Cistern's north wall into its pool.
+    const cis = dp.rooms.find(r => r.theme === 'water'), fallPool = cis && dp.pools.filter(p => p.kind === 'water' && inDepthsArea(dp, p)).sort((a, b) => a.y - b.y).find(p => Math.abs(p.x - cis.x) < cis.rx && p.y < cis.y);
+    if (fallPool && seen(fallPool.x, fallPool.y - 200, 300)) {
+      const x = fallPool.x, top = Math.max(fallPool.y - 300, cis.y - cis.ry * Math.sqrt(Math.max(0, 1 - ((x - cis.x) / cis.rx) ** 2)) + 30), bot = fallPool.y - 8, w = 46;
+      const g = ctx.createLinearGradient(0, top, 0, bot); g.addColorStop(0, 'rgba(120,200,230,0)'); g.addColorStop(.25, 'rgba(140,215,240,.75)'); g.addColorStop(1, 'rgba(190,240,255,.9)');
+      ctx.fillStyle = g; ctx.fillRect(x - w, top, w * 2, bot - top);
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.beginPath();
+      for (let i = 0; i < 9; i++) { const lx = x - w + 8 + i * (w * 2 - 16) / 8, ph = (t * 1.6 + hash(i)) % 1, y0 = top + ph * (bot - top); ctx.moveTo(lx, y0); ctx.lineTo(lx, Math.min(bot, y0 + 40)); }
+      ctx.stroke();
+      for (let i = 0; i < 4; i++) { const ph = (t * .9 + i / 4) % 1; ellipse(ctx, x + (i - 1.5) * 18, bot + 2, 20 + ph * 26, 7 + ph * 6, `rgba(255,255,255,${.5 * (1 - ph)})`); }
+      if (Math.random() < .3) this.pushAmbient({ x: x + rand(-w, w), y: bot, vx: rand(-30, 30), vy: rand(-40, -10), life: 1, max: 1, size: rand(6, 11), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(220,245,255,.35)', phase: 0 });
+      this.lights.push({ x, y: bot - 40, r: 260, color: '#8ee8ff', a: .6 });
+    }
+    // The moonwell: still water holding a moon that isn't there.
+    for (const o of e.world.objects) if (o.kind === 'well' && o.variant === 'moon' && seen(o.x, o.y, 120)) {
+      ellipse(ctx, o.x, o.y, 58, 32, '#0e2a3a'); ellipse(ctx, o.x, o.y, 50, 26, '#2a6e9a');
+      circle(ctx, o.x + 6, o.y - 4, 12, '#eef6ff'); circle(ctx, o.x + 10, o.y - 6, 10, '#2a6e9a');
+      glow(ctx, o.x, o.y, 110, '#bfe8ff', .45 + Math.sin(t * 1.5) * .1);
+      if (Math.random() < .15) this.pushAmbient({ x: o.x + rand(-40, 40), y: o.y, vx: 0, vy: rand(-30, -14), life: 1.4, max: 1.4, size: 2, rot: 0, vr: 0, kind: 'mote', color: '#dff6ff', phase: 0 });
+      this.lights.push({ x: o.x, y: o.y, r: 260, color: '#bfe8ff', a: .9 });
+    }
+    // The door to Umbra's throne, sealed while any Eclipse Seal stands; and the walls an ambush raises.
+    const door = (x: number, y: number, nx: number, ny: number, hw: number, color: string, open: boolean) => {
+      if (!seen(x, y, hw + 100)) return;
+      const px = -ny, py = nx, a = { x: x - px * hw, y: y - py * hw }, b = { x: x + px * hw, y: y + py * hw };
+      for (const p of [a, b]) { rect(ctx, p.x - 10, p.y - 70, 20, 74, '#3a3046'); rect(ctx, p.x - 13, p.y - 78, 26, 10, '#4a3e58'); if (!open) { circle(ctx, p.x, p.y - 50, 5, color); glow(ctx, p.x, p.y - 50, 24, color, .8); } }
+      if (open) return;
+      const pulse = .55 + Math.sin(t * 3) * .15;
+      ctx.fillStyle = alpha(color, .28 * pulse + .12); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(b.x, b.y - 120); ctx.lineTo(a.x, a.y - 120); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = alpha(color, .9); ctx.lineWidth = 2; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -t * 30; ctx.stroke(); ctx.setLineDash([]);
+      for (let i = 0; i < 5; i++) { const f = (i + .5) / 5, rx = a.x + (b.x - a.x) * f, ry = a.y + (b.y - a.y) * f - 40 - Math.sin(t * 2 + i) * 12; ctx.fillStyle = alpha('#ffffff', .6 * pulse); star(ctx, rx, ry, 5, 4, .4, t + i); ctx.fill(); }
+      this.lights.push({ x, y: y - 40, r: hw * 2.4, color, a: .8 });
+    };
+    const G = dp.gate; door(G.x, G.y, G.nx, G.ny, G.hw + 10, '#ff6b9a', e.throneOpen);
+    const lock = e.lockRoom;
+    if (lock) for (const h of dp.halls) {
+      if (h.from !== lock.id && h.to !== lock.id) continue;
+      const far = h.from === lock.id ? h.b : h.a, dx = far.x - lock.x, dy = far.y - lock.y, l = Math.hypot(dx, dy), nx = dx / l, ny = dy / l, k = 1 / Math.hypot(nx / lock.rx, ny / lock.ry);
+      door(lock.x + nx * k, lock.y + ny * k, nx, ny, h.hw + 10, '#ff5f3d', false);
+    }
+    // Light: crystals and glowcaps glow, braziers burn, fumaroles steam.
+    for (const o of e.obstacleGrid.rect(v.x - 100, v.y - 100, v.x + v.w + 100, v.y + v.h + 200)) {
+      if (o.x < e.world.width) break;
+      if (o.kind === 'crystal') this.lights.push({ x: o.x, y: o.y - 20, r: 140, color: '#c9b6ff', a: .7 });
+      else if (o.kind === 'mushroom') { this.lights.push({ x: o.x, y: o.y - 30, r: 170, color: '#7fe8d0', a: .75 }); glow(ctx, o.x, o.y - 20, 60, '#7fe8d0', .25); }
+      else if (o.kind === 'obsidian') this.lights.push({ x: o.x, y: o.y - 10, r: 90, color: '#ff7a3d', a: .4 });
+      else if (o.kind === 'pillar') this.lights.push({ x: o.x, y: o.y - 50, r: 70, color: '#8a7aff', a: .35 });
+    }
+    // Drips from the roof, catching the light as they fall.
+    for (let i = 0; i < 10; i++) {
+      const hx = hash(i * 7.1 + Math.floor(t * .25 + hash(i)) * 3.3), x = v.x + hx * v.w, ph = (t * .25 + hash(i)) % 1, y = v.y + hash(i * 3.7) * v.h * .8 + ph * 220;
+      if (ph > .92) { ellipse(ctx, x, y, 6 + (ph - .92) * 120, 2 + (ph - .92) * 30, 'rgba(190,220,255,.35)'); continue; }
+      ctx.strokeStyle = 'rgba(190,220,255,.45)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x, y); ctx.stroke();
+    }
+  }
+  /** An Eclipse Seal: an obelisk of black stone with a black sun burning on it. Woken, it blazes red while its guardians
+   *  fight; broken, it is a stump among shards. */
+  private drawEclipseSeal(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
+    const x = o.x, y = o.y, t = this.time, broken = e.got.has(o.id), woke = e.sealActive === o.id, c = woke ? '#ff5f3d' : '#ff6b9a';
+    shadow(ctx, x, y + 6, 52, 14, .35);
+    if (broken) {
+      ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.moveTo(x - 30, y + 4); ctx.lineTo(x - 24, y - 30); ctx.lineTo(x - 6, y - 18); ctx.lineTo(x + 6, y - 40); ctx.lineTo(x + 26, y - 22); ctx.lineTo(x + 30, y + 4); ctx.closePath(); ctx.fill();
+      for (let i = 0; i < 7; i++) { const a = i * 2.1, rx = x + Math.cos(a) * (40 + i * 6), ry = y + 6 + Math.sin(a) * 14; ctx.fillStyle = i % 2 ? '#3a3046' : '#4a3e58'; ctx.beginPath(); ctx.moveTo(rx - 7, ry); ctx.lineTo(rx, ry - 12); ctx.lineTo(rx + 7, ry); ctx.closePath(); ctx.fill(); }
+      return;
+    }
+    const pulse = .6 + Math.sin(t * (woke ? 9 : 2.4)) * .25;
+    ctx.save(); ctx.translate(x, y + 14); ctx.scale(1, .42); ctx.strokeStyle = alpha(c, .7 * pulse); ctx.lineWidth = 4; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * (woke ? 90 : 25); ctx.beginPath(); ctx.arc(0, 0, 86, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    ctx.fillStyle = '#1e1828'; ctx.beginPath(); ctx.moveTo(x - 30, y + 6); ctx.lineTo(x - 20, y - 130); ctx.lineTo(x, y - 156); ctx.lineTo(x + 20, y - 130); ctx.lineTo(x + 30, y + 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2e2640'; ctx.beginPath(); ctx.moveTo(x, y - 156); ctx.lineTo(x + 20, y - 130); ctx.lineTo(x + 30, y + 6); ctx.lineTo(x + 6, y + 6); ctx.closePath(); ctx.fill();
+    // The black sun.
+    circle(ctx, x, y - 82, 15, '#05020c'); ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y - 82, 15, 0, TAU); ctx.stroke();
+    glow(ctx, x, y - 82, 60 + pulse * 30, c, .55 * pulse + .2);
+    for (let i = 0; i < 3; i++) { const a = t * (woke ? 3 : 1) + i * TAU / 3; circle(ctx, x + Math.cos(a) * 46, y - 82 + Math.sin(a) * 20, 3.5, c); }
+    if (woke) { ctx.strokeStyle = alpha(c, .5 * pulse); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y - 156); ctx.lineTo(x, y - 420); ctx.stroke(); }
+    this.lights.push({ x, y: y - 80, r: woke ? 320 : 200, color: c, a: .9 });
   }
   /** A way out of the depths: roots hanging down to the floor, or (once Umbra is beaten) a shaft of dawnlight. */
   private drawExit(ctx: CanvasRenderingContext2D, o: WorldObject) {
@@ -1254,12 +1523,14 @@ export class Renderer {
     if (riverSite(o, e.world)) {
       // Built, the bridge itself stands here (it is the land's crossing).
       if (built) return;
-      ctx.save(); ctx.globalAlpha = .22 + Math.sin(t * 2.4) * .08 + (ready ? .18 : 0); this.drawRiverBridge(ctx, x, y, true, true); ctx.restore();
-      const bx = x - 168;
-      for (let i = 0; i < Math.min(need, have); i++) { const px = bx - 30 + (i % 3) * 18, py = y + 30 - Math.floor(i / 3) * 8; rect(ctx, px, py, 34, 7, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, py, 34, 2, '#c9a06a'); }
-      for (const sy of [-44, 44]) { rect(ctx, x - 140, y + sy - 18, 5, 22, '#8a6a48'); rect(ctx, x + 136, y + sy - 18, 5, 22, '#8a6a48'); }
-      ctx.strokeStyle = 'rgba(240,230,200,.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(x - 138, y - 44); ctx.lineTo(x + 138, y - 44); ctx.moveTo(x - 138, y + 44); ctx.lineTo(x + 138, y + 44); ctx.stroke(); ctx.setLineDash([]);
-      if (ready) { glow(ctx, x, y, 140, '#ffd35c', .3 + Math.sin(t * 4) * .12); this.lights.push({ x, y, r: 200, color: '#ffd35c', a: .7 }); }
+      // The plan of the long bridge glows across the whole river; the timber piles up at the bridgehead on this bank.
+      const rv = riverAt(o, e.world)!, cx = riverX(rv, y), L = rv.hw + 50;
+      ctx.save(); ctx.globalAlpha = .22 + Math.sin(t * 2.4) * .08 + (ready ? .18 : 0); this.drawRiverBridge(ctx, cx, y, true, rv.hw, true); ctx.restore();
+      const bx = x - 70;
+      for (let i = 0; i < Math.min(need, have); i++) { const px = bx - 30 + (i % 3) * 18, py = y + 70 - Math.floor(i / 3) * 8; rect(ctx, px, py, 34, 7, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, py, 34, 2, '#c9a06a'); }
+      for (const sy of [-44, 44]) { rect(ctx, cx - L - 2, y + sy - 18, 5, 22, '#8a6a48'); rect(ctx, cx + L - 2, y + sy - 18, 5, 22, '#8a6a48'); }
+      ctx.strokeStyle = 'rgba(240,230,200,.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(cx - L, y - 44); ctx.lineTo(cx + L, y - 44); ctx.moveTo(cx - L, y + 44); ctx.lineTo(cx + L, y + 44); ctx.stroke(); ctx.setLineDash([]);
+      if (ready) { for (const k of [-.6, 0, .6]) glow(ctx, cx + k * L, y, 160, '#ffd35c', .3 + Math.sin(t * 4 + k) * .12); this.lights.push({ x: cx, y, r: 420, color: '#ffd35c', a: .7 }); }
       return;
     }
     if (built) { this.drawStructure(ctx, o.variant || 'tower', x, y, 1); return; }
@@ -1422,7 +1693,8 @@ export class Renderer {
   private drawBarrier(ctx: CanvasRenderingContext2D, o: WorldObject, e: GameEngine) {
     const x = o.x, y = o.y, t = this.time, open = e.barrierOpen(o), v = o.variant || 'bridge', H = 215;
     if (v === 'bridge') {
-      if (e.world.rivers.length) { this.drawRiverBridge(ctx, x, y, open); return; }
+      const rv = riverAt(o, e.world);
+      if (rv) { this.drawRiverBridge(ctx, riverX(rv, y), y, open, rv.hw); return; }
       // The gorge, with a river far below.
       ctx.fillStyle = '#2a2420'; ctx.beginPath(); ctx.moveTo(x - 58, y - H); for (let i = 0; i <= 10; i++) ctx.lineTo(x - 58 + Math.sin(i * 1.7) * 8, y - H + i * H * .2); ctx.lineTo(x + 58, y + H); for (let i = 10; i >= 0; i--) ctx.lineTo(x + 58 + Math.cos(i * 1.3) * 8, y - H + i * H * .2); ctx.closePath(); ctx.fill();
       const g = ctx.createLinearGradient(x - 40, 0, x + 40, 0); g.addColorStop(0, '#1e3a44'); g.addColorStop(.5, '#3d7f8f'); g.addColorStop(1, '#1e3a44');
@@ -1589,25 +1861,45 @@ export class Renderer {
     }
     return 0;
   }
-  /** The Gloomwater Bridge across the river: broken stumps on both banks until it is rebuilt, then a plank deck with rails. */
-  private drawRiverBridge(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean, plan = false) {
-    const L = 128, t = this.time;
+  /**
+   * The Gloomwater Bridge, `hw` of river either side of `x`: a long timber deck on stone piers, with rails and a lantern
+   * at each bridgehead and over the middle. Until it is rebuilt, only the piers stand in the current, broken off, with a
+   * few planks left at each bank and more bobbing away downstream.
+   */
+  private drawRiverBridge(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean, hw: number, plan = false) {
+    const L = hw + 50, t = this.time, PIER = 150, piers: number[] = [];
+    for (let k = -Math.floor((L - 60) / PIER); k * PIER <= L - 60; k++) piers.push(x + k * PIER);
+    // The piers: stone columns standing in the river, foam curling round them.
+    for (const px of piers) {
+      if (!plan) { ellipse(ctx, px, y + 44, 30, 9, 'rgba(255,255,255,.35)'); ellipse(ctx, px, y + 46 + Math.sin(t * 3 + px) * 1.5, 22, 5, 'rgba(255,255,255,.5)'); }
+      rect(ctx, px - 16, y - 6, 32, 50, '#7a7468'); rect(ctx, px - 16, y - 6, 32, 5, '#9a9488'); rect(ctx, px + 8, y - 6, 8, 50, 'rgba(0,0,0,.18)');
+      if (!open) { ctx.fillStyle = '#7a7468'; ctx.beginPath(); ctx.moveTo(px - 16, y - 6); ctx.lineTo(px - 8, y - 18 - (Math.abs(px) % 7)); ctx.lineTo(px + 2, y - 10); ctx.lineTo(px + 10, y - 22); ctx.lineTo(px + 16, y - 6); ctx.closePath(); ctx.fill(); }
+    }
     if (open) {
       if (!plan) shadow(ctx, x, y + 46, L + 10, 12, .3);
-      for (let i = 0; i < 15; i++) { const px = x - L + i * (L * 2 / 15); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 76, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, y - 38, L * 2 / 15 - 1.5, 3, '#c9a06a'); }
+      const n = Math.round(L * 2 / 17), w = L * 2 / n;
+      for (let i = 0; i < n; i++) { const px = x - L + i * w; rect(ctx, px, y - 38, w - 1.5, 76, i % 2 ? '#a8744a' : '#8a5a34'); rect(ctx, px, y - 38, w - 1.5, 3, '#c9a06a'); }
       for (const sy of [-40, 38]) {
-        ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - L - 4, y + sy - 22); ctx.quadraticCurveTo(x, y + sy - 6, x + L + 4, y + sy - 22); ctx.stroke();
-        for (const px of [-L - 4, -L / 2, 0, L / 2, L + 4]) rect(ctx, x + px - 4, y + sy - 30, 8, 30, '#6f5337');
+        ctx.strokeStyle = '#6f5337'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - L - 4, y + sy - 22);
+        for (let k = 0; k <= piers.length; k++) { const a = k === 0 ? x - L - 4 : piers[k - 1], b = k === piers.length ? x + L + 4 : piers[k]; ctx.quadraticCurveTo((a + b) / 2, y + sy - 10, b, y + sy - 22); }
+        ctx.stroke();
+        const posts = Math.round((L * 2 + 8) / 64);
+        for (let i = 0; i <= posts; i++) rect(ctx, x - L - 4 + i * (L * 2 + 8) / posts - 4, y + sy - 30, 8, 30, '#6f5337');
+      }
+      if (!plan) for (const lx of [x - L - 6, x, x + L + 6]) {
+        rect(ctx, lx - 3, y - 92, 6, 56, '#4a3a2a'); rect(ctx, lx - 9, y - 104, 18, 14, '#3a2a1e');
+        const fl = .8 + Math.sin(t * 7 + lx) * .1; circle(ctx, lx, y - 97, 4.5, '#ffe38a'); glow(ctx, lx, y - 97, 34, '#ffcf6e', .6 * fl);
+        this.lights.push({ x: lx, y: y - 90, r: 190, color: '#ffcf6e', a: .8 * fl });
       }
       return;
     }
-    // Stumps of the old bridge on either bank, and a few planks bobbing in the current.
+    // A few planks left at each bank, the rest gone: some float off down the river.
     for (const side of [-1, 1]) {
-      for (let i = 0; i < 4; i++) rect(ctx, x + side * (L - 14 - i * 16) - 8, y - 36, 15, 72, i % 2 ? '#8a5a34' : '#6f4a2a');
+      for (let i = 0; i < 5; i++) rect(ctx, x + side * (L - 10 - i * 17) - 8, y - 36, 15, 72, i % 2 ? '#8a5a34' : '#6f4a2a');
       for (const sy of [-40, 38]) rect(ctx, x + side * (L + 2) - 5, y + sy - 30, 10, 32, '#6f5337');
-      for (let i = 0; i < 2; i++) { ctx.save(); ctx.translate(x + side * (L - 72 - i * 10), y - 18 + i * 34); ctx.rotate(side * (.7 + i * .3)); rect(ctx, -4, 0, 8, 30 - i * 6, '#6f4a2a'); ctx.restore(); }
+      for (let i = 0; i < 2; i++) { ctx.save(); ctx.translate(x + side * (L - 96 - i * 12), y - 18 + i * 34); ctx.rotate(side * (.7 + i * .3)); rect(ctx, -4, 0, 8, 30 - i * 6, '#6f4a2a'); ctx.restore(); }
     }
-    for (let i = 0; i < 3; i++) { const fy = y - 60 + ((t * 40 + i * 90) % 220), fx = x - 30 + i * 26; ctx.save(); ctx.translate(fx, fy); ctx.rotate(i * 1.3 + Math.sin(t + i) * .2); rect(ctx, -12, -3, 24, 7, '#8a5a34'); ctx.restore(); }
+    for (let i = 0; i < 6; i++) { const fy = y - 80 + ((t * 40 + i * 90) % 300), fx = x - hw * .7 + i * hw * .28; ctx.save(); ctx.translate(fx, fy); ctx.rotate(i * 1.3 + Math.sin(t + i) * .2); rect(ctx, -12, -3, 24, 7, '#8a5a34'); ctx.restore(); }
   }
   private drawMeteors(ctx: CanvasRenderingContext2D, e: GameEngine) {
     for (const m of e.meteors) {
@@ -1703,7 +1995,7 @@ export class Renderer {
     else if (dark) this.lights.push({ x, y, r: 90, a: .6 });
     const mark = e.npcMarker(n), top = y - 70 * s;
     if (mark) this.questTag(ctx, x, top + Math.abs(Math.sin(t * 3.4)) * -7, mark.mark, mark.main ? MAIN_COLOR : SIDE_COLOR);
-    else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn') this.shopTag(ctx, x, top, n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : n.role === 'armorer' ? '⛨' : n.role === 'stable' ? '♞' : '☾');
+    else if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn' || n.role === 'flight') this.shopTag(ctx, x, top, n.role === 'merchant' ? '⚗' : n.role === 'smith' ? '⚒' : n.role === 'armorer' ? '⛨' : n.role === 'stable' ? '♞' : n.role === 'flight' ? '✈' : '☾');
     this.drawQuestPersonMark(ctx, n, 72 * s);
     const near = this.near; if (near?.kind === 'npc' && near.n === n) this.label(ctx, x, y + 46, n.name, reg.palette.accent);
   }
@@ -2140,6 +2432,8 @@ export class Renderer {
     }
     const R = en.r * (en.boss ? 1.25 : 1) * Math.max(1, spawn), box = reachBox(bv ? undefined : ENEMY_REACH[en.kind], R);
     const a0 = ctx.globalAlpha; if (en.stunT > 0) ctx.globalAlpha = a0 * .85;
+    // A gloomstalker between strikes is a shape in the dark, barely there.
+    if (en.kind === 'gloomstalker' && en.pattern !== 0 && en.windup <= 0) ctx.globalAlpha = a0 * (.24 + Math.sin(t * 3) * .06);
     this.living(ctx, en, en.x, en.y, box, en.boss ? BOSS : STICKER, ctx => {
     const t = this.time + en.homeX * .01;
     ctx.scale(spawn, spawn);
@@ -2170,6 +2464,8 @@ export class Renderer {
       case 'hollowArcher': this.drawHollowArcher(ctx, base, t, look, flash); break;
       case 'shardback': this.drawShardback(ctx, base, t, look, flash, trem); break;
       case 'acolyte': this.drawAcolyte(ctx, base, t, look, flash); break;
+      case 'bonewalker': this.drawBonewalker(ctx, base, t, look, flash); break;
+      case 'gloomstalker': this.drawGloomstalker(ctx, base, t, look, flash); break;
       case 'starbeast': this.drawStarbeast(ctx, en, t, look, flash); break;
     }
     });
@@ -2543,6 +2839,53 @@ export class Renderer {
     // Its head, low and heavy, with two cold eyes.
     ctx.fillStyle = rock; ctx.beginPath(); ctx.ellipse(r * .95 * Math.sign(look.x || 1), -r * .05, r * .42, r * .34, 0, 0, TAU); ctx.fill();
     for (const s of [-1, 1]) circle(ctx, r * 1.05 * Math.sign(look.x || 1) + s * r * .12, -r * .12, r * .07, en.windup > 0 ? '#ffffff' : '#8ee8ff');
+  }
+  /** Bonewalker: a skeleton of the old wardens, violet light in its sockets, hacking with a rusted blade. */
+  private drawBonewalker(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, step = en.aggro ? Math.sin(t * 10) : Math.sin(t * 2) * .3, swing = en.windup > 0 ? 1 - en.windup / .32 : 0, rattle = en.aggro ? Math.sin(t * 23) * .8 : 0;
+    shadow(ctx, 0, r * .95, r * .85, r * .3);
+    const bone = flash ? '#fff' : enrage(en.elite ? '#d8ccb0' : '#e8e0cc', en.rage), dark = flash ? '#fff' : '#5a5048';
+    ctx.lineCap = 'round'; ctx.strokeStyle = bone; ctx.lineWidth = 3.4;
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * .18, r * .18); ctx.lineTo(s * r * .22 + step * s * 5, r * .55); ctx.lineTo(s * r * .26 + step * s * 7, r * .95); ctx.stroke(); }
+    ellipse(ctx, 0, r * .16, r * .32, r * .12, bone);
+    ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, r * .16); ctx.lineTo(rattle, -r * .62); ctx.stroke();
+    ctx.lineWidth = 2.2; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(rattle, -r * .42 + i * r * .17, r * (.4 - i * .06), r * .1, 0, 0, Math.PI); ctx.stroke(); }
+    ctx.strokeStyle = dark; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-r * .42, -r * .62); ctx.lineTo(r * .42, -r * .62); ctx.stroke();
+    // The far arm hangs; the near one swings the blade.
+    ctx.strokeStyle = bone; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-r * .42, -r * .58); ctx.lineTo(-r * .55, -r * .1 + step * 3); ctx.lineTo(-r * .5, r * .25); ctx.stroke();
+    ctx.save(); ctx.translate(r * .42, -r * .55); ctx.rotate(-.9 + swing * 2.4);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(r * .2, r * .45); ctx.stroke();
+    ctx.translate(r * .2, r * .45); ctx.fillStyle = '#5a4030'; ctx.fillRect(-2, -4, 4, 9);
+    ctx.fillStyle = flash ? '#fff' : '#8a6a4a'; ctx.beginPath(); ctx.moveTo(-3, -4); ctx.lineTo(-2.5, -r * 1.2); ctx.lineTo(2, -r * 1.3); ctx.lineTo(4, -4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(200,190,170,.7)'; ctx.fillRect(1.5, -r * 1.2, 1.5, r * 1.1);
+    ctx.restore();
+    // The skull, jaw chattering, with light in its sockets.
+    const sx = look.x * 2 + rattle, sy = -r * 1.02;
+    circle(ctx, sx, sy, r * .36, bone); ctx.fillStyle = bone; ctx.fillRect(sx - r * .2, sy + r * .2, r * .4, r * .16 + Math.abs(rattle) * 1.5);
+    for (const s of [-1, 1]) { circle(ctx, sx + s * r * .14, sy - r * .02, r * .1, '#1a1020'); circle(ctx, sx + s * r * .14, sy - r * .02, r * .045, en.windup > 0 ? '#ffffff' : '#c9b6ff'); }
+    glow(ctx, sx, sy, r * .7, '#c9b6ff', .5);
+  }
+  /** Gloomstalker: a lean shadow cat with violet seams and burning pink eyes, a tail of smoke behind it. */
+  private drawGloomstalker(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
+    const r = en.r, run = Math.sin(t * (en.aggro ? 12 : 4)), crouch = en.windup > 0 ? 1 - en.windup / .42 : 0, dir = look.x < 0 ? -1 : 1;
+    shadow(ctx, 0, r * .8, r * 1.3, r * .3, .3);
+    ctx.scale(dir, 1); ctx.translate(0, crouch * 5);
+    const body = flash ? '#fff' : enrage(en.elite ? '#120c1e' : '#1a1428', en.rage);
+    // The tail, a curl of smoke.
+    ctx.strokeStyle = alpha('#2a2040', .9); ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-r * .9, -r * .4); ctx.bezierCurveTo(-r * 1.6, -r * .2 + run * 4, -r * 1.9, -r * 1.1, -r * 1.5, -r * 1.3 + Math.sin(t * 3) * 4); ctx.stroke();
+    ctx.strokeStyle = alpha('#b98aff', .5); ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = body; ctx.lineWidth = 5;
+    for (const [lx, ph] of [[-.65, 1], [-.35, -1], [.45, -1], [.75, 1]] as Array<[number, number]>) { ctx.beginPath(); ctx.moveTo(lx * r, -r * .1); ctx.lineTo(lx * r + run * ph * 7, r * .75); ctx.stroke(); }
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -r * .32, r * 1.15, r * (.42 - crouch * .08), 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = alpha('#b98aff', .75); ctx.lineWidth = 1.8;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-r * .5 + i * r * .42, -r * .18, r * .3, Math.PI * 1.15, Math.PI * 1.75); ctx.stroke(); }
+    // The head: pointed ears, a snarl, eyes like coals.
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(r * 1.05, -r * .55, r * .42, r * .32, -.15, 0, TAU); ctx.fill();
+    for (const ex of [.92, 1.18]) { ctx.beginPath(); ctx.moveTo(r * ex - 5, -r * .78); ctx.lineTo(r * ex + 1, -r * 1.12); ctx.lineTo(r * ex + 6, -r * .76); ctx.fill(); }
+    const eye = en.windup > 0 ? '#ffffff' : '#ff6b9a';
+    for (const ex of [1.12, 1.3]) { ctx.fillStyle = eye; ctx.beginPath(); ctx.ellipse(r * ex, -r * .6, r * .08, r * .04, -.2, 0, TAU); ctx.fill(); }
+    glow(ctx, r * 1.2, -r * .6, r * .7, '#ff6b9a', .6 + crouch * .4);
+    if (Math.random() < .12) this.pushAmbient({ x: en.x - dir * r, y: en.y - r * .4, vx: rand(-10, 10), vy: rand(-20, -6), life: .9, max: .9, size: rand(5, 9), rot: 0, vr: 0, kind: 'smoke', color: 'rgba(40,30,60,.5)', phase: 0 });
   }
   /** Eclipse acolyte: a robed cultist with a mask like a black sun, its hands full of void light. */
   private drawAcolyte(ctx: CanvasRenderingContext2D, en: Enemy, t: number, look: Point, flash: boolean) {
@@ -3036,6 +3379,11 @@ export class Renderer {
       }
       ctx.restore();
       this.lights.push({ x: z.x, y: z.y, r: 180, color: '#ffe96b', a: 1 });
+    } else if (z.kind === 'stalactite') {
+      // A spike of rock breaking off the roof and dropping straight down.
+      const q = p * p, y = z.fromY + (z.y - z.fromY) * q, x = z.x;
+      ctx.fillStyle = '#5a4e62'; ctx.beginPath(); ctx.moveTo(x - 11, y - 54); ctx.lineTo(x + 11, y - 54); ctx.lineTo(x + 3, y - 6); ctx.lineTo(x, y); ctx.lineTo(x - 3, y - 6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#7a6e86'; ctx.beginPath(); ctx.moveTo(x - 11, y - 54); ctx.lineTo(x - 3, y - 54); ctx.lineTo(x - 1, y - 4); ctx.closePath(); ctx.fill();
     } else if (z.kind === 'boulder') {
       const x = z.fromX + (z.x - z.fromX) * p, y = z.fromY + (z.y - z.fromY) * p - Math.sin(p * Math.PI) * 240;
       ctx.save(); ctx.translate(x, y); ctx.rotate(p * 9);
@@ -3483,7 +3831,7 @@ export class Renderer {
       const c = m.c; if (m.key !== key) { c.width = Math.ceil(CW * dpr); c.height = Math.ceil(CH * dpr); }
       const g = c.getContext('2d')!, map = worldMapCanvas(e.world), MS = MAP_SCALE, vx = h.x - (CW / S) / 2, vy = h.y - (CH / S) / 2;
       g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = MAP_PAPER; g.fillRect(0, 0, CW, CH);
-      if (e.world.depths && e.inDepths) { g.fillStyle = DEPTHS_PAPER; g.fillRect(0, 0, CW, CH); paintDepths(g, e.world.depths, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), S); }
+      if (e.world.depths && e.inDepths) { g.fillStyle = DEPTHS_PAPER; g.fillRect(0, 0, CW, CH); paintDepths(g, e.world.depths, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), S, e.throneOpen); }
       else g.drawImage(map, vx * MS, vy * MS, (CW / S) * MS, (CH / S) * MS, 0, 0, CW, CH);
       if (!e.inDepths) drawFog(g, e, -vx * S, -vy * S, S);
       drawMapMarkers(g, e, p => ({ x: (p.x - vx) * S, y: (p.y - vy) * S }), 1, this.time, vx - 40, vx + CW / S + 40, vy - 40, vy + CH / S + 40, false);
@@ -3527,6 +3875,7 @@ function worldMapCanvas(world: WorldDefinition) {
     const p = regionOf(world, rv.pts[0].x).palette;
     m.save(); m.scale(S, S); riverBand(m, rv, rv.hw * 1.15, 0, world.height); m.restore();
     m.fillStyle = mix(p.water, MAP_PAPER, .25); m.fill(); m.strokeStyle = MAP_INK; m.lineWidth = 1.2; m.stroke();
+    for (const s of rv.islands || []) { m.beginPath(); m.ellipse(s.x * S, s.y * S, s.rx * S, s.ry * S, 0, 0, TAU); m.fillStyle = mix(p.ground, MAP_PAPER, .42); m.fill(); m.lineWidth = 1; m.stroke(); }
   }
   for (const rg of world.ranges) {
     const snow = rg.kind === 'snow';
@@ -3568,14 +3917,24 @@ function worldMapCanvas(world: WorldDefinition) {
 }
 /** The depths are mapped on dark paper, apart from the valley: they lie underground, not in it. */
 const DEPTHS_PAPER = '#2a2230';
+/** Each kind of chamber's floor in the depths: its stone, the lighter sheets on it, and its marks (moss, wet stone,
+ *  runes of the eclipse). */
+const DEPTH_FLOORS: Record<DepthTheme, [string, string, string]> = {
+  roots: ['#2e2630', '#3a3038', '#3a3038'], bones: ['#34302e', '#423c38', '#2e2927'], hoard: ['#302a24', '#40362a', '#40362a'],
+  fungi: ['#1c2a2c', '#26383a', '#24402f'], crystal: ['#2a2640', '#36305a', '#36305a'], water: ['#1e2a34', '#283846', '#2c4250'],
+  lava: ['#311e1c', '#422824', '#422824'], void: ['#1c1626', '#261e36', 'rgba(201,182,255,.3)'], throne: ['#2e2630', '#332a38', 'rgba(201,182,255,.35)'],
+};
 /** The chambers and halls of the depths, as ink on dark paper, with `P` mapping world points onto the map. */
-function paintDepths(ctx: CanvasRenderingContext2D, dp: Depths, P: (p: Point) => Point, S: number) {
+function paintDepths(ctx: CanvasRenderingContext2D, dp: Depths, P: (p: Point) => Point, S: number, gateOpen = true) {
   const shape = (pad: number, color: string) => {
     ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineCap = 'round';
     ctx.beginPath(); for (const r of dp.rooms) { const q = P(r); ctx.moveTo(q.x + (r.rx + pad) * S, q.y); ctx.ellipse(q.x, q.y, (r.rx + pad) * S, (r.ry + pad) * S, 0, 0, TAU); } ctx.fill();
     for (const h of dp.halls) { const a = P(h.a), b = P(h.b); ctx.lineWidth = (h.hw + pad) * 2 * S; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
   };
   shape(26, '#140e18'); shape(14, '#8a7a90'); shape(0, '#4a3e52');
+  for (const r of dp.rooms) { const q = P(r); ctx.fillStyle = alpha(DEPTH_FLOORS[r.theme][1], .8); ctx.beginPath(); ctx.ellipse(q.x, q.y, r.rx * S * .92, r.ry * S * .92, 0, 0, TAU); ctx.fill(); }
+  for (const pl of dp.pools) { const q = P(pl); ctx.fillStyle = pl.kind === 'lava' ? '#e0582a' : '#2a6e82'; ctx.beginPath(); ctx.ellipse(q.x, q.y, pl.rx * S, pl.ry * S, 0, 0, TAU); ctx.fill(); }
+  if (!gateOpen) { const G = dp.gate, a = P({ x: G.x + G.ny * G.hw, y: G.y - G.nx * G.hw }), b = P({ x: G.x - G.ny * G.hw, y: G.y + G.nx * G.hw }); ctx.strokeStyle = '#ff6b9a'; ctx.lineWidth = Math.max(2.5, 18 * S); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
 }
 /**
  * The map of the depths beneath the Dawn Forge, fitted to the screen: its chambers by name, the ways out, the fire to rest
@@ -3588,7 +3947,7 @@ export function drawDepthsMap(ctx: CanvasRenderingContext2D, w: number, h: numbe
   const P = (p: Point) => ({ x: ox + (p.x - dp.x0) * S, y: oy + (p.y - dp.y0) * S });
   ctx.fillStyle = DEPTHS_PAPER; ctx.beginPath(); ctx.roundRect(ox - 14, oy - 14, W * S + 28, H * S + 28, 14); ctx.fill();
   ctx.globalAlpha = .35; ctx.fillStyle = grainPattern(ctx); ctx.fillRect(ox - 14, oy - 14, W * S + 28, H * S + 28); ctx.globalAlpha = 1;
-  paintDepths(ctx, dp, P, S);
+  paintDepths(ctx, dp, P, S, e.throneOpen);
   ctx.textAlign = 'center';
   for (const r of dp.rooms) { const q = P(r), size = Math.round(clamp(S * 120, 11, 18)); ctx.font = `700 ${size}px ${DISPLAY}`; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(20,14,24,.9)'; ctx.strokeText(r.name, q.x, q.y - r.ry * S * .55); ctx.fillStyle = r.id === 'throne' ? '#ff9ac0' : '#efe0c0'; ctx.fillText(r.name, q.x, q.y - r.ry * S * .55); }
   const dot = (p: Point, r: number, c: string) => { const q = P(p); circle(ctx, q.x, q.y, r + 1.2, '#140e18'); circle(ctx, q.x, q.y, r, c); };
@@ -3598,7 +3957,17 @@ export function drawDepthsMap(ctx: CanvasRenderingContext2D, w: number, h: numbe
     else if (o.kind === 'campfire') dot(o, 3.5, '#ffb347');
     else if (o.kind === 'chest' && !e.isOpened(o.id)) dot(o, 3.2, '#ffd35c');
     else if (o.kind === 'lore' && !e.read.has(o.id)) dot(o, 2.6, '#c9b6ff');
+    else if (o.kind === 'well') { const q = P(o); glow(ctx, q.x, q.y, 14, '#bfe8ff', .8); dot(o, 3.2, '#bfe8ff'); }
+    else if (o.kind === 'seal') {
+      // An Eclipse Seal: a black sun ringed in pink while it stands, a grey shard once broken.
+      const q = P(o), whole = !e.got.has(o.id);
+      if (whole) glow(ctx, q.x, q.y, 20, '#ff6b9a', .6 + Math.sin(t * 4) * .3);
+      ctx.fillStyle = whole ? '#ff6b9a' : '#6a5e70'; ctx.beginPath(); ctx.moveTo(q.x, q.y - 9); ctx.lineTo(q.x + 6, q.y); ctx.lineTo(q.x, q.y + 9); ctx.lineTo(q.x - 6, q.y); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#140e18'; ctx.lineWidth = 1.5; ctx.stroke(); if (whole) circle(ctx, q.x, q.y, 2.6, '#140e18');
+    }
   }
+  // The ambushes still lying in wait.
+  for (const r of dp.rooms) if (DEPTH_AMBUSH_ROOMS.includes(r.id) && !e.got.has(`depths:ambush-${r.id}`)) { const q = P(r); ctx.font = `900 ${Math.round(clamp(S * 160, 12, 22))}px ${UI}`; ctx.fillStyle = '#ff8a6a'; ctx.fillText('⚔', q.x, q.y + 8); }
   for (const en of e.enemies) if (!en.dead && en.boss && inDepthsArea(dp, en)) { const q = P(en); glow(ctx, q.x, q.y, 18, '#ff6b9a', .6 + Math.sin(t * 5) * .3); dot(en, 5, '#ff6b9a'); }
   { const q = P(dp.throne); ctx.strokeStyle = 'rgba(255,107,154,.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(q.x, q.y, 22 + Math.sin(t * 3) * 3, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
   if (e.inDepths) { const q = P(e.hero); heroArrow(ctx, e, q.x, q.y, 1.6); }
@@ -3645,7 +4014,7 @@ function drawMapMarkers(ctx: CanvasRenderingContext2D, e: GameEngine, P: (p: Poi
     else if (o.kind === 'hole') { const q = P(o); glow(ctx, q.x, q.y, 14 * size, '#6a4bd6', .8); circle(ctx, q.x, q.y, 5.5 * size, MAP_INK); circle(ctx, q.x, q.y, 4.2 * size, '#140a1e'); }
   }
   const fs = e.fallen; if (fs && fs.phase === 'landed' && inside(fs)) { const q = P(fs); glow(ctx, q.x, q.y, (14 + Math.sin(t * 4) * 3) * size, STAR_COLOR, .9); ctx.fillStyle = STAR_COLOR; star(ctx, q.x, q.y, 6 * size, 5, .45, t); ctx.fill(); ctx.strokeStyle = MAP_INK; ctx.lineWidth = 1; ctx.stroke(); }
-  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
+  for (const n of e.npcs) { if (!inside(n) || !seen(e, n) || !e.npcVisible(n)) continue; const mk = e.npcMarker(n); dot(n, mk ? 2.8 : 1.8, !mk ? (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'inn' || n.role === 'flight' ? '#ffd35c' : '#fff7df') : mk.main ? MAIN_COLOR : SIDE_COLOR); }
   for (const en of e.enemies) if (!en.dead && inside(en) && seen(e, en)) { if (en.boss) { const q = P(en); glow(ctx, q.x, q.y, 10 * size, '#ff6b5b', .6 + Math.sin(t * 5) * .3); dot(en, 3.4, '#ff6b5b'); } else if (en.heroic) { const q = P(en); glow(ctx, q.x, q.y, 8 * size, '#c98aff', .55 + Math.sin(t * 4) * .25); dot(en, 2.8, '#e8a0ff'); } else if (en.aggro) dot(en, 1.6, '#ff9a8a'); }
   const qt = e.questTarget(); if (qt && inside(qt)) { const q = P(qt); ctx.strokeStyle = SIDE_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (5 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }
   const mt = e.mainTarget(); if (mt && inside(mt) && size > 1) { const q = P(mt); ctx.strokeStyle = MAIN_COLOR; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, (6 + Math.sin(t * 4)) * size, 0, TAU); ctx.stroke(); }

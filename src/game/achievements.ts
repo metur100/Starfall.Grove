@@ -18,6 +18,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Story', 'eclipse', 'The Eclipse Ends', 'Defeat Umbra, the Eclipse.', '🌑', 50, 'boss:eclipse'),
   a('Story', 'depths', 'Into the Depths', 'Fall into the depths beneath the Dawn Forge.', '🕳', 10, 'depths'),
   a('Story', 'echoes', 'Echo Chamber', 'Defeat the echo of Umbra on its empty throne.', '🔮', 25, 'echoes'),
+  a('Story', 'seals', 'Sealbreaker', 'Break all three Eclipse Seals in the depths.', '🌑', 25, 'sealsAll'),
+  a('Combat', 'arenas', 'Out of the Dark', 'Survive both ambushes in the depths: the Catacombs and the Shadow Pit.', '⚔', 25, 'arenas', 2),
 
   // Every hero meets their own guardians (bosses.ts), so these name the place, not the creature.
   a('Guardians', 'b-mossback', 'Guardian of the Rise', 'Defeat the guardian of the Beacon Rise.', '🪨', 10, 'boss:mossback'),
@@ -44,6 +46,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Exploration', 'p30', 'Pathfinder', 'Discover 30 places.', '🧭', 25, 'places', 30),
   a('Exploration', 'pall', 'Cartographer', 'Discover every place in the valley.', '🗺', 50, 'places', t => t.places),
   a('Exploration', 'lands', 'Across the Valley', 'Set foot in all four lands.', '⛰', 25, 'lands', 4),
+  a('Exploration', 'fly1', 'Wings Over the Valley', 'Fly a griffon from one city to another.', '🦅', 10, 'flights'),
+  a('Exploration', 'fly10', 'Frequent Flyer', 'Take 10 griffon flights.', '🪶', 10, 'flights', 10),
   a('Exploration', 'fog', 'Fog Lifter', 'Uncover half of the world map.', '☁', 25, 'explore', 50),
   a('Exploration', 's1', 'Something Hidden', 'Find a secret: break a cracked wall with a bomb, or look behind a waterfall.', '🔍', 10, 'secrets', 1),
   a('Exploration', 'sall', 'Keeper of Secrets', 'Find every secret in the valley.', '🗝', 50, 'secrets', t => t.secrets),

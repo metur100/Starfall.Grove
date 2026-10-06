@@ -32,6 +32,7 @@ const shopLines = {
   inn: ['A warm bed and a hot meal. Rest as long as you like.'],
   armorer: ['Fine gear is never cheap. Come back when you have grown — my shelf grows with you.'],
   stable: ['Nobody rides for free, friend. But every one of my mounts is worth the gold.'],
+  flight: ['My griffons know every city in the valley. Pick one, and hold on tight.'],
 };
 
 // ═════════════════════════════ Chapter I · Sunpetal Meadow · levels 1–6
@@ -54,7 +55,7 @@ const meadow: RegionSpec = {
     { id: 'rot', name: 'Rotwood Den', kind: 'lair', x: 7800, y: 3700, r: 420, pack: ['bristleboar', 'gloomling', 'sporecap'] },
     { id: 'shrine', name: 'Sun Shrine', kind: 'shrine', x: 8900, y: 2400, r: 280 },
     { id: 'rise', name: 'The Beacon Rise', kind: 'finale', x: 8500, y: 5900, r: 440 },
-    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9480, y: 3300, r: 240 },
+    { id: 'gateE', name: 'Eastern Gate', kind: 'gate', x: 9020, y: 3300, r: 240 },
   ],
   lakeSize: { mirror: 360 },
   links: [['sunpetal', 'city'], ['mirror', 'faerie'], ['camp', 'rise'], ['willow', 'shrine'], ['millbrook', 'hollow'], ['city', 'willow'], ['city', 'camp']],
@@ -81,6 +82,7 @@ const meadow: RegionSpec = {
     { id: 'merchant', name: 'Merchant Pell', portrait: '🧪', at: 'city', dx: -120, dy: -130, activity: 'idle', role: 'merchant', look: look('#3f7a6a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions! Get your potions!'] },
     { id: 'smith', name: 'Smith Hilda', portrait: '⚒️', at: 'city', dx: 330, dy: 80, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Clang!'] },
     { id: 'armorer', name: 'Armourer Brisk', portrait: '🛡️', at: 'city', dx: 150, dy: 120, activity: 'idle', role: 'armorer', look: look('#5a4a6a', 'helm', { hatColor: '#b8bcc6' }), lines: shopLines.armorer, barks: ['Only the finest!'] },
+    { id: 'flight', name: 'Skymaster Robin', portrait: '🦅', at: 'city', dx: 430, dy: -250, activity: 'idle', role: 'flight', look: look('#4a7aa8', 'cap', { hatColor: '#e8d8b0' }), lines: shopLines.flight, barks: ['Griffons! Fastest wings in the valley!'] },
     { id: 'stable', name: 'Stablemaster Wick', portrait: '🐎', at: 'city', dx: -260, dy: 230, activity: 'idle', role: 'stable', look: look('#8a6a3a', 'straw', { hatColor: '#c9a24c', beard: true }), lines: shopLines.stable, barks: ['Sunpetal ponies! Gentle as lambs, quick as rumours.'] },
     { id: 'inn', name: 'Innkeeper Rosa', portrait: '🛏️', at: 'city', dx: -320, dy: 20, activity: 'idle', role: 'inn', look: look('#b07a5a', 'bonnet', { hatColor: '#e0525c' }), lines: shopLines.inn, barks: ['Rooms free for heroes!'] },
     { id: 'ottilie', name: 'Mayor Ottilie', portrait: '👵', at: 'willow', dx: -90, dy: -30, activity: 'idle', look: look('#b07a9a', 'bonnet', { hatColor: '#8a4f6a', hair: '#e8e2d0' }), lines: ['Welcome to Willowmere. Please wipe your boots.'], barks: ['Order, order!'] },
@@ -145,7 +147,7 @@ const woods: RegionSpec = {
   palette: { ground: '#4d6a50', alternate: '#587757', path: '#ad9c72', pathEdge: '#7a7153', accent: '#b6df91', water: '#3f7580', waterDeep: '#2b5560', foliage: ['#1f3a2c', '#355c3e', '#6f9a5c'], trunk: '#553f2d', rock: '#6f7568', pod: '#9fe3c9', roof: ['#5a6e4a', '#7a5a3f', '#4a5a6a', '#6e4a4a'], wall: '#cbb892' },
   darkness: .42, ambient: 'leaves', ground: 'grass', levels: [7, 12], xpScale: 1.25,
   pois: [
-    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 250, y: 3300, r: 240 },
+    { id: 'gateW', name: 'Western Gate', kind: 'gate', x: 700, y: 3300, r: 240 },
     { id: 'camp', name: 'Mosskeeper’s Camp', kind: 'start', x: 1000, y: 3900, r: 380 },
     { id: 'bellhollow', name: 'Bellhollow', kind: 'village', x: 2300, y: 5300, r: 500 },
     { id: 'shroomfarm', name: 'Glowcap Farm', kind: 'farm', x: 1200, y: 1700, r: 440 },
@@ -184,6 +186,7 @@ const woods: RegionSpec = {
     { id: 'merchant', name: 'Merchant Quill', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Potions and tonics!'] },
     { id: 'smith', name: 'Smith Garron', portrait: '⚒️', at: 'city', dx: 330, dy: -60, activity: 'hammer', role: 'smith', look: look('#5a3a2a', 'cap', { hatColor: '#2a1a14', beard: true }), lines: shopLines.smith, barks: ['Clang! Clang!'] },
     { id: 'armorer', name: 'Armourer Vale', portrait: '🛡️', at: 'city', dx: 200, dy: 40, activity: 'idle', role: 'armorer', look: look('#3f5a4a', 'helm', { hatColor: '#8a9a7a', beard: true }), lines: shopLines.armorer, barks: ['Rootsteel, fresh from the forge!'] },
+    { id: 'flight', name: 'Skymaster Corwen', portrait: '🦅', at: 'city', dx: 430, dy: -250, activity: 'idle', role: 'flight', look: look('#3f5a6a', 'hood', { hatColor: '#2a4a3a', beard: true }), lines: shopLines.flight, barks: ['Over the treetops in a heartbeat!'] },
     { id: 'stable', name: 'Stablemaster Fern', portrait: '🐎', at: 'city', dx: -240, dy: 220, activity: 'idle', role: 'stable', look: look('#4a6a3a', 'hood', { hatColor: '#3f5a2a' }), lines: shopLines.stable, barks: ['A stag knows every root on the road. Mind the antlers.'] },
     { id: 'inn', name: 'Innkeeper Bree', portrait: '🛏️', at: 'city', dx: -330, dy: 40, activity: 'idle', role: 'inn', look: look('#8a6a4a', 'bonnet', { hatColor: '#6f9a5c' }), lines: shopLines.inn, barks: ['Warm soup inside!'] },
     { id: 'ysolde', name: 'Trapper Ysolde', portrait: '🏹', at: 'lodge', dx: 80, dy: 60, activity: 'idle', look: look('#556b3a', 'hood', { hatColor: '#3f4f2a' }), lines: ['Quiet feet catch more than loud ones.'], barks: ['Shh.'] },
@@ -293,6 +296,7 @@ const summit: RegionSpec = {
     { id: 'merchant', name: 'Merchant Sol', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#4a4a8a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Warming tonics!'] },
     { id: 'smith', name: 'Master-smith Ingrid', portrait: '⚒️', at: 'city', dx: 340, dy: -80, activity: 'hammer', role: 'smith', look: look('#5a4a5a', 'cap', { hatColor: '#2a2a3a' }), lines: shopLines.smith, barks: ['Starsteel!'] },
     { id: 'armorer', name: 'Armourer Sigrun', portrait: '🛡️', at: 'city', dx: 160, dy: -150, activity: 'idle', role: 'armorer', look: look('#4a4a7a', 'helm', { hatColor: '#c9cfe8' }), lines: shopLines.armorer, barks: ['Starsilver, for those who can pay.'] },
+    { id: 'flight', name: 'Skymaster Ilka', portrait: '🦅', at: 'city', dx: 430, dy: -250, activity: 'idle', role: 'flight', look: look('#6a7aa8', 'scarf', { hatColor: '#e8ecff', hair: '#c9a24c' }), lines: shopLines.flight, barks: ['The winds are kind up here. Fly with me!'] },
     { id: 'stable', name: 'Stablemaster Odda', portrait: '🐎', at: 'city', dx: -250, dy: 210, activity: 'idle', role: 'stable', look: look('#5a6a8a', 'scarf', { hatColor: '#c9cfe8', hair: '#e8e2d0' }), lines: shopLines.stable, barks: ['My wolves are gentle. Mostly. Don’t pull their ears.'] },
     { id: 'inn', name: 'Innkeeper Mott', portrait: '🛏️', at: 'city', dx: -340, dy: -40, activity: 'idle', role: 'inn', look: look('#7a6a9a', 'hood', { hatColor: '#5a4a7a', beard: true }), lines: shopLines.inn, barks: ['Hot cocoa by the fire!'] },
     { id: 'dov', name: 'Quartermaster Dov', portrait: '💂', at: 'pass', dx: 80, dy: 60, activity: 'patrol', look: look('#6a7a8a', 'helm', { hatColor: '#8a8f9a', beard: true }), lines: ['Nobody crosses the pass without my say-so. Except wisps. They don’t ask.'], barks: ['Halt! Oh, it’s you.'] },
@@ -390,6 +394,7 @@ const ember: RegionSpec = {
     { id: 'merchant', name: 'Merchant Zafir', portrait: '🧪', at: 'city', dx: -120, dy: 140, activity: 'idle', role: 'merchant', look: look('#3f6a7a', 'scarf', { hatColor: '#c9a24c' }), lines: shopLines.merchant, barks: ['Cooling tonics!'] },
     { id: 'smith', name: 'Smith Brona', portrait: '⚒️', at: 'city', dx: 340, dy: -60, activity: 'hammer', role: 'smith', look: look('#6a4a3a', 'cap', { hatColor: '#3a2a24' }), lines: shopLines.smith, barks: ['Firesteel!'] },
     { id: 'armorer', name: 'Armourer Kess', portrait: '🛡️', at: 'city', dx: 160, dy: -250, activity: 'idle', role: 'armorer', look: look('#4a3a3a', 'helm', { hatColor: '#8a5a3a' }), lines: shopLines.armorer, barks: ['Obsidian plate, fresh from the forge!'] },
+    { id: 'flight', name: 'Skymaster Garro', portrait: '🦅', at: 'city', dx: 430, dy: -250, activity: 'idle', role: 'flight', look: look('#7a4a3a', 'cap', { hatColor: '#3a2a24', beard: true }), lines: shopLines.flight, barks: ['Above the ash, the air is clean. Fly!'] },
     { id: 'stable', name: 'Stablemaster Rook', portrait: '🐎', at: 'city', dx: -250, dy: 200, activity: 'idle', role: 'stable', look: look('#5a3a2a', 'cap', { hatColor: '#3a2a24', beard: true }), lines: shopLines.stable, barks: ['Drakes love the heat. Feed them coal, never fingers.'] },
     { id: 'inn', name: 'Innkeeper Dusk', portrait: '🛏️', at: 'city', dx: -330, dy: -40, activity: 'idle', role: 'inn', look: look('#7a5a4a', 'hood', { hatColor: '#5a3a2a' }), lines: shopLines.inn, barks: ['Cool rooms, cold drinks!'] },
     { id: 'seer', name: 'Ember-seer Ilyana', portrait: '🔮', at: 'watch', dx: -60, dy: 60, activity: 'idle', look: look('#8a3a5a', 'hood', { hatColor: '#5a2a3a', hair: '#e8e2d0' }), lines: ['The flames show me the future. Mostly they show me more flames.'], barks: ['I saw you coming.'] },
@@ -519,6 +524,6 @@ function addSecrets(world: WorldDefinition) {
 }
 export function getWorld(): WorldDefinition { if (!valley) { valley = buildValley(SPECS); addRoadWisps(valley); addHeroics(valley); addSecrets(valley); addDepths(valley); } return valley; }
 /** The creatures of the depths beneath the Dawn Forge, found in no land. */
-export const DEPTH_KINDS: EnemyKind[] = ['umbralKnight', 'duskwing', 'hollowArcher', 'shardback', 'acolyte'];
+export const DEPTH_KINDS: EnemyKind[] = ['umbralKnight', 'duskwing', 'hollowArcher', 'shardback', 'acolyte', 'bonewalker', 'gloomstalker'];
 /** Region metadata for menus, without generating the map. */
 export const WORLDS: Record<RegionId, Pick<Region, 'id' | 'chapter' | 'title' | 'subtitle' | 'levels' | 'script'>> = { meadow, woods, summit, ember };

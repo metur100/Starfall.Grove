@@ -12,6 +12,8 @@ import type {
 export const REGION_W = 9728, WORLD_H = 6720;
 /** Height of the road that runs through every gate. */
 export const GATE_Y = 3300;
+/** Half the width of the Gloomwater, the great river between the Meadow and the Woods: as wide as a mountain range. */
+export const RIVER_HW = 400;
 
 export type NpcSpec = {
   id: string; name: string; portrait: string; at: string; activity: NpcActivity; look?: Partial<NpcLook>;
@@ -196,7 +198,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
 
   // Named people with a fixed spot claim it first, so no house gets built on top of them.
   const fixedSpot = new Map<string, Point>();
-  for (const n of spec.npcs) if (n.dx !== undefined && n.activity !== 'fish') { const p = poi(n.at), pt = { x: p.x + n.dx, y: p.y + (n.dy ?? 0) }; fixedSpot.set(n.id, pt); solid.insert({ x: pt.x, y: pt.y, r: 46 }); }
+  for (const n of spec.npcs) if (n.dx !== undefined && n.activity !== 'fish') { const p = poi(n.at), pt = { x: p.x + n.dx, y: p.y + (n.dy ?? 0) }; fixedSpot.set(n.id, pt); solid.insert({ x: pt.x + (n.role === 'flight' ? 60 : 0), y: pt.y, r: n.role === 'flight' ? 120 : 46 }); }
 
   // ── places
   const villageNames = [...spec.villagerNames];
@@ -402,7 +404,7 @@ function buildRegion(spec: RegionSpec): RegionPart {
     const p = q.place ? poi(q.place) : null, near = q.near ? poi(q.near) : null;
     // A bridge is built where the bridge goes: on the broken crossing over the river at the land's eastern gate.
     const onRiver = q.site === 'bridge' && spec.barrier?.kind === 'bridge' && p?.kind === 'gate';
-    if (q.kind === 'build' && p) { const s = onRiver ? { x: W - 80, y: GATE_Y } : spot(p.x, p.y, 30, 170, 50) || spot(p.x, p.y, 30, 800, 50, 0, 200) || { x: p.x + 70, y: p.y + 40 }; obj({ id: `${q.id}-site`, kind: 'site', x: s.x, y: s.y, name: q.siteName || 'Building site', questId: q.id, variant: q.site }, onRiver ? 0 : 70); }
+    if (q.kind === 'build' && p) { const s = onRiver ? { x: W - RIVER_HW - 30, y: GATE_Y } : spot(p.x, p.y, 30, 170, 50) || spot(p.x, p.y, 30, 800, 50, 0, 200) || { x: p.x + 70, y: p.y + 40 }; obj({ id: `${q.id}-site`, kind: 'site', x: s.x, y: s.y, name: q.siteName || 'Building site', questId: q.id, variant: q.site }, onRiver ? 0 : 70); }
     if (q.kind === 'activate' && near) (q.order || []).forEach((name, i, all) => {
       const a = i / all.length * 6.28 + .4, s = spot(near.x + Math.cos(a) * 190, near.y + Math.sin(a) * 150, 0, 90, 34) || spot(near.x, near.y, 150, 800, 34, 0, 200) || { x: near.x + Math.cos(a) * 190, y: near.y + Math.sin(a) * 150 };
       obj({ id: `${q.id}-switch-${i}`, kind: 'switch', x: s.x, y: s.y, name, questId: q.id, variant: q.switches || 'brazier', step: i }, 40);
@@ -714,7 +716,7 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
   for (let k = 1; k < specs.length; k++) {
     const bx = k * REGION_W, left = specs[k - 1], border = left.border || (left.barrier?.kind === 'bridge' ? 'river' : undefined);
     let rg: Range | null = null;
-    if (border === 'river') river(out, bx - 80, `${left.id}:barrier`, rand);
+    if (border === 'river') river(out, bx, `${left.id}:barrier`, rand);
     else if (border === 'snow' || border === 'volcano') rg = range(out, bx, border, rand, left.id);
     else for (let y = 40; y < WORLD_H - 20; y += 56) {
       if (Math.abs(y - GATE_Y) < 200) continue;
@@ -726,7 +728,7 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
     const b = left.barrier, id = left.id;
     if (b) {
       // Thorns grow across the canyon's mouth; the black ice seals the cave's, just outside it.
-      const x = rg ? bx - rangeEdge(rg, GATE_Y) + (rg.kind === 'volcano' ? -14 : 40) : bx - 80;
+      const x = rg ? bx - rangeEdge(rg, GATE_Y) + (rg.kind === 'volcano' ? -14 : 40) : border === 'river' ? bx - RIVER_HW - 30 : bx - 80;
       if (!rg) out.obstacles = out.obstacles.filter(o => o.kind === 'cliff' || Math.abs(o.x - x) > 200 || Math.abs(o.y - GATE_Y) > 260);
       out.objects.push({ id: `${id}:barrier`, kind: 'barrier', x, y: GATE_Y, name: b.name, region: id, questId: `${id}:${b.quest}`, variant: b.kind });
     }
@@ -737,15 +739,19 @@ export function buildValley(specs: RegionSpec[]): WorldDefinition {
   return out;
 }
 
-/** A river along a border at `x`, meandering a little but running straight under its bridge at the gate road. Trees,
- *  grass, pods and critters in its way are cleared, and creatures and things to find are moved to the nearer bank. */
+/**
+ * The Gloomwater along a border at `x`: a great river as wide as a mountain range, meandering in broad bends but running
+ * straight under its long bridge at the gate road. Wooded islands and rocks stand in the current, reed beds line both
+ * banks, and a road runs down each bank to the bridge. Trees, grass, pods and critters in its way are cleared, and
+ * creatures and things to find are moved to the nearer bank.
+ */
 function river(out: WorldDefinition, x: number, barrier: string, rand: () => number) {
-  const hw = 96, pts: Point[] = [], ph = rand() * 6.28;
+  const hw = RIVER_HW, pts: Point[] = [], ph = rand() * 6.28;
   for (let y = -120; y <= WORLD_H + 120; y += 60) {
-    const calm = Math.max(0, Math.min(1, (Math.abs(y - GATE_Y) - 140) / 420));
-    pts.push({ x: x + (Math.sin(y / 820 + ph) * 64 + Math.sin(y / 290 + ph * 2) * 20) * calm, y });
+    const calm = Math.max(0, Math.min(1, (Math.abs(y - GATE_Y) - 220) / 700));
+    pts.push({ x: x + (Math.sin(y / 900 + ph) * 120 + Math.sin(y / 310 + ph * 2) * 30) * calm, y });
   }
-  const rv: River = { pts, hw, bridgeY: GATE_Y, barrier };
+  const rv: River = { pts, hw, bridgeY: GATE_Y, barrier, islands: [] };
   out.rivers.push(rv);
   const wet = (p: Point, pad: number) => Math.abs(p.x - riverX(rv, p.y)) < hw + pad;
   out.obstacles = out.obstacles.filter(o => !wet(o, o.r + (o.w || 0) + 14));
@@ -756,4 +762,32 @@ function river(out: WorldDefinition, x: number, barrier: string, rand: () => num
   out.enemies = out.enemies.map(e => bank(e, 140));
   out.objects = out.objects.map(o => o.kind === 'barrier' || (o.kind === 'site' && o.variant === 'bridge') ? o : bank(o, 70));
   out.npcs = out.npcs.map(n => bank(n, 60));
+  // Wooded islands in the current, well away from the bridge, each ringed with reeds; rocks breaking the water.
+  const R = (a: number, b: number) => a + rand() * (b - a);
+  for (let y = 420; y < WORLD_H - 300; y += R(620, 980)) {
+    if (Math.abs(y - GATE_Y) < 820) continue;
+    const isl = { x: riverX(rv, y) + R(-.3, .3) * hw, y, rx: R(110, 190), ry: R(70, 120) };
+    rv.islands!.push(isl);
+    const n = Math.round(isl.rx * isl.ry / 3800);
+    for (let i = 0; i < n; i++) { const a = rand() * 6.28, d = Math.sqrt(rand()) * .62; out.obstacles.push({ x: isl.x + Math.cos(a) * isl.rx * d, y: isl.y + Math.sin(a) * isl.ry * d, r: R(26, 36), kind: rand() < .7 ? 'tree' : 'bush', seed: rand() }); }
+    for (let i = 0; i < 40; i++) { const a = rand() * 6.28, e = R(.92, 1.08); out.decor.push({ x: isl.x + Math.cos(a) * isl.rx * e, y: isl.y + Math.sin(a) * isl.ry * e, kind: 'reed', seed: rand(), color: '#6f8f4a' }); }
+  }
+  for (let i = 0; i < 46; i++) {
+    const y = R(100, WORLD_H - 100); if (Math.abs(y - GATE_Y) < 260) continue;
+    const p = { x: riverX(rv, y) + R(-.85, .85) * hw, y };
+    if (rv.islands!.some(s => Math.hypot((p.x - s.x) / (s.rx + 60), (p.y - s.y) / (s.ry + 60)) < 1)) continue;
+    out.obstacles.push({ x: p.x, y: p.y, r: R(16, 30), kind: 'rock', seed: rand() });
+  }
+  // Reed beds along both banks, broken here and there, and none at the bridge.
+  for (const side of [-1, 1]) for (let y = 0; y < WORLD_H; y += 22) {
+    if (Math.abs(y - GATE_Y) < 120 || Math.sin(y / 260 + side * 2 + ph) < -.25) continue;
+    for (let k = 0; k < 2; k++) out.decor.push({ x: riverX(rv, y) + side * (hw + R(-6, 34)), y: y + R(-10, 10), kind: 'reed', seed: rand(), color: k ? '#7f9f52' : '#6f8f4a' });
+  }
+  // A road down each bank to the bridgeheads, from the gates on either side.
+  const gates = out.pois.filter(p => p.kind === 'gate' && Math.abs(p.x - x) < 1400);
+  for (const g of gates) {
+    const side = Math.sign(g.x - x), end = { x: x + side * (hw + 40), y: GATE_Y }, a = Math.min(g.x, end.x), b = Math.max(g.x, end.x);
+    out.roads.push([{ x: g.x, y: g.y }, { x: (g.x + end.x) / 2, y: GATE_Y }, end]);
+    out.obstacles = out.obstacles.filter(o => o.x < a - 60 || o.x > b + 60 || Math.abs(o.y - GATE_Y) > o.r + 70);
+  }
 }

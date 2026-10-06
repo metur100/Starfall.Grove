@@ -10,7 +10,7 @@ import { keyLabel, keyOf, spellKey } from './keys';
 import { Grid } from './spatial';
 import { REGION_W, RoadIndex, inPond, inRange, riverX } from './worldgen';
 import { getWorld, localKind } from './worlds';
-import { inDepthsArea, keepInDepths } from './depths';
+import { DEPTH_AMBUSHES, DEPTH_HAZARDS, DEPTH_SEALS, depthsRoute, inDepthsArea, keepInDepths, roomAt, type DepthRoom } from './depths';
 import { questsForHero, worldForHero } from './heroWorld';
 import { cineFor, type CineFx, type Shot } from './cutscenes';
 import { bossVariant, type BossAction, type BossShot, type BossVariant } from './bosses';
@@ -75,7 +75,7 @@ export type Projectile = { x: number; y: number; vx: number; vy: number; life: n
   pierce?: number; passed?: Enemy[];
   /** Hawk Leap's arrows pin what they hit to the ground for this many seconds. */
   pin?: number };
-export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning' | 'lava' | 'frostnova' | 'blizzard' | 'mark'; fromX: number; fromY: number };
+export type Hazard = { x: number; y: number; r: number; delay: number; maxDelay: number; damage: number; level: number; owner: 'hero' | 'enemy'; kind: 'slam' | 'boulder' | 'stalactite' | 'root' | 'meteor' | 'starfall' | 'spore' | 'firebomb' | 'frostbomb' | 'lightning' | 'lava' | 'frostnova' | 'blizzard' | 'mark'; fromX: number; fromY: number };
 /** Riven's Death Mark on a creature, and Lyra's Blizzard over a patch of ground. */
 export type Mark = { e: Enemy; t: number; max: number; mul: number };
 export type Storm = { x: number; y: number; t: number; tick: number };
@@ -186,11 +186,13 @@ const ENEMY_STATS: Record<EnemyKind, { hp: number; r: number; speed: number; nam
   eclipse: { hp: 42000, r: 60, speed: 92, name: 'Umbra', xp: 5000, dmg: 1 },
   rubble: { hp: 1, r: 110, speed: 0, name: 'Rockfall', xp: 0, dmg: 0 },
   // The depths: stronger than anything in the four lands, and found nowhere else.
-  umbralKnight: { hp: 88, r: 24, speed: 100, name: 'Umbral knight', xp: 40, dmg: 1.35 },
-  duskwing: { hp: 32, r: 17, speed: 215, name: 'Duskwing', xp: 24, dmg: 1 },
-  hollowArcher: { hp: 48, r: 20, speed: 72, name: 'Hollow archer', xp: 32, dmg: 1.1 },
-  shardback: { hp: 170, r: 33, speed: 56, name: 'Shardback', xp: 56, dmg: 1.5 },
-  acolyte: { hp: 62, r: 20, speed: 112, name: 'Eclipse acolyte', xp: 38, dmg: 1.1 },
+  umbralKnight: { hp: 124, r: 24, speed: 108, name: 'Umbral knight', xp: 46, dmg: 1.6 },
+  duskwing: { hp: 44, r: 17, speed: 225, name: 'Duskwing', xp: 26, dmg: 1.2 },
+  hollowArcher: { hp: 66, r: 20, speed: 78, name: 'Hollow archer', xp: 36, dmg: 1.3 },
+  shardback: { hp: 235, r: 33, speed: 62, name: 'Shardback', xp: 64, dmg: 1.75 },
+  acolyte: { hp: 86, r: 20, speed: 118, name: 'Eclipse acolyte', xp: 44, dmg: 1.3 },
+  bonewalker: { hp: 46, r: 18, speed: 138, name: 'Bonewalker', xp: 20, dmg: 1.05 },
+  gloomstalker: { hp: 84, r: 21, speed: 165, name: 'Gloomstalker', xp: 44, dmg: 1.7 },
   // A fallen star's beast: its health is set by the star (see startStarfall).
   starbeast: { hp: 1, r: 54, speed: 92, name: 'Fallen star', xp: 0, dmg: 1 },
 };
@@ -228,12 +230,16 @@ const KILL_COLORS: Partial<Record<EnemyKind, string[]>> = {
   emberImp: ['#ffb347', '#ff6b3d', '#fff1b8'], ashScorpion: ['#c9a26e', '#8a5a3a', '#ffd27a'], magmaHulk: ['#ff7a3d', '#5a3a30', '#ffd27a'], cinderTyrant: ['#ff9a3d', '#ff5f3d', '#fff1b8', '#3a2a26'],
   eclipse: ['#1a1030', '#c9b6ff', '#ff6b9a', '#ffffff'],
   umbralKnight: ['#2a2438', '#8a7aff', '#ffffff'], duskwing: ['#3a2a4a', '#c98aff', '#ffffff'], hollowArcher: ['#d8d0e8', '#8a7aff', '#2a2438'],
-  shardback: ['#c9b6ff', '#8ee8ff', '#ffffff', '#4a3a6a'], acolyte: ['#1a1030', '#ff6b9a', '#c9b6ff'], starbeast: ['#fff1b8', '#ffd35c', '#8ee8ff', '#ffffff'],
+  shardback: ['#c9b6ff', '#8ee8ff', '#ffffff', '#4a3a6a'], acolyte: ['#1a1030', '#ff6b9a', '#c9b6ff'], bonewalker: ['#e8e0cc', '#c9b6ff', '#8a8070'], gloomstalker: ['#1a1428', '#b98aff', '#ff6b9a'], starbeast: ['#fff1b8', '#ffd35c', '#8ee8ff', '#ffffff'],
 };
 export const EXPLORE_CELL = 320;
 const ACTIVE_RANGE = 1700;
 /** Creatures come back this many seconds after being defeated. */
 const RESPAWN_TIME = 240;
+/** Gold a griffon flight costs for each land it crosses (a flight within a land counts as one). */
+const FLIGHT_COST = 20;
+/** Seconds a griffon takes to climb into the clouds, and to come down out of them. */
+export const FLY_UP = 1.4, FLY_DOWN = 1.5;
 /** Heroic creatures take longer to come back. */
 const HEROIC_RESPAWN = 600;
 /** A siege's barricade health, and how long building takes. */
@@ -627,7 +633,7 @@ export class GameEngine {
     const h = this.hero;
     let explored = ''; for (const v of this.explored) explored += v ? '1' : '0';
     return {
-      version: 4, hero: { x: h.x, y: h.y, hp: h.hp, mana: h.mana }, main: { keys: [...this.main.keys], bosses: [...this.main.bosses], finales: [...this.main.finales] }, quests: Object.fromEntries(this.quests),
+      version: 4, hero: { x: this.flight ? this.flight.to.x : h.x, y: this.flight ? this.flight.to.y : h.y, hp: h.hp, mana: h.mana }, main: { keys: [...this.main.keys], bosses: [...this.main.bosses], finales: [...this.main.finales] }, quests: Object.fromEntries(this.quests),
       got: [...this.got], opened: [...this.opened], read: [...this.read], discovered: [...this.discovered], explored,
       brokenPods: this.pods.filter(p => p.dead).map(p => p.id), checkpoint: { ...this.checkpoint }, elapsed: this.elapsed, defeated: this.defeated, blessed: [...this.blessed], secrets: [...this.secrets], tracked: this.tracked,
       chapterStart: { ...this.chapterStart }, awaiting: false, foxQueue: [...this.foxQueue], exploreCols: this.exploreCols,
@@ -805,7 +811,7 @@ export class GameEngine {
   }
   cast(id: SpellId) {
     sfx.unlock();
-    if (this.completeTimer > 0 || this.cine) return;
+    if (this.completeTimer > 0 || this.cine || this.flight) return;
     const info = SPELLS[id], h = this.hero;
     if (this.riding && this.spellUnlocked(id)) this.dismount();
     if (!this.practice && !this.spellUnlocked(id)) { this.play('nope'); this.notice(`${info.name} is learned at level ${info.level}. Defeat creatures and finish quests to level up.`, 'warn', `Level ${info.level}`); return; }
@@ -867,7 +873,7 @@ export class GameEngine {
   /** Casting goes on while the hero walks (at under half speed); a cutscene, the Ice Block, riding or falling ends it. */
   private updateCasting(dt: number) {
     const c = this.casting, h = this.hero; if (!c) return;
-    if (this.cine || h.iceT > 0 || this.riding || h.hp <= 0) { this.casting = null; return; }
+    if (this.cine || this.flight || h.iceT > 0 || this.riding || h.hp <= 0) { this.casting = null; return; }
     c.t += dt; h.castTime = Math.max(h.castTime, .1);
     // Motes of the spell's light gather at the hero's hands.
     if (Math.random() < dt * 18) { const a = rand(0, 6.28), r = rand(16, 30), col = SPELLS[c.id].color; this.emit(h.x + h.faceX * 18 + Math.cos(a) * r, h.y - 30 + Math.sin(a) * r * .6, 1, [col, '#ffffff'], { speed: 30, life: .35, size: 2.5, glow: true, grav: -40 }); }
@@ -1301,7 +1307,7 @@ export class GameEngine {
   /** R: call the mount (not while creatures are after you), or step off it. */
   toggleMount() {
     sfx.unlock();
-    if (this.completeTimer > 0 || this.cine) return;
+    if (this.completeTimer > 0 || this.cine || this.flight) return;
     if (this.riding) return this.dismount();
     const id = this.mountId, h = this.hero;
     if (h.iceT > 0) return this.frozenNotice();
@@ -1311,6 +1317,56 @@ export class GameEngine {
     this.emit(h.x, h.y + 10, 24, [MOUNTS[id].mane, MOUNTS[id].body, '#ffffff'], { speed: 180, life: .6, kind: 'smoke', size: 10 });
     if (MOUNTS[id].glow) this.ring(h.x, h.y, 80, MOUNTS[id].glow!, .5);
     this.play('learn');
+  }
+  // ───────────────────────────── flight masters
+  /** A griffon flight between two cities: up into the clouds, across the valley above them, and down again. */
+  flight: { from: Point; to: Point; t: number; cruise: number; dest: string; dir: number } | null = null;
+  /** The flight master the hero last spoke with. */
+  private flightFrom: string | null = null;
+  /** Every flight master's city: where a griffon can go from here, for how much, and why not yet. */
+  flightOffers() {
+    const here = this.npcs.find(n => n.id === this.flightFrom), reach = this.reachableRegions().map(r => r.id), order = this.world.regions.map(r => r.id);
+    return this.npcs.filter(n => n.role === 'flight').map(n => {
+      const city = this.world.pois.find(p => p.region === n.region && p.kind === 'city');
+      const hops = here ? Math.max(1, Math.abs(order.indexOf(n.region) - order.indexOf(here.region))) : 1, isHere = here?.id === n.id;
+      const why = isHere ? 'You are here' : !reach.includes(n.region) ? 'The way there is still closed' : city && !this.discovered.has(city.id) ? `Reach ${city.name} on foot first` : '';
+      return { id: n.id, city: city?.name || n.name, land: this.region(n.region).title, region: n.region, cost: FLIGHT_COST * hops, here: isHere, why };
+    });
+  }
+  /** Takes off for the flight master `id`'s city. */
+  fly(id: string) {
+    const o = this.flightOffers().find(x => x.id === id), n = this.npcs.find(x => x.id === id), h = this.hero;
+    if (!o || !n || o.why || this.flight || this.cine) return false;
+    if (this.inCombat()) { this.play('nope'); this.notice('The griffon won’t fly with creatures on your heels. Win the fight first.', 'warn', 'In combat'); return false; }
+    if (this.profile.gold < o.cost) { this.play('nope'); this.notice(`A flight to ${o.city} costs ${o.cost} gold.`, 'warn', 'Not enough gold'); return false; }
+    this.profile.gold -= o.cost; this.persistProfile(this.profile);
+    this.dismount(); this.casting = null; this.work = null; this.setMovement(0, 0); h.vx = h.vy = 0;
+    const to = { x: n.x + 70, y: n.y + 90 };
+    this.flight = { from: { x: h.x, y: h.y }, to, t: 0, cruise: clamp(dist(h, to) / 9000, 2.2, 4.2), dest: o.city, dir: Math.sign(to.x - h.x) || 1 };
+    h.faceX = this.flight.dir;
+    this.emit(h.x, h.y + 10, 30, ['rgba(220,200,150,.6)', '#ffffff', '#e8d8b0'], { speed: 220, life: .8, kind: 'smoke', size: 12 });
+    this.play('flap'); this.bump('flights');
+    return true;
+  }
+  /** How high the griffon is (0 on the ground, 1 above the clouds), and how thick the clouds are around the hero. */
+  get flightAlt() { const f = this.flight; if (!f) return 0; const end = FLY_UP + f.cruise; return f.t < FLY_UP ? f.t / FLY_UP : f.t < end ? 1 : Math.max(0, 1 - (f.t - end) / FLY_DOWN); }
+  get flightCloud() { const f = this.flight; if (!f) return 0; const end = FLY_UP + f.cruise; return f.t < FLY_UP ? clamp((f.t - FLY_UP * .45) / (FLY_UP * .55), 0, 1) : f.t < end ? 1 : clamp(1 - (f.t - end) / (FLY_DOWN * .55), 0, 1); }
+  /** How far along the flight is, 0 to 1. */
+  get flightProgress() { const f = this.flight; return f ? clamp((f.t - FLY_UP) / f.cruise, 0, 1) : 0; }
+  private updateFlight(dt: number) {
+    const f = this.flight!, h = this.hero, end = FLY_UP + f.cruise, was = f.t;
+    f.t += dt; h.vx = h.vy = 0; h.walkTime += dt * 4;
+    // Across the valley above the clouds; the hero comes down at the far city's roost.
+    const k = this.flightProgress, e = k * k * (3 - 2 * k);
+    if (f.t < FLY_UP) { h.x = f.from.x; h.y = f.from.y; }
+    else { h.x = f.from.x + (f.to.x - f.from.x) * e; h.y = f.from.y + (f.to.y - f.from.y) * e; }
+    if (was < end && f.t >= end) { this.camCut++; this.play('flap'); }
+    if (Math.floor(was * 1.6) !== Math.floor(f.t * 1.6)) this.play('flap');
+    if (f.t < end + FLY_DOWN) return;
+    this.flight = null; h.x = f.to.x; h.y = f.to.y; this.collide(h, 15); this.setCheckpoint();
+    for (const p of this.pets) { p.x = h.x - 40; p.y = h.y + 16; p.target = null; }
+    this.emit(h.x, h.y + 10, 30, ['rgba(220,200,150,.6)', '#ffffff', '#e8d8b0'], { speed: 220, life: .8, kind: 'smoke', size: 12 });
+    this.notice(`You land in ${f.dest}.`, 'good', f.dest); this.play('discover');
   }
   dismount() {
     if (!this.riding) return;
@@ -2126,7 +2182,7 @@ export class GameEngine {
     const h = this.hero;
     this.world.rivers.forEach((rv, i) => {
       const cx = riverX(rv, h.y), side = h.x < cx ? -1 : 1, b = this.banks[i];
-      if (b && side !== b.side && Math.abs(h.x - b.x) < 600 && !this.onBridge(rv, h)) { h.x = cx + b.side * (rv.hw + 18); h.vx = 0; }
+      if (b && side !== b.side && Math.abs(h.x - b.x) < rv.hw * 2 + 300 && !this.onBridge(rv, h)) { h.x = cx + b.side * (rv.hw + 18); h.vx = 0; }
       else this.banks[i] = { side, x: h.x };
       if (this.banks[i]) this.banks[i].x = h.x;
     });
@@ -2146,7 +2202,7 @@ export class GameEngine {
         continue;
       }
       const river = o.variant === 'bridge' && this.world.rivers.length > 0;
-      if (Math.abs(h.y - o.y) > 230 || h.x < o.x - (river ? 150 : 70) || h.x > o.x + 40 || this.barrierOpen(o)) continue;
+      if (Math.abs(h.y - o.y) > 230 || h.x < o.x - (river ? 150 : 70) || h.x > o.x + (river ? 120 : 40) || this.barrierOpen(o)) continue;
       if (!river) { h.x = o.x - 70; h.vx = Math.min(0, h.vx); }
       if (this.elapsed - this.barrierNoticeT > 4) { this.barrierNoticeT = this.elapsed; this.notice(BARRIER_TEXT[o.variant || 'bridge'], 'warn', 'The way is blocked'); }
     }
@@ -2234,7 +2290,7 @@ export class GameEngine {
     this.eventHandler({ type: 'item', id, count });
   }
   useItem(id: ItemId) {
-    if (this.completeTimer > 0 || this.cine) return;
+    if (this.completeTimer > 0 || this.cine || this.flight) return;
     if (this.hero.iceT > 0) return this.frozenNotice();
     const bag = this.profile.items, have = bag[id] || 0, h = this.hero, info = ITEMS[id];
     if (have <= 0) { this.play('nope'); this.notice(`You have no ${info.name} left. Buy more from a city merchant.`, 'warn', `No ${info.name}`); return; }
@@ -2400,9 +2456,10 @@ export class GameEngine {
     // The hole opens when the ground gives way under the hero; the shaft of dawnlight once Umbra (or its echo) is beaten.
     if (o.kind === 'hole') { const q = this.finalQuest, s = q && this.qs(q.id).status; return s === 'active' || s === 'done'; }
     if (o.kind === 'exit') return o.variant !== 'throne' || this.umbraBeaten || this.echoBeaten;
+    if (o.kind === 'chest' && o.variant === 'ambush') return this.got.has(o.id.replace('depths:prize-', 'depths:ambush-'));
     return true;
   }
-  private interactable(o: WorldObject) { return this.visibleObject(o) && o.kind !== 'clue' && o.kind !== 'pen' && o.kind !== 'ward' && !(o.kind === 'barrier' && this.barrierOpen(o)) && !(o.kind === 'site' && this.got.has(o.id)) && !(o.kind === 'chest' && this.opened.has(o.id)) && !((o.kind === 'crack' || o.kind === 'waterfall') && this.secrets.has(o.id)); }
+  private interactable(o: WorldObject) { return this.visibleObject(o) && o.kind !== 'clue' && o.kind !== 'pen' && o.kind !== 'ward' && !(o.kind === 'barrier' && this.barrierOpen(o)) && !(o.kind === 'site' && this.got.has(o.id)) && !(o.kind === 'chest' && this.opened.has(o.id)) && !(o.kind === 'seal' && (this.got.has(o.id) || this.sealWave?.id === o.id)) && !((o.kind === 'crack' || o.kind === 'waterfall') && this.secrets.has(o.id)); }
   secretFound(id: string) { return this.secrets.has(id); }
   /** A cracked wall bursts, or the water parts: whatever was hidden behind appears. */
   private revealSecret(o: WorldObject) {
@@ -2429,7 +2486,7 @@ export class GameEngine {
   }
   interact() {
     sfx.unlock();
-    if (this.completeTimer > 0 || this.cine) return;
+    if (this.completeTimer > 0 || this.cine || this.flight) return;
     if (this.hero.iceT > 0) return this.frozenNotice();
     const near = this.nearest(); if (!near) return;
     if (near.kind === 'npc') return this.talk(near.n);
@@ -2464,10 +2521,12 @@ export class GameEngine {
         return;
       }
       case 'hole': this.descend(); return;
+      case 'seal': this.wakeSeal(o); return;
       case 'exit': this.ascend(); return;
       case 'chest': {
         if (o.variant === 'star' && this.fallen?.chest === o && this.fallen.boss && !this.fallen.boss.dead) { this.play('nope'); this.notice(`The star-forged chest is sealed while ${this.bossName(this.fallen.boss)} still stands.`, 'warn', 'Sealed'); return; }
         this.opened.add(o.id); this.play('chest', o);
+        const deep = o.id.startsWith('depths:') ? clamp(this.profile.level + 1, 26, 30) : 0;
         this.emit(o.x, o.y - 10, 36, ['#ffd35c', '#fff1b8', '#ffffff'], { speed: 240, life: 1, kind: 'star', glow: true, size: 5 });
         const n = 4 + Math.floor(Math.random() * 4);
         for (let i = 0; i < n; i++) this.spawnOrb(o.x, o.y - 8, Math.random() < .25 ? 'heart' : 'mana');
@@ -2483,8 +2542,8 @@ export class GameEngine {
           if (this.fallen?.chest === o) for (let i = 0; i < 3; i++) { const a = rand(0, 6.28); this.fallen.frags.push({ x: o.x + Math.cos(a) * 70, y: o.y + Math.sin(a) * 50, got: false }); }
           this.gainXp(120 * reg.xpScale, o.x, o.y); this.bump('starChests'); this.flash = Math.max(this.flash, .5); this.ring(o.x, o.y, 160, '#fff1b8', .9);
         }
-        else if (o.rich) { for (let i = 0; i < 5; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(10 + reg.levels[1] * 3)); this.addItem(rollItem()); this.dropGear(o.x, o.y - 8, reg.levels[1] + 1, Math.random() < .1 ? 'legendary' : Math.random() < .45 ? 'epic' : 'rare'); }
-        else if (Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
+        else if (o.rich) { const lv = deep || reg.levels[1] + 1; for (let i = 0; i < 5; i++) this.spawnOrb(o.x, o.y - 8, 'gold', Math.round(10 + lv * 3)); this.addItem(rollItem()); this.dropGear(o.x, o.y - 8, lv, Math.random() < (o.variant === 'ambush' ? .4 : .1) ? 'legendary' : Math.random() < .45 ? 'epic' : 'rare'); if (o.variant === 'ambush') this.dropGear(o.x, o.y - 8, lv, 'epic'); }
+        else if (deep || Math.random() < .45) { const r = rollRarity(Math.random, .3); this.dropGear(o.x, o.y - 8, deep || reg.levels[0] + Math.round(Math.random() * (reg.levels[1] - reg.levels[0])), r === 'common' ? 'uncommon' : r); }
         return;
       }
       case 'lore': {
@@ -2546,7 +2605,8 @@ export class GameEngine {
     const ready = this.world.quests.find(q => this.qs(q.id).status === 'ready' && this.reportTo(q) === n.id);
     if (ready) return this.finish(ready, n, this.tx(ready).complete);
     const offer = this.offerFrom(n); if (offer) return this.offerQuest(offer, n);
-    if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
+    if (n.role === 'flight') this.flightFrom = n.id;
+    if (n.role === 'merchant' || n.role === 'smith' || n.role === 'armorer' || n.role === 'stable' || n.role === 'flight') { sfx.play('talk'); this.eventHandler({ type: 'shop', kind: n.role, name: n.name, portrait: n.portrait }); return; }
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
@@ -2573,7 +2633,7 @@ export class GameEngine {
   }
   /** Called by the UI once the finale dialogue closes: fireworks, then the chapter is complete and the story walks on. */
   celebrate() {
-    if (this.completeTimer > 0 || this.cine) return;
+    if (this.completeTimer > 0 || this.cine || this.flight) return;
     this.completeTimer = 3.2; this.fireworkTimer = 0; this.flash = .8; this.addShake(8); this.play('victory');
     const f = this.finaleOf(this.completeRegion);
     if (f) { const acc = this.region(f.region).palette.accent; this.ring(f.x, f.y, 400, acc, 1.4); this.emit(f.x, f.y - 40, 120, [acc, '#ffffff', '#fff1b8'], { speed: 520, life: 1.6, kind: 'star', glow: true, size: 6, drag: 1.6 }); }
@@ -2694,7 +2754,7 @@ export class GameEngine {
   /** `amount` is in health points before level, armour and potion reductions. */
   private hurt(amount: number, from: Point, level: number) {
     const h = this.hero;
-    if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0 || this.cine) return;
+    if (h.hurtTime > 0 || h.dashTime > 0 || h.ghostT > 0 || this.completeTimer > 0 || this.cine || this.flight) return;
     this.fightT = this.elapsed;
     // The Ice Block turns everything aside, however many blows land (a moment's grace keeps the clinks from piling up).
     if (h.iceT > 0) { h.ghostT = .25; this.ring(h.x, h.y - 8, 56, '#dff6ff', .25); this.emit(from.x + (h.x - from.x) * .8, from.y + (h.y - from.y) * .8 - 10, 5, ['#ffffff', '#bfeaff'], { speed: 140, life: .3, kind: 'shard', size: 3 }); this.play('reflect'); return; }
@@ -2775,6 +2835,11 @@ export class GameEngine {
       for (const e of this.enemies) if (!e.dead) { e.hitFlash = 0; if (e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt); }
       return;
     }
+    if (this.flight) {
+      // On the griffon: nothing reaches the hero, and the world below waits.
+      this.updateFlight(dt); this.updateParticles(dt); this.updateFx(dt);
+      return;
+    }
     if (this.hitStop > 0) { this.hitStop -= dt; return; }
     if (this.slowMo > 0) { this.slowMo -= dt; dt *= .3; }
     this.elapsed += dt;
@@ -2804,6 +2869,7 @@ export class GameEngine {
     this.updateParticles(dt);
     if (this.finalT > 0) this.updateFinalRise(dt);
     this.updateStarfall(dt);
+    if (this.inDepths) this.updateDepths(dt);
     this.slowTick -= dt;
     if (this.slowTick <= 0) {
       this.slowTick = .25; this.updateZone(); this.markExplored(); this.updateSoundscape(); this.respawnEnemies(); this.flushFox(); this.checkAmbushes(); this.checkClues(); this.checkThrone();
@@ -2832,12 +2898,12 @@ export class GameEngine {
         }
       } else this.pushOut(p, o.x, o.y, o.r + pad);
     }
-    if (deep) { keepInDepths(dp!, p, pad); return; }
+    if (deep) { keepInDepths(dp!, p, pad, this.throneOpen, p === this.hero ? this.lockRoom : null); return; }
     // A rockfall or caved-in cave mouth still standing fills its canyon.
     for (const o of this.barriers) if (isWall(o) && Math.abs(p.x - o.x) < 92 + pad && Math.abs(p.y - o.y) < 230 && !this.got.has(o.id)) p.x = o.x + (p.x < o.x ? -1 : 1) * (92 + pad);
     // A river can only be crossed on its bridge, once the bridge is mended.
     for (const rv of this.world.rivers) {
-      if (Math.abs(p.x - rv.pts[0].x) > rv.hw + 240 + pad) continue;
+      if (Math.abs(p.x - rv.pts[0].x) > rv.hw + 300 + pad) continue;
       const cx = riverX(rv, p.y), d = p.x - cx, lim = rv.hw + pad * .6;
       if (Math.abs(d) < lim && !this.onBridge(rv, p)) p.x = cx + Math.sign(d || -1) * lim;
     }
@@ -2916,7 +2982,7 @@ export class GameEngine {
       e.x += e.kx * dt; e.y += e.ky * dt; e.kx *= Math.pow(.004, dt); e.ky *= Math.pow(.004, dt);
       const EB = this.boundsOf(e); e.x = clamp(e.x, EB.x0 + 40, EB.x1 - 40); e.y = clamp(e.y, EB.y0 + 40, EB.y1 - 40);
       if (!e.boss) this.collide(e, e.r * .8);
-      else if (e.depths || e.kind === 'eclipse') { const dp = this.world.depths; if (dp && e.x > this.world.width) keepInDepths(dp, e, e.r * .6); }
+      else if (e.depths || e.kind === 'eclipse') { const dp = this.world.depths; if (dp && e.x > this.world.width) keepInDepths(dp, e, e.r * .6, this.throneOpen); }
       const d = dist(h, e);
       if (e.aggro && d < 650) threats += e.boss ? 3 : 1;
       if (e.aggro && d < 480 && this.canHurt(e)) near = true;
@@ -3080,6 +3146,26 @@ export class GameEngine {
         else if (d > 90) { e.x += dx * sp * dt; e.y += dy * sp * dt; }
         break;
       }
+      case 'bonewalker': {
+        // Shambles in fast, in packs, and hacks with its rusted blade.
+        if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { if (d < 84) this.hurt(hit, e, e.level); e.cd = e.elite ? .85 : 1.15; e.lunge = .12; e.kx += dx * 280; e.ky += dy * 280; this.play('hit', e); } }
+        else if (e.cd <= 0 && d < 72) e.windup = .32;
+        else if (d > 48) { e.x += dx * sp * dt; e.y += dy * sp * dt; }
+        break;
+      }
+      case 'gloomstalker': {
+        // Fades into the dark and circles; then steps out of the shadows right beside the hero and strikes.
+        if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) { e.lunge = .22; e.kx += dx * 760; e.ky += dy * 760; if (d < 130) this.hurt(hit, e, e.level); e.cd = e.elite ? 2 : 2.6; e.pattern = 1; this.play('dash', e); } break; }
+        if (e.pattern !== 0 && e.cd <= 0 && d < 340) {
+          const a = Math.atan2(h.y - e.y, h.x - e.x) + rand(-.8, .8), p = { x: h.x - Math.cos(a) * 95, y: h.y - Math.sin(a) * 70 };
+          this.emit(e.x, e.y, 14, ['#1a1428', '#b98aff'], { speed: 120, life: .5, kind: 'smoke', size: 12 }); this.collide(p, e.r); e.x = p.x; e.y = p.y;
+          e.pattern = 0; e.windup = .42; this.ring(e.x, e.y, 70, '#b98aff', .35); this.play('dash', e); break;
+        }
+        if (e.cd > 0 && e.cd < 1.6) e.pattern = 1;
+        const want = d > 300 ? sp : d < 200 ? -sp * .6 : 0, side = Math.sin(e.angle) * sp * .8;
+        e.angle += dt * 1.6; e.x += (dx * want - dy * side) * dt; e.y += (dy * want + dx * side) * dt;
+        break;
+      }
       case 'acolyte': {
         // Blinks close and casts a ring of void orbs; now and then it calls a duskwing out of the dark.
         e.angle += dt * 2;
@@ -3141,9 +3227,9 @@ export class GameEngine {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (!e.dead) continue;
-      if (e.summoned || e.guard || e.wall || e.starborn || e.kind === 'starbeast' || e.id === ECHO_ID) { if (e.deadT > 2) swapRemove(this.enemies, i); continue; }
+      if (e.summoned || e.guard || e.wall || e.starborn || e.kind === 'starbeast' || e.id === ECHO_ID || e.id.startsWith('dwave-')) { if (e.deadT > 2) swapRemove(this.enemies, i); continue; }
       if (e.boss || e.deadT < (e.heroic ? HEROIC_RESPAWN : RESPAWN_TIME) || Math.hypot(e.homeX - h.x, e.homeY - h.y) < 560) continue;
-      const fresh = this.makeEnemy({ id: e.id, kind: e.kind, x: e.homeX, y: e.homeY, level: e.level, region: e.region, elite: e.elite, heroic: e.heroic }); fresh.spawnT = .6;
+      const fresh = this.makeEnemy({ id: e.id, kind: e.kind, x: e.homeX, y: e.homeY, level: e.level, region: e.region, elite: e.elite, heroic: e.heroic, depths: e.depths }); fresh.spawnT = .6;
       Object.assign(e, fresh);
       if (Math.abs(e.x - h.x) < 1400 && Math.abs(e.y - h.y) < 1000) { this.emit(e.x, e.y, 16, ['#c9b6ff', '#1a1030', '#ffffff'], { speed: 140, life: .6, kind: 'smoke', size: 10 }); this.ring(e.x, e.y, 50, '#c9b6ff', .4); }
     }
@@ -3419,7 +3505,7 @@ export class GameEngine {
     const h = this.hero, c = this.bossVariant(e) ? this.bossColors(e) : ['#c9b6ff', '#6a4bd6'];
     this.emit(e.x, e.y, 40, [...c, '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.ring(e.x, e.y, 90, c[0], .4);
     const a = rand(0, 6.28), B = this.boundsOf(h); e.x = clamp(h.x + Math.cos(a) * away, B.x0 + 80, B.x1 - 80); e.y = clamp(h.y + Math.sin(a) * away, B.y0 + 80, B.y1 - 80);
-    const dp = this.world.depths; if (dp && e.x > this.world.width) keepInDepths(dp, e, e.r);
+    const dp = this.world.depths; if (dp && e.x > this.world.width) keepInDepths(dp, e, e.r, this.throneOpen);
     this.emit(e.x, e.y, 40, [...c, '#ffffff'], { speed: 260, life: .6, kind: 'star', glow: true }); this.play('dash');
     this.addHazard(e.x, e.y, r, delay, 'slam', e);
   }
@@ -3453,6 +3539,9 @@ export class GameEngine {
     this.dismount(); this.casting = null; this.work = null; this.setMovement(0, 0);
     const h = this.hero; h.x = dp.landing.x; h.y = dp.landing.y; h.vx = h.vy = 0; h.hurtTime = 1.5;
     this.checkpoint = { ...dp.landing }; this.resetDepths(); this.echoBeaten = false;
+    // Every run down: the seals are whole again, and the ambushes lie in wait.
+    for (const id of [...this.got]) if (id.startsWith('depths:seal-') || id.startsWith('depths:ambush-')) this.got.delete(id);
+    this.depthLock = null; this.sealWave = null; this.depthHazardT = 3;
     this.cineFade = 1; this.camCut++; this.addShake(first ? 20 : 8); this.flash = Math.max(this.flash, .3);
     this.emit(h.x, h.y - 10, 40, ['rgba(160,140,120,.6)', 'rgba(120,100,90,.5)'], { speed: 220, life: 1.4, kind: 'smoke', size: 22 });
     this.emit(h.x, h.y - 240, 30, ['#8a7a68', '#5e4c4a'], { speed: 120, life: 1.2, kind: 'shard', size: 6, grav: 600 });
@@ -3469,14 +3558,106 @@ export class GameEngine {
     const h = this.hero; h.x = dp.hole.x; h.y = dp.hole.y + 170; h.vx = h.vy = 0; h.hurtTime = 1;
     this.collide(h, 15); this.checkpoint = { x: h.x, y: h.y };
     for (const e of this.enemies) if (e.kind === 'eclipse' && !e.dead && e.id === ECHO_ID) { e.dead = true; e.deadT = 0; }
-    this.finalT = 0; this.cineFade = 1; this.camCut++; this.play('flap');
+    this.finalT = 0; this.cineFade = 1; this.camCut++; this.play('flap'); this.depthLock = null; this.sealWave = null;
     for (const p of this.pets) { p.x = h.x - 40; p.y = h.y + 16; p.target = null; }
     this.notice('You climb back up into the light of the Ember Wastes.', 'good', 'The surface');
+  }
+  // ───────────────────────────── the depths: seals, ambushes and the chambers' hazards
+  /** The ambush the hero is shut in with: which chamber, which wave, who is in it, and the pause before the next. */
+  private depthLock: { room: DepthRoom; wave: number; ids: string[]; t: number } | null = null;
+  /** The Eclipse Seal whose guardians are fighting the hero. */
+  private sealWave: { id: string; ids: string[] } | null = null;
+  private depthHazardT = 3;
+  private waveCount = 0;
+  /** The chamber an ambush has shut the hero in. */
+  get lockRoom() { return this.depthLock?.room || null; }
+  /** The seal whose guardians are awake. */
+  get sealActive() { return this.sealWave?.id || null; }
+  get sealsBroken() { return Object.keys(DEPTH_SEALS).filter(id => this.got.has(`depths:seal-${id}`)).length; }
+  /** The door to Umbra's throne opens once all three Eclipse Seals are broken. */
+  get throneOpen() { return this.sealsBroken >= Object.keys(DEPTH_SEALS).length; }
+  /** Where the story wants the hero in the depths: the nearest seal still whole, then the throne. */
+  private depthsGoal(): Point {
+    const dp = this.world.depths!; if (this.throneOpen) return dp.throne;
+    let best: Point = dp.throne, bd = Infinity;
+    for (const o of this.world.objects) if (o.kind === 'seal' && !this.got.has(o.id)) { const d = dist(o, this.inDepths ? this.hero : dp.landing); if (d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  /** Level of the creatures down here: the hero's own, from 26 up to 30. */
+  private get depthLevel() { return clamp(Math.max(26, this.profile.level), 26, 30); }
+  /** Calls a wave of the depths' creatures out of the dark round a chamber (or a point), already after the hero. */
+  private depthWave(at: DepthRoom | Point, pack: Array<[EnemyKind, number, number, string?]>, spread: number) {
+    const ids: string[] = [], lv = this.depthLevel, r = 'rx' in at ? at : null;
+    for (const [kind, count, elites, heroic] of pack) for (let i = 0; i < count; i++) {
+      const a = rand(0, 6.28), d = rand(.55, .85), p = r ? { x: r.x + Math.cos(a) * r.rx * d, y: r.y + Math.sin(a) * r.ry * d } : { x: at.x + Math.cos(a) * spread * d, y: at.y + Math.sin(a) * spread * .7 * d };
+      const e = this.makeEnemy({ id: `dwave-${this.waveCount++}`, kind, x: p.x, y: p.y, level: clamp(lv + (heroic ? 2 : i < elites ? 1 : 0), 26, 30), region: 'ember', elite: !heroic && i < elites, heroic, depths: true });
+      this.collide(e, e.r); e.aggro = true; e.spawnT = .6; this.enemies.push(e); ids.push(e.id);
+      const bones = kind === 'bonewalker';
+      this.emit(e.x, e.y, 14, bones ? ['#e8e0cc', '#c9b6ff', '#8a8070'] : ['#1a1030', '#6a4bd6', '#c9b6ff'], { speed: 150, life: .7, kind: bones ? 'shard' : 'smoke', size: bones ? 5 : 12, grav: bones ? 300 : 0 });
+      this.ring(e.x, e.y, 50, '#c9b6ff', .4);
+    }
+    return ids;
+  }
+  /** Touching an Eclipse Seal wakes its guardians; once they are all beaten it shatters. */
+  private wakeSeal(o: WorldObject) {
+    if (this.got.has(o.id) || this.sealWave) { if (this.sealWave && this.sealWave.id !== o.id) this.notice('Another seal’s guardians are still awake.', 'warn', 'Not yet'); return; }
+    const pack = DEPTH_SEALS[o.id.replace('depths:seal-', '')]; if (!pack) return;
+    this.sealWave = { id: o.id, ids: this.depthWave(o, pack, 360) };
+    this.flash = Math.max(this.flash, .35); this.addShake(12); this.play('roar'); this.ring(o.x, o.y, 260, '#ff6b9a', .9);
+    this.notice('The seal wakes, and its guardians with it! Defeat them to break it.', 'warn', 'Guardians!');
+  }
+  private breakSeal(id: string) {
+    const o = this.world.objects.find(x => x.id === id); this.sealWave = null; if (!o) return;
+    this.got.add(id);
+    this.emit(o.x, o.y - 60, 60, ['#ff6b9a', '#c9b6ff', '#1a1030', '#ffffff'], { speed: 360, life: 1.1, kind: 'shard', glow: true, size: 6, grav: 300 });
+    this.ring(o.x, o.y, 300, '#ff6b9a', 1); this.flash = Math.max(this.flash, .45); this.addShake(16); this.play('boom'); this.gainXp(260, o.x, o.y);
+    const n = this.sealsBroken;
+    if (n >= 3) { this.bump('sealsAll'); this.notice('The last Eclipse Seal shatters, and somewhere below a great door grinds open. The way to Umbra’s Throne is clear!', 'epic', 'The throne is open'); this.addShake(24); this.play('roar'); }
+    else this.notice(`An Eclipse Seal shatters! (${n} of 3 broken)`, 'epic', `Seal ${n}/3`);
+  }
+  /** Each frame in the depths: the seals' guardians, the ambushes, and the chambers' own hazards. */
+  private updateDepths(dt: number) {
+    const dp = this.world.depths!, h = this.hero, here = roomAt(dp, h);
+    const alive = (ids: string[]) => ids.some(id => this.enemies.some(e => e.id === id && !e.dead));
+    if (this.sealWave && !alive(this.sealWave.ids)) this.breakSeal(this.sealWave.id);
+    // Walking into an ambush chamber shuts it: wave after wave comes out of the dark until it falls silent.
+    const L = this.depthLock;
+    if (!L && here && DEPTH_AMBUSHES[here.id] && !this.got.has(`depths:ambush-${here.id}`) && roomAt(dp, h, .72) === here && this.finalT <= 0) {
+      this.depthLock = { room: here, wave: 0, ids: this.depthWave(here, DEPTH_AMBUSHES[here.id][0], 0), t: 0 };
+      this.flash = Math.max(this.flash, .3); this.addShake(14); this.play('roar');
+      this.notice(`Ambush! The way out of ${here.name} seals behind you!`, 'warn', 'Ambush!');
+    } else if (L) {
+      if (alive(L.ids)) L.t = 0;
+      else if ((L.t += dt) > 1.4) {
+        const waves = DEPTH_AMBUSHES[L.room.id];
+        if (++L.wave < waves.length) { L.ids = this.depthWave(L.room, waves[L.wave], 0); L.t = 0; this.play('roar'); this.addShake(8); this.notice(L.wave === waves.length - 1 ? 'The last wave! Something heavy comes with it…' : `Wave ${L.wave + 1} of ${waves.length}!`, 'warn', `Wave ${L.wave + 1}`); }
+        else {
+          this.depthLock = null; this.got.add(`depths:ambush-${L.room.id}`); this.bump('arenas');
+          const prize = this.world.objects.find(o => o.id === `depths:prize-${L.room.id}`);
+          if (prize) { this.ring(prize.x, prize.y, 200, '#ffd35c', 1); this.emit(prize.x, prize.y - 30, 50, ['#ffd35c', '#fff1b8', '#ffffff'], { speed: 280, life: 1.1, kind: 'star', glow: true, size: 5 }); }
+          this.gainXp(400, h.x, h.y); this.play('victory');
+          this.notice(`${L.room.name} falls silent. A hoard glints in the dark!`, 'epic', 'Ambush survived!');
+        }
+      }
+    }
+    // The chamber's own danger: stalactites drop, spores burst, lava erupts, shards of the void rain down.
+    const kind = here && DEPTH_HAZARDS[here.theme];
+    if (!kind || this.finalT > 0 || this.cinePlaying) return;
+    if ((this.depthHazardT -= dt) > 0) return;
+    this.depthHazardT = kind === 'lava' ? rand(2.2, 3.4) : rand(2.8, 4.4);
+    const lv = this.depthLevel, dmg = hitAt(lv) * 1.15, n = kind === 'lava' ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const p = i === 0 ? { x: h.x + h.vx * .5, y: h.y + h.vy * .5 } : { x: h.x + rand(-280, 280), y: h.y + rand(-200, 200) };
+      if (!roomAt(dp, p)) continue;
+      const r = kind === 'spore' ? 110 : kind === 'lava' ? 90 : 75, delay = kind === 'spore' ? 1.3 : 1.15;
+      this.hazards.push({ x: p.x, y: p.y, r, delay, maxDelay: delay, damage: dmg, level: lv, owner: 'enemy', kind, fromX: p.x + (kind === 'meteor' ? rand(-120, 120) : 0), fromY: p.y - (kind === 'meteor' || kind === 'stalactite' ? 620 : 0) });
+    }
   }
   /** Every creature of the depths is back at its post, as strong as the hero has grown (levels 26 to 30). */
   private resetDepths() {
     const lv = this.profile.level;
     for (const e of this.enemies) {
+      if (e.id.startsWith('dwave-')) { e.dead = true; e.deadT = 99; continue; }
       if (!e.depths) continue;
       Object.assign(e, this.makeEnemy({ id: e.id, kind: e.kind, x: e.homeX, y: e.homeY, level: clamp(Math.max(26, lv) + (e.elite ? 1 : 0), 26, 30), region: e.region, elite: e.elite, depths: true }));
     }
@@ -3544,7 +3725,7 @@ export class GameEngine {
       const reg = Math.random() < .6 && reach.includes(here) ? here : pick(reach);
       const p = { x: rand(reg.x0 + 800, reg.x1 - 800), y: rand(500, w.height - 500) }, d = dist(p, this.hero);
       if (d < 1300 || d > 7000) continue;
-      if (inPond(w.ponds, p.x, p.y, 220) || inRange(w.ranges, p.x, p.y, 320) || w.rivers.some(rv => Math.abs(riverX(rv, p.y) - p.x) < 420)) continue;
+      if (inPond(w.ponds, p.x, p.y, 220) || inRange(w.ranges, p.x, p.y, 320) || w.rivers.some(rv => Math.abs(riverX(rv, p.y) - p.x) < rv.hw + 320)) continue;
       if (w.pois.some(z => dist(z, p) < z.r + 280)) continue;
       if (this.obstacleGrid.near(p.x, p.y, 320).some(o => dist(o, p) < 240 + o.r)) continue;
       return p;
@@ -3690,6 +3871,10 @@ export class GameEngine {
         this.emit(z.x, z.y, 20, ['#8c8f80', '#b0b3a3', '#6f7568'], { speed: 280, life: .6, kind: 'shard', size: 6, grav: 500 });
         this.emit(z.x, z.y, 6, 'rgba(160,150,120,.45)', { speed: 90, life: .8, kind: 'smoke', size: 16 });
         this.addShake(6); this.play('slam', z); break;
+      case 'stalactite':
+        this.emit(z.x, z.y, 22, ['#5a4e62', '#7a6e86', '#c9b6ff'], { speed: 300, life: .6, kind: 'shard', size: 6, grav: 500 });
+        this.emit(z.x, z.y, 8, 'rgba(120,110,130,.45)', { speed: 100, life: .9, kind: 'smoke', size: 18 });
+        this.addShake(7); this.play('slam', z); break;
       case 'root':
         this.emit(z.x, z.y, 10, ['#6f5337', '#8fd46b', '#553f2d'], { speed: 220, life: .5, kind: 'shard', size: 5, grav: 400, angle: -Math.PI / 2, spread: 1.4 });
         this.addShake(2); this.play('hit', z); break;
@@ -3850,7 +4035,7 @@ export class GameEngine {
     if (q.kind === 'boss') {
       const b = this.enemies.find(e => e.id === q.boss && !e.dead);
       if (b) return b;
-      if (this.isFinal(q) && !this.umbraBeaten && this.world.depths) return this.world.depths.throne;
+      if (this.isFinal(q) && !this.umbraBeaten && this.world.depths) return this.depthsGoal();
       return this.finaleOf(q.region);
     }
     if (q.kind === 'key' || q.kind === 'collect' || q.kind === 'build') {
@@ -3870,6 +4055,7 @@ export class GameEngine {
   private viaDepths(t: Point): Point {
     const dp = this.world.depths; if (!dp) return t;
     const here = this.inDepths, there = inDepthsArea(dp, t);
+    if (here && there) return depthsRoute(dp, this.hero, t, this.throneOpen);
     if (here === there) return t;
     if (!here) return dp.hole;
     let best: Point = dp.landing, bd = Infinity;
@@ -3941,7 +4127,8 @@ export class GameEngine {
     if (!cur) { const all = this.world.quests.filter(q => q.main && q.region === this.lastRegion); return { title: 'The valley is saved', step: 'Every light is shining', progress: 0, count: 0, index: all.length, total: all.length }; }
     const list = this.world.quests.filter(q => q.main && q.region === cur.region), row = this.rowFor(cur), t = this.targetOf(cur), wall = t && this.wallBetween(t);
     const dp = this.world.depths, deep = t && dp && inDepthsArea(dp, t) !== this.inDepths ? (this.inDepths ? 'Climb back up to the surface' : 'Go down the hole beside the Dawn Forge') : null;
-    return { title: cur.title, step: wall ? `Break through the ${wall.o.name.toLowerCase()}` : deep || row.goal, progress: row.progress, count: row.count, index: list.indexOf(cur) + 1, total: list.length };
+    const seals = this.inDepths && this.isFinal(cur) && !this.throneOpen ? `Break the Eclipse Seals (${this.sealsBroken}/3)` : null;
+    return { title: cur.title, step: wall ? `Break through the ${wall.o.name.toLowerCase()}` : deep || seals || row.goal, progress: row.progress, count: row.count, index: list.indexOf(cur) + 1, total: list.length };
   }
   private questRows(main: boolean): QuestRow[] {
     const chapter = this.chapter;
@@ -3953,7 +4140,7 @@ export class GameEngine {
   }
   private nearAction(n: Npc) {
     if (this.npcMarker(n)) return 'Talk';
-    return n.role === 'merchant' || n.role === 'armorer' || n.role === 'stable' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
+    return n.role === 'flight' ? 'Fly' : n.role === 'merchant' || n.role === 'armorer' || n.role === 'stable' ? 'Trade' : n.role === 'smith' ? 'Upgrade' : n.role === 'inn' ? 'Rest' : 'Talk';
   }
   snapshot(): GameSnapshot {
     const index = new Map<string, Npc>(); for (const n of this.npcs) if (!index.has(n.id)) index.set(n.id, n);
@@ -3967,7 +4154,7 @@ export class GameEngine {
     if (near?.kind === 'npc') { nearName = near.n.name; nearAction = this.nearAction(near.n); }
     else if (near) {
       const o = near.o; nearName = o.name;
-      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore', site: 'Build', switch: 'Light', barrier: 'Inspect', clue: '', pen: '', ward: '', hole: 'Descend', exit: 'Climb up' } as const)[o.kind];
+      nearAction = ({ key: 'Take', questItem: 'Take', shrine: this.blessed.has(o.id) ? 'Pray' : 'Bless', finale: 'Inspect', chest: 'Open', sign: 'Read', lore: 'Read', well: 'Drink', fountain: 'Drink', campfire: 'Rest', cage: 'Free', crack: 'Inspect', waterfall: 'Explore', site: 'Build', switch: 'Light', barrier: 'Inspect', clue: '', pen: '', ward: '', hole: 'Descend', exit: 'Climb up', seal: 'Break' } as const)[o.kind];
     }
     const { chests, lore, sides } = this.fixedLists();
     return {

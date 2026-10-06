@@ -52,7 +52,9 @@ export type Pond = { x: number; y: number; r: number; kind?: 'bog' | 'ice' };
 export type Range = { x: number; hw: number; kind: 'snow' | 'volcano'; passY: number; passHw: number };
 /** A river running the whole height of the valley along a border: its centre line, top to bottom, and half its width.
  *  It can only be crossed on the bridge at `bridgeY` (when `barrier` is open). */
-export type River = { pts: Point[]; hw: number; bridgeY: number; barrier: string };
+export type River = { pts: Point[]; hw: number; bridgeY: number; barrier: string;
+  /** Wooded islands standing in the current (out of reach: the water runs all round them). */
+  islands?: Array<{ x: number; y: number; rx: number; ry: number }> };
 
 export type EnemyKind =
   | 'gloomling' | 'thornling' | 'wisp' | 'bristleboar' | 'sporecap' | 'shadewolf' | 'webspinner' | 'frostwraith' | 'cragGolem'
@@ -66,7 +68,7 @@ export type EnemyKind =
   | 'rubble'
   /** The creatures of the depths beneath the Dawn Forge, met nowhere else: umbral knights, duskwings, hollow archers,
    *  shardbacks and eclipse acolytes. */
-  | 'umbralKnight' | 'duskwing' | 'hollowArcher' | 'shardback' | 'acolyte'
+  | 'umbralKnight' | 'duskwing' | 'hollowArcher' | 'shardback' | 'acolyte' | 'bonewalker' | 'gloomstalker'
   /** The world boss that comes down with a fallen star (see Starfall events). */
   | 'starbeast';
 /** `guard` names the rescue quest whose captive this creature keeps caged. */
@@ -88,7 +90,7 @@ export type NpcHat = 'none' | 'straw' | 'hood' | 'cap' | 'wizard' | 'bonnet' | '
 export type NpcLook = { skin: string; robe: string; hat: NpcHat; hatColor: string; hair: string; beard?: boolean; small?: boolean };
 export type NpcActivity = 'idle' | 'wander' | 'patrol' | 'travel' | 'chop' | 'farm' | 'fish' | 'sweep' | 'hammer' | 'play';
 /** Merchants sell potions, smiths forge upgrades, armourers sell equipment, stable masters sell mounts, innkeepers let Mira rest. */
-export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer' | 'stable'
+export type NpcRole = 'guide' | 'villager' | 'merchant' | 'smith' | 'inn' | 'armorer' | 'stable' | 'flight'
   /** Quest people: someone walking with the hero, someone running away, and people in a cutscene. */
   | 'follower' | 'thief' | 'actor';
 export type NpcDef = {
@@ -105,7 +107,9 @@ export type ObjectKind = 'key' | 'questItem' | 'shrine' | 'finale' | 'chest' | '
    *  and the broken crossing between two lands. */
   | 'site' | 'switch' | 'clue' | 'pen' | 'ward' | 'barrier'
   /** The hole that leads down into the depths, and the way back up out of them. */
-  | 'hole' | 'exit';
+  | 'hole' | 'exit'
+  /** An Eclipse Seal in the depths: touch it to wake its guardians; beat them and it shatters. */
+  | 'seal';
 /** What a build site becomes; how a switch looks; what blocks a land's eastern gate. */
 export type SiteKind = 'bridge' | 'tower' | 'barricade' | 'well' | 'lantern' | 'bellows';
 export type SwitchKind = 'brazier' | 'lantern' | 'rune' | 'totem' | 'vent';
@@ -249,7 +253,7 @@ export type QuestOffer = { id: string; title: string; summary: string; reward: s
 export type MiniGame = 'dice' | 'archery';
 /** Cosmetic trails that follow the hero, earned by achievements. */
 export type TrailId = 'sparks' | 'clovers' | 'stardust';
-export type ShopKind = 'merchant' | 'smith' | 'armorer' | 'stable';
+export type ShopKind = 'merchant' | 'smith' | 'armorer' | 'stable' | 'flight';
 /** A piece on an armourer's shelf. `sold` pieces stay on the shelf, marked, until the stock changes. */
 export type ShopGear = { item: GearItem; price: number; needLevel: number; sold: boolean };
 export type EngineEvent =
