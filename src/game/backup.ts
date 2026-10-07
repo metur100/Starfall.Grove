@@ -5,21 +5,24 @@
 const PREFIX = 'starfall-grove-';
 type Backup = { app: 'starfall-grove'; version: 1; exported: string; data: Record<string, string> };
 
-/** Saves a file with everything the game has stored: through the Android app's bridge (to Downloads) when the game
- *  runs inside it, since a WebView ignores downloads, or as a normal browser download. `native` says which. */
-export function exportBackup(): { count: number; native: boolean; ok: boolean } {
+/** Saves a file with everything the game has stored: through the Android app's bridge (to Downloads) or the iOS app's
+ *  (the share sheet) when the game runs inside one, since a web view ignores downloads, or as a normal browser
+ *  download. `native` says which app took it, or null for the browser. */
+export function exportBackup(): { count: number; native: 'android' | 'ios' | null; ok: boolean } {
   const data: Record<string, string> = {};
   for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k?.startsWith(PREFIX)) data[k] = localStorage.getItem(k) ?? ''; }
   const b: Backup = { app: 'starfall-grove', version: 1, exported: new Date().toISOString(), data };
   const name = `starfall-grove-backup-${new Date().toISOString().slice(0, 10)}.json`, count = Object.keys(data).length;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bridge = (window as any).Android;
-  if (typeof bridge?.saveFile === 'function') { let ok = false; try { ok = !!bridge.saveFile(name, JSON.stringify(b)); } catch { ok = false; } return { count, native: true, ok }; }
+  const w = window as any;
+  for (const [bridge, native] of [[w.Android, 'android'], [w.StarfallApp, 'ios']] as const) {
+    if (typeof bridge?.saveFile === 'function') { let ok = false; try { ok = !!bridge.saveFile(name, JSON.stringify(b)); } catch { ok = false; } return { count, native, ok }; }
+  }
   const blob = new Blob([JSON.stringify(b)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  return { count, native: false, ok: true };
+  return { count, native: null, ok: true };
 }
 /** Reads a backup file: the number of saved entries, or an error message when the file is not a backup. */
 export async function readBackup(file: File): Promise<{ ok: true; backup: Backup; heroes: number } | { ok: false; error: string }> {
