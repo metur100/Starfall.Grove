@@ -815,7 +815,8 @@ export class GameEngine {
     this.moveX = x; this.moveY = y;
     if (mag > .08 && this.hero.iceT <= 0) { this.hero.faceX = x; this.hero.faceY = y; }
   }
-  /** Click to move: the hero walks to a point on the ground, or up to a villager or thing to use and then uses it. */
+  /** Click to move: the hero walks to a point on the ground, or up to a villager or thing to use and stops
+   *  in reach (talking or using it is still up to the interact key). */
   walkTo(x: number, y: number, near: Near | null = null, mark = true) {
     sfx.unlock();
     if (this.completeTimer > 0 || this.cine || this.flight || this.hero.iceT > 0) return;
@@ -838,7 +839,7 @@ export class GameEngine {
     if (g.near) {
       const p = g.near.kind === 'npc' ? g.near.n : g.near.o; g.x = p.x; g.y = p.y + 6;
       const n = this.nearest();
-      if (n && (n.kind === 'npc' ? g.near.kind === 'npc' && n.n === g.near.n : g.near.kind === 'object' && n.o === g.near.o)) { this.walkGoal = null; this.moveX = this.moveY = 0; this.interact(); return; }
+      if (n && (n.kind === 'npc' ? g.near.kind === 'npc' && n.n === g.near.n : g.near.kind === 'object' && n.o === g.near.o)) { this.walkGoal = null; this.moveX = this.moveY = 0; return; }
     }
     const dx = g.x - h.x, dy = g.y - h.y, d = Math.hypot(dx, dy);
     if (d < 8 || d > 2500) { this.walkGoal = null; this.moveX = this.moveY = 0; return; }

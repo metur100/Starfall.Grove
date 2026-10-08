@@ -176,7 +176,7 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     const hidden = () => { if (document.visibilityState === 'hidden' && !practice) { saveSession(hero, engine.exportSave()); engine.saveProfileNow(); lastSave = performance.now(); } };
     document.addEventListener('visibilitychange', hidden); window.addEventListener('pagehide', hidden);
     // Click to move with a mouse (left or right button, as in a MOBA): the hero walks to the spot, or up to the
-    // villager or thing clicked and uses it. Holding the button down keeps walking toward the cursor.
+    // villager or thing clicked and stops in reach (Space still talks or uses it). Holding the button down keeps walking toward the cursor.
     // Touch screens keep the joystick.
     let held = -1;
     const worldAt = (ev: PointerEvent) => { const r = canvas.getBoundingClientRect(); return renderer.toWorld(ev.clientX - r.left, ev.clientY - r.top); };
