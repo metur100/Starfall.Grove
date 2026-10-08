@@ -1050,7 +1050,7 @@ export class GameEngine {
     const from = { x: h.x, y: h.y };
     this.hazards.push({ x: from.x, y: from.y, r: 110, delay: .05, maxDelay: .05, damage: this.dmg('blink'), level: 0, owner: 'hero', kind: 'blizzard', fromX: from.x, fromY: from.y });
     for (let i = 0; i < 5; i++) this.afterimages.push({ x: from.x + dx * i * 45, y: from.y + dy * i * 45, life: .28 - i * .03, faceX: h.faceX });
-    h.x = clamp(h.x + dx * 230, 40, this.world.width - 40); h.y = clamp(h.y + dy * 230, 40, this.world.height - 40);
+    const B = this.boundsOf(from); h.x = clamp(h.x + dx * 230, B.x0 + 40, B.x1 - 40); h.y = clamp(h.y + dy * 230, B.y0 + 40, B.y1 - 40);
     this.collide(h, 15);
     h.vx = h.vy = 0; h.ghostT = .35; h.slowT = 0; h.cds.blink = this.cooldownOf('blink');
     this.emit(from.x, from.y, 20, ['#e0f6ff', '#9fe4ff', '#ffffff'], { speed: 200, life: .5, kind: 'shard', glow: true, size: 4 });
@@ -1119,7 +1119,7 @@ export class GameEngine {
     if (!t) return this.noTarget('step to');
     const d = Math.max(1, dist(h, t)), ux = (t.x - h.x) / d, uy = (t.y - h.y) / d, r = t.r + 30;
     h.x = t.x + ux * r; h.y = t.y + uy * r; h.faceX = -ux; h.faceY = -uy;
-    h.x = clamp(h.x, 40, this.world.width - 40); h.y = clamp(h.y, 40, this.world.height - 40); this.collide(h, 15);
+    const B = this.boundsOf(from); h.x = clamp(h.x, B.x0 + 40, B.x1 - 40); h.y = clamp(h.y, B.y0 + 40, B.y1 - 40); this.collide(h, 15);
     h.vx = h.vy = 0; h.ghostT = .3; h.slowT = 0; h.cds.shadowstep = this.cooldownOf('shadowstep'); this.nextCrit = true;
     this.afterimages.push({ x: from.x, y: from.y, life: .28, faceX: h.faceX });
     for (const p of [from, h]) this.emit(p.x, p.y, 16, ['rgba(60,40,90,.7)', 'rgba(140,110,200,.6)', '#e0c8ff'], { speed: 140, life: .5, kind: 'smoke', size: 12 });
