@@ -261,6 +261,14 @@ const BARRIER_TEXT: Record<string, string> = {
 const BARRIER_OPEN: Record<string, string> = { bridge: 'The mended bridge creaks cheerfully underfoot.', thorns: 'Only dry, crumbling stalks are left of the thorn wall.', ice: 'Shards of black ice glitter at the roadside, melting slowly.', rocks: 'Broken boulders lie heaped against the canyon walls. The pass is open.', cave: 'Shattered obsidian crunches underfoot. The way through the mountain is open.' };
 /** A barrier the hero has to smash (rather than one a quest opens). */
 const isWall = (o: WorldObject) => o.variant === 'rocks' || o.variant === 'cave';
+/** The thorn wall and the black ice seal are neither drawn nor in the way: they only mark the gate for the story (its
+ *  quest and cutscenes). The rockfall or caved-in cave mouth beyond it can't be broken until that quest is done. */
+const unseen = (o: WorldObject) => o.kind === 'barrier' && (o.variant === 'thorns' || o.variant === 'ice');
+/** What the rockfall or cave mouth says while the story still holds the pass shut. */
+const WALL_SHUT: Record<string, string> = {
+  rocks: 'A rockslide has buried Frostspine Pass, and it won’t budge yet. Follow the story of this land to open the way.',
+  cave: 'The mouth of the Cindermaw has caved in, and the rubble won’t budge yet. Follow the story of this land to open the way.',
+};
 const INTRO_LINE: Record<HeroId, string> = {
   mira: '(Tuft tugs at your sleeve. Bridgekeeper Tamsin is waving from the gate. She might know where Master Orrin went.)',
   kael: 'Millbrook Farm… how did I get here? Aldric told me to warn the valley. The farmer is waving me over. Then I find Aldric.',
@@ -2239,9 +2247,14 @@ export class GameEngine {
         const side = Math.sign(h.x - o.x) || -1, was = this.wallSide.get(o.id) ?? side, inPass = Math.abs(h.y - o.y) < 260;
         if (inPass && side !== was && Math.abs(h.x - o.x) < 700) { h.x = o.x + was * 92; h.vx = 0; }
         else this.wallSide.set(o.id, side);
-        if (inPass && Math.abs(h.x - o.x) < 160 && this.elapsed - this.barrierNoticeT > 6) { this.barrierNoticeT = this.elapsed; this.notice(BARRIER_TEXT[o.variant!], 'warn', 'Smash through!'); }
+        if (inPass && Math.abs(h.x - o.x) < 160 && this.elapsed - this.barrierNoticeT > 6) {
+          this.barrierNoticeT = this.elapsed; const w = this.wallOf(o.id);
+          if (w && !this.wallReady(w)) this.notice(WALL_SHUT[o.variant!], 'warn', 'The way is blocked');
+          else this.notice(BARRIER_TEXT[o.variant!], 'warn', 'Smash through!');
+        }
         continue;
       }
+      if (unseen(o)) continue;
       const river = o.variant === 'bridge' && this.world.rivers.length > 0;
       if (Math.abs(h.y - o.y) > 230 || h.x < o.x - (river ? 150 : 70) || h.x > o.x + (river ? 120 : 40) || this.barrierOpen(o)) continue;
       if (!river) { h.x = o.x - 70; h.vx = Math.min(0, h.vx); }
@@ -2486,6 +2499,7 @@ export class GameEngine {
   // ───────────────────────────── world interaction
   isVisible(o: WorldObject) { return this.visibleObject(o); }
   private visibleObject(o: WorldObject) {
+    if (unseen(o)) return false;
     if (o.hiddenBy && !this.secrets.has(o.hiddenBy)) return false;
     // Key items appear once the main quest that asks for them is accepted.
     if (o.kind === 'key') return !this.main.keys.includes(o.id) && this.world.quests.some(q => q.kind === 'key' && this.qs(q.id).status === 'active' && q.keys!.some(i => this.keyId(q, i) === o.id));
