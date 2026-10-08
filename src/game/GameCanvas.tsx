@@ -175,8 +175,37 @@ export default function GameCanvas({ hero, runKey, paused, graphics, touch, prac
     // closes a game it can't see without warning.
     const hidden = () => { if (document.visibilityState === 'hidden' && !practice) { saveSession(hero, engine.exportSave()); engine.saveProfileNow(); lastSave = performance.now(); } };
     document.addEventListener('visibilitychange', hidden); window.addEventListener('pagehide', hidden);
+    // Click to move with a mouse (left or right button, as in a MOBA): the hero walks to the spot, or up to the
+    // villager or thing clicked and uses it. Holding the button down keeps walking toward the cursor.
+    // Touch screens keep the joystick.
+    let held = -1;
+    const worldAt = (ev: PointerEvent) => { const r = canvas.getBoundingClientRect(); return renderer.toWorld(ev.clientX - r.left, ev.clientY - r.top); };
+    const mouseDown = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'mouse' || (ev.button !== 0 && ev.button !== 2) || pausedRef.current || warming) return;
+      const p = worldAt(ev); if (!p) return;
+      const near = engine.pickAt(p.x, p.y);
+      engine.walkTo(p.x, p.y, near, !near);
+      if (!near) { held = ev.pointerId; canvas.setPointerCapture(ev.pointerId); }
+    };
+    let hover = false;
+    const mouseMove = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'mouse') return;
+      const p = worldAt(ev); if (!p) return;
+      if (held === ev.pointerId) { if (pausedRef.current) held = -1; else engine.walkTo(p.x, p.y, null, false); return; }
+      const over = !pausedRef.current && !!engine.pickAt(p.x, p.y);
+      if (over !== hover) { hover = over; canvas.style.cursor = over ? 'pointer' : ''; }
+    };
+    const mouseUp = (ev: PointerEvent) => { if (held === ev.pointerId) { held = -1; if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId); } };
+    const noMenu = (ev: Event) => ev.preventDefault();
+    canvas.addEventListener('pointerdown', mouseDown); canvas.addEventListener('pointermove', mouseMove);
+    canvas.addEventListener('pointerup', mouseUp); canvas.addEventListener('pointercancel', mouseUp); canvas.addEventListener('contextmenu', noMenu);
     raf = requestAnimationFrame(frame);
-    return () => { document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pagehide', hidden); cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null); };
+    return () => {
+      document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pagehide', hidden);
+      canvas.removeEventListener('pointerdown', mouseDown); canvas.removeEventListener('pointermove', mouseMove);
+      canvas.removeEventListener('pointerup', mouseUp); canvas.removeEventListener('pointercancel', mouseUp); canvas.removeEventListener('contextmenu', noMenu);
+      cancelAnimationFrame(raf); ro.disconnect(); engine.dispose(); callbacks.current.onReady(null);
+    };
   }, [hero, runKey, practice]);
   return <>
     <canvas ref={canvasRef} className="world-canvas" aria-label="Starfall Grove game world" />

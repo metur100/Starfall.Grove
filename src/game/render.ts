@@ -360,6 +360,8 @@ export class Renderer {
 
   /** The part of the world the last frame showed. */
   private view: View | null = null;
+  /** The camera zoom of the last frame (screen pixels per world unit). */
+  private viewScale = 1;
   private warmJobs: Array<() => void> | null = null; private warmTotal = 1;
   /**
    * Gets everything within reach of the first steps ready before play begins (the world map, the ground around the
@@ -413,7 +415,7 @@ export class Renderer {
     const shake = this.shake ? e.shake * (this.reduced ? .25 : 1) : 0;
     const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
     const camX = this.cam.x, camY = this.cam.y;
-    const view: View = { x: camX, y: camY, w: vw, h: vh }; this.view = view;
+    const view: View = { x: camX, y: camY, w: vw, h: vh }; this.view = view; this.viewScale = scale;
     this.lights = [];
     // High above the clouds on a griffon, the valley below is out of sight.
     if (e.flight && e.flightCloud >= 1) { this.near = null; this.nearScreen = null; this.drawSkyFlight(ctx, w, h, e, scale); return; }
@@ -429,6 +431,7 @@ export class Renderer {
     this.drawCaveRoofs(ctx, e, view);
     if (world.depths && view.x + view.w > world.width) this.drawDepthsFx(ctx, e, world.depths, view);
     this.drawFallenStar(ctx, e, view);
+    if (e.walkMark) this.drawWalkMark(ctx, e.walkMark);
     for (const z of e.hazards) this.drawHazardGround(ctx, z);
     for (const w of e.wells) this.drawWell(ctx, w);
     this.drawChargeLines(ctx, e);
@@ -1822,6 +1825,18 @@ export class Renderer {
   }
   /** A fallen star: its crater (scorched earth, a ring of thrown-up rock, the star itself glowing at its heart while it
    *  shines) and the fragments scattered round it. */
+  /** Where a point on the screen (CSS pixels from the canvas corner) lies in the world, as the last frame showed it. */
+  toWorld(px: number, py: number): Point | null {
+    const v = this.view; return v ? { x: v.x + px / this.viewScale, y: v.y + py / this.viewScale } : null;
+  }
+  /** The ring left on the ground where a click sent the hero: it pops out and shrinks away. */
+  private drawWalkMark(ctx: CanvasRenderingContext2D, m: { x: number; y: number; t: number }) {
+    const r = 8 + 16 * m.t;
+    ctx.save(); ctx.translate(m.x, m.y); ctx.scale(1, .5); ctx.globalAlpha = Math.min(1, m.t * 2.5);
+    ctx.lineWidth = 3; ctx.strokeStyle = '#fff1b8'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = alpha('#f5b54a', .8); ctx.beginPath(); ctx.arc(0, 0, r * .5, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
   private drawFallenStar(ctx: CanvasRenderingContext2D, e: GameEngine, v: View) {
     const s = e.fallen; if (!s || s.phase !== 'landed') return;
     const t = this.time, fade = clamp(s.t / 20, 0, 1);

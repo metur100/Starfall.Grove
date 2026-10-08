@@ -340,6 +340,11 @@ export class GameEngine {
   readonly exploreCols: number;
   exploredVersion = 0;
   moveX = 0; moveY = 0; elapsed = 0; defeated = 0;
+  /** Where a mouse click sent the hero (and whom to talk to there). Keys or the stick take over at once. */
+  walkGoal: { x: number; y: number; near: Near | null } | null = null;
+  /** The last click on the ground, shown as a fading ring; `t` counts down from 1. */
+  walkMark: { x: number; y: number; t: number } | null = null;
+  private walkBest = 0; private walkStuck = 0;
   shake = 0; hitStop = 0; slowMo = 0; damageFlash = 0; respawnFade = 0; flash = 0;
   /** A spell being cast (Mira's and Lyra's bolts and big spells): it goes off when `t` reaches `dur`. A tap on the
    *  same bolt while it is being cast (or a held key) casts it again right after. */
@@ -805,9 +810,44 @@ export class GameEngine {
 
   // ───────────────────────────── input
   setMovement(x: number, y: number) {
+    this.walkGoal = null;
     const mag = Math.hypot(x, y); if (mag > 1) { x /= mag; y /= mag; }
     this.moveX = x; this.moveY = y;
     if (mag > .08 && this.hero.iceT <= 0) { this.hero.faceX = x; this.hero.faceY = y; }
+  }
+  /** Click to move: the hero walks to a point on the ground, or up to a villager or thing to use and then uses it. */
+  walkTo(x: number, y: number, near: Near | null = null, mark = true) {
+    sfx.unlock();
+    if (this.completeTimer > 0 || this.cine || this.flight || this.hero.iceT > 0) return;
+    const B = this.boundsOf(this.hero);
+    x = clamp(x, B.x0 + 40, B.x1 - 40); y = clamp(y, B.y0 + 40, B.y1 - 40);
+    this.walkGoal = { x, y, near }; this.walkBest = Infinity; this.walkStuck = 0;
+    if (mark) this.walkMark = { x, y, t: 1 };
+  }
+  /** The villager or thing to use drawn under a point of the world (feet at its y, the figure standing above them). */
+  pickAt(x: number, y: number): Near | null {
+    let best: Near | null = null, bd = 1e9;
+    const score = (p: Point, up: number, side: number) => { const dx = Math.abs(x - p.x), dy = p.y - y; return dx < side && dy > -18 && dy < up ? dx + Math.abs(dy - up / 2) * .5 : 1e9; };
+    for (const n of this.npcs) { if (Math.abs(n.x - x) > 40 || Math.abs(n.y - y) > 100 || n.role === 'thief' || n.role === 'actor' || !this.npcVisible(n)) continue; const d = score(n, 78, 30); if (d < bd) { bd = d; best = { kind: 'npc', n }; } }
+    for (const o of this.world.objects) { if (Math.abs(o.x - x) > 60 || Math.abs(o.y - y) > 140 || !this.interactable(o)) continue; const d = score(o, o.kind === 'cage' ? 120 : 60, 40); if (d < bd) { bd = d; best = { kind: 'object', o }; } }
+    return best;
+  }
+  /** Steers toward the click target; stops on arrival, when blocked, or (when going to someone) once in reach. */
+  private steerWalk(dt: number) {
+    const g = this.walkGoal, h = this.hero; if (!g) return;
+    if (g.near) {
+      const p = g.near.kind === 'npc' ? g.near.n : g.near.o; g.x = p.x; g.y = p.y + 6;
+      const n = this.nearest();
+      if (n && (n.kind === 'npc' ? g.near.kind === 'npc' && n.n === g.near.n : g.near.kind === 'object' && n.o === g.near.o)) { this.walkGoal = null; this.moveX = this.moveY = 0; this.interact(); return; }
+    }
+    const dx = g.x - h.x, dy = g.y - h.y, d = Math.hypot(dx, dy);
+    if (d < 8 || d > 2500) { this.walkGoal = null; this.moveX = this.moveY = 0; return; }
+    // A wall, a fence or deep water in the way: give up after a moment instead of pushing at it forever.
+    if (d < this.walkBest - 1.5) { this.walkBest = d; this.walkStuck = 0; }
+    else if ((this.walkStuck += dt) > .5) { this.walkGoal = null; this.moveX = this.moveY = 0; return; }
+    const ease = Math.min(1, d / 26);
+    this.moveX = dx / d * ease; this.moveY = dy / d * ease;
+    if (h.iceT <= 0) { h.faceX = dx / d; h.faceY = dy / d; }
   }
   cast(id: SpellId) {
     sfx.unlock();
@@ -2914,6 +2954,8 @@ export class GameEngine {
     }
   }
   private updateHero(dt: number) {
+    this.steerWalk(dt);
+    if (this.walkMark && (this.walkMark.t -= dt * 1.6) <= 0) this.walkMark = null;
     const h = this.hero, ride = this.riding ? MOUNTS[this.mountId || 'pony'].speed : 1;
     const speed = HEROES[this.heroId].speed * this.moveSpeed * ride * (h.slowT > 0 ? .5 : 1) * (h.stormT > 0 ? .8 : 1) * (this.casting ? .45 : 1);
     if (h.iceT > 0) h.vx = h.vy = 0;

@@ -319,11 +319,14 @@ function App() {
     if (r.gold > 0) notify(`${g.kind === 'dice' ? 'Starfall Dice' : 'Archery'}: +${r.gold} gold`, 'good', `+${r.gold} gold`);
   };
 
-  const keys = useRef(new Set<string>());
+  const keys = useRef(new Set<string>()), keyMove = useRef(true);
   const syncKeys = () => {
     const k = keys.current, b = getKeys();
     const x = (k.has('arrowright') || k.has(b.right) ? 1 : 0) - (k.has('arrowleft') || k.has(b.left) ? 1 : 0);
     const y = (k.has('arrowdown') || k.has(b.down) ? 1 : 0) - (k.has('arrowup') || k.has(b.up) ? 1 : 0);
+    // Letting go of a spell key (with no move key down before or after) mustn't stop a walk started by a click.
+    const still = !x && !y, was = keyMove.current; keyMove.current = still;
+    if (still && was) return;
     engineRef.current?.setMovement(x, y);
   };
   const onKeyDown = (e: KeyboardEvent) => {
@@ -680,7 +683,7 @@ function KeyControls() {
     return () => window.removeEventListener('keydown', down, true);
   }, [wait]);
   return <section className="key-controls">
-    <div className="kc-head"><span><b>Controls</b><em>Click an action, then press its new key. The arrow keys always move too, and 1–0 use potions and bombs.</em></span><button className="btn ghost" onClick={() => { resetKeys(); setNote('Default keys restored.'); sfx.play('ui'); }}>Reset</button></div>
+    <div className="kc-head"><span><b>Controls</b><em>Click an action, then press its new key. The arrow keys always move too, a mouse click walks to the spot (or to whoever you click), and 1–0 use potions and bombs.</em></span><button className="btn ghost" onClick={() => { resetKeys(); setNote('Default keys restored.'); sfx.play('ui'); }}>Reset</button></div>
     {(['Move', 'Fight', 'Menus'] as const).map(g => <div key={g} className="kc-group"><small>{g}</small><div className="kc-grid">{ACTIONS.filter(a => a.group === g).map(a => <button key={a.id} className={`kc-key ${wait === a.id ? 'listening' : ''}`} onClick={() => { setWait(w => w === a.id ? null : a.id); setNote(''); sfx.play('page'); }}>
       <span>{a.name}</span><kbd>{wait === a.id ? 'Press a key…' : kl(a.id)}</kbd></button>)}</div></div>)}
     {note && <p className="kc-note">{note}</p>}
