@@ -2,74 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { sfx } from '../game/audio';
 import type { MiniGame } from '../game/types';
 
-// Mini-games offered by valley folk: Starfall Dice (best of three rounds for a gold stake) and an archery match
-// (eight arrows at moving targets, paid by score). Both pause the world while they are open.
+// The mini-game offered by valley folk: an archery match (eight arrows at moving targets, paid by score).
+// It pauses the world while it is open.
 
 export type GameResult = { won: boolean; gold: number; score?: number };
-export type GameProps = { kind: MiniGame; opponent: string; portrait: string; stake: number; level: number; onEnd: (r: GameResult) => void };
+export type GameProps = { kind: MiniGame; opponent: string; portrait: string; level: number; onEnd: (r: GameResult) => void };
 
 export default function MiniGameOverlay(p: GameProps) {
   return <div className="overlay minigame-overlay"><div className="panel minigame-panel">
-    <div className="mg-head"><span className="mg-portrait">{p.portrait}</span><span><small>{p.kind === 'dice' ? 'Starfall Dice' : 'Archery match'}</small><b>against {p.opponent}</b></span></div>
-    {p.kind === 'dice' ? <Dice {...p} /> : <Archery {...p} />}
+    <div className="mg-head"><span className="mg-portrait">{p.portrait}</span><span><small>Archery match</small><b>against {p.opponent}</b></span></div>
+    <Archery {...p} />
   </div></div>;
-}
-
-// ───────────────────────────── dice
-const roll = () => 1 + Math.floor(Math.random() * 6);
-/** A hand's score: the sum, plus 4 for a pair or 12 for three of a kind. */
-function scoreOf(d: number[]) { const s = d.reduce((a, b) => a + b, 0), c = new Map<number, number>(); for (const v of d) c.set(v, (c.get(v) || 0) + 1); const most = Math.max(...c.values()); return { total: s + (most === 3 ? 12 : most === 2 ? 4 : 0), bonus: most === 3 ? 'Three of a kind +12' : most === 2 ? 'Pair +4' : '' }; }
-/** The villager keeps pairs and high dice and rerolls the rest once. */
-function aiHand() {
-  let d = [roll(), roll(), roll()];
-  const c = new Map<number, number>(); for (const v of d) c.set(v, (c.get(v) || 0) + 1);
-  const pair = [...c.entries()].find(([, n]) => n >= 2)?.[0];
-  d = d.map(v => (pair !== undefined ? v === pair : v >= 4) ? v : roll());
-  return d;
-}
-function Die({ v, held, rolling, onClick }: { v: number; held?: boolean; rolling?: boolean; onClick?: () => void }) {
-  const pips: Record<number, number[]> = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-  return <button className={`die ${held ? 'held' : ''} ${rolling ? 'rolling' : ''}`} onClick={onClick} disabled={!onClick} aria-label={`Die showing ${v}${held ? ', kept' : ''}`}>
-    {Array.from({ length: 9 }, (_, i) => <i key={i} className={pips[v].includes(i) ? 'on' : ''} />)}
-    {held && <small>Keep</small>}
-  </button>;
-}
-function Dice({ opponent, stake, onEnd }: GameProps) {
-  type Phase = 'ready' | 'rolled' | 'theirs' | 'result' | 'done';
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [mine, setMine] = useState([1, 1, 1]);
-  const [held, setHeld] = useState([false, false, false]);
-  const [theirs, setTheirs] = useState<number[] | null>(null);
-  const [rolling, setRolling] = useState<'me' | 'them' | null>(null);
-  const [wins, setWins] = useState({ me: 0, them: 0 });
-  const [round, setRound] = useState(1);
-  const [line, setLine] = useState('Roll your three dice.');
-  const shake = (who: 'me' | 'them', final: () => void) => { setRolling(who); sfx.play('dash'); window.setTimeout(() => { setRolling(null); final(); sfx.play('pickup'); }, 520); };
-  const first = () => shake('me', () => { setMine([roll(), roll(), roll()]); setHeld([false, false, false]); setPhase('rolled'); setLine('Tap dice to keep them, then reroll the others once — or stand.'); });
-  const finish = (hand: number[]) => {
-    setPhase('theirs'); setLine(`${opponent} rolls…`);
-    window.setTimeout(() => shake('them', () => {
-      const t = aiHand(), a = scoreOf(hand).total, b = scoreOf(t).total; setTheirs(t);
-      const w = { ...wins }; if (a > b) w.me++; else if (b > a) w.them++;
-      setWins(w); setLine(a > b ? 'You win the round!' : b > a ? `${opponent} wins the round.` : 'A draw — nobody scores.');
-      setPhase(w.me >= 2 || w.them >= 2 || round >= 3 ? 'done' : 'result'); sfx.play(a > b ? 'quest' : 'nope');
-    }), 400);
-  };
-  const reroll = () => shake('me', () => { const h = mine.map((v, i) => held[i] ? v : roll()); setMine(h); finish(h); });
-  const next = () => { setRound(r => r + 1); setTheirs(null); setPhase('ready'); setLine('Roll your three dice.'); };
-  const won = wins.me > wins.them, me = scoreOf(mine), them = theirs ? scoreOf(theirs) : null;
-  return <div className="dice-game">
-    <div className="dg-score"><span>Round {Math.min(round, 3)} of 3</span><b>{wins.me} : {wins.them}</b><span>Stake {stake} gold</span></div>
-    <div className="dg-row"><small>{opponent}</small><div className="dg-dice">{(theirs || [1, 1, 1]).map((v, i) => <Die key={i} v={rolling === 'them' ? roll() : v} rolling={rolling === 'them'} />)}</div><em>{them ? `${them.total}${them.bonus ? ` · ${them.bonus}` : ''}` : '—'}</em></div>
-    <div className="dg-row mine"><small>You</small><div className="dg-dice">{mine.map((v, i) => <Die key={i} v={rolling === 'me' ? roll() : v} held={held[i]} rolling={rolling === 'me'} onClick={phase === 'rolled' && !rolling ? () => { setHeld(h => h.map((x, j) => j === i ? !x : x)); sfx.play('ui'); } : undefined} />)}</div><em>{phase === 'ready' ? '—' : `${me.total}${me.bonus ? ` · ${me.bonus}` : ''}`}</em></div>
-    <p className="dg-line">{phase === 'done' ? (won ? `You win the match! +${stake * 2} gold` : wins.me === wins.them ? `A drawn match — your ${stake} gold stake comes back.` : `${opponent} wins the match and keeps your ${stake} gold.`) : line}</p>
-    <div className="dg-actions">
-      {phase === 'ready' && <button className="btn primary" disabled={!!rolling} onClick={first}>🎲 Roll</button>}
-      {phase === 'rolled' && <><button className="btn ghost" disabled={!!rolling} onClick={() => finish(mine)}>Stand</button><button className="btn primary" disabled={!!rolling || held.every(Boolean)} onClick={reroll}>Reroll {held.filter(h => !h).length}</button></>}
-      {phase === 'result' && <button className="btn primary" onClick={next}>Next round →</button>}
-      {phase === 'done' && <button className="btn primary" onClick={() => onEnd({ won, gold: won ? stake * 2 : wins.me === wins.them ? stake : 0 })}>{won ? 'Collect winnings' : 'Leave the table'}</button>}
-    </div>
-  </div>;
 }
 
 // ───────────────────────────── archery

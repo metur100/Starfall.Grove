@@ -6,7 +6,7 @@ import type { TrailId } from './types';
 export type TrailInfo = { id: TrailId; name: string; icon: string; ach: string; how: string; colors: string[] };
 export const TRAILS: Record<TrailId, TrailInfo> = {
   sparks: { id: 'sparks', name: 'Golden Sparks', icon: '✨', ach: 'archer', how: 'Win a gold medal at an archery range (Eagle Eye).', colors: ['#ffd35c', '#fff1b8', '#ffb347'] },
-  clovers: { id: 'clovers', name: 'Lucky Clovers', icon: '🍀', ach: 'dice5', how: 'Win 5 games of Starfall Dice (Lucky Streak).', colors: ['#6fdc6a', '#b9f29d', '#3f9a4a'] },
+  clovers: { id: 'clovers', name: 'Lucky Clovers', icon: '🍀', ach: 'dice5', how: 'Win 5 archery medals (Steady Hand).', colors: ['#6fdc6a', '#b9f29d', '#3f9a4a'] },
   stardust: { id: 'stardust', name: 'Stardust', icon: '🌟', ach: 's1', how: 'Find a secret (Something Hidden).', colors: ['#c9b6ff', '#ffffff', '#9fd8ff'] },
 };
 export const TRAIL_ORDER: TrailId[] = ['stardust', 'clovers', 'sparks'];

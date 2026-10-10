@@ -78,7 +78,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   a('Character', 'smith', 'Starsteel', 'Buy the fifth rank of a smith upgrade.', '⚒', 10, 'smith', 5),
   a('Character', 'potions', 'Potion Connoisseur', 'Drink 50 potions and brews.', '⚗', 10, 'potions', 50),
   a('Character', 'phoenix', 'From the Ashes', 'Rise again with a Phoenix Feather.', '🪶', 10, 'rebirths'),
-  a('Character', 'dice5', 'Lucky Streak', 'Win 5 games of Starfall Dice against the valley folk.', '🎲', 10, 'diceWins', 5),
+  // The id stays 'dice5' so saves that already earned it (and its trail) keep them.
+  a('Character', 'dice5', 'Steady Hand', 'Win 5 archery medals against the valley folk.', '🏹', 10, 'archeryWins', 5),
   a('Character', 'archer', 'Eagle Eye', 'Win a gold medal at an archery range (100 points).', '🎯', 10, 'archeryBest', 100),
   a('Character', 'scratch', 'Just a Scratch', 'Fall in battle for the first time.', '✚', 5, 'deaths'),
 ];

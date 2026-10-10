@@ -270,7 +270,7 @@ All of it is as strong as the hero (or the land, if that is stronger). The star 
 
 **Secrets:** every land hides four. Three **cracked walls** stand near old places: the cracks glow faintly, and inspecting one says a bomb could break it. A Fire Bomb, Ice Bomb or Thunder Jar thrown nearby (bombs aim at a close cracked wall when no creature is closer) shatters it and reveals a hidden runestone (one per land, with lore about the lights and the Dawn Forge) or a **Hidden cache** with better loot: always a rare or better piece, extra gold and an item. At each land's biggest lake a **waterfall** (a lava fall in the Ember Wastes) hides a cave: explore it to reveal the **Cave hoard**. Achievements: Something Hidden (the first) and Keeper of Secrets (all 16).
 
-**Mini-games:** some villagers (and every innkeeper, after you rest) ask if you want to play; the offer has **Play** and **Not now**, and players call out for a game as you pass. **Starfall Dice:** three dice each, keep what you like and reroll the rest once, pairs add 4 and three of a kind 12, best of three rounds for a stake that grows with your level (win it back doubled; a draw returns it). **Archery match** (hunters, guards and a few villagers): eight arrows at three moving targets, aim with the mouse or finger while the bow sways a little; bullseyes score 10, far targets double, and gold is paid by score, with bronze, silver and gold medals at 40, 70 and 100 points. Achievements: Lucky Streak (win 5 dice games) and Eagle Eye (a gold medal).
+**Mini-game:** hunters, guards and a few villagers ask if you want a shooting match; the offer has **Play** and **Not now**, and they call out for a game as you pass. **Archery match:** eight arrows at three moving targets, aim with the mouse or finger while the bow sways a little; bullseyes score 10, far targets double, and gold is paid by score, with bronze, silver and gold medals at 40, 70 and 100 points. There is no stake and no game of chance (Starfall Dice was removed so the App Store rating has no simulated gambling). Achievements: Steady Hand (win 5 medals) and Eagle Eye (a gold medal).
 
 **Trails:** cosmetic sparkles that follow a walking hero, chosen in the stable: Stardust (find a secret), Lucky Clovers (Lucky Streak) and Golden Sparks (Eagle Eye).
 
@@ -416,7 +416,7 @@ src/
     keys.ts            Remappable key bindings
     backup.ts          Save backup export and import
   pwa.ts               Offline service worker registration and the update notice
-  ui/MiniGames.tsx     Starfall Dice and the archery range
+  ui/MiniGames.tsx     The archery range
   ui/paperStage.ts     The hero on the rune pedestal (character select and character sheet)
   ui/Story.tsx         The intro film player, the cutscene letterbox and captions, and the siege bar
 ```

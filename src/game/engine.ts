@@ -1291,29 +1291,23 @@ export class GameEngine {
   }
 
   // ───────────────────────────── mini-games and trails
-  /** Some villagers like a game: dice, or a shooting match for hunters and guards. Innkeepers always have dice. */
+  /** Some villagers like a shooting match: hunters and guards always, and a few others. */
   gameOf(n: Npc): MiniGame | null {
-    if (n.role === 'inn') return 'dice';
     if (n.role && n.role !== 'villager') return null;
     if (/hunter|archer|ranger|scout|captain|guard/i.test(n.name)) return 'archery';
     let h = 7; for (const c of n.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return h % 7 === 0 ? 'dice' : h % 11 === 3 ? 'archery' : null;
+    return h % 7 === 0 || h % 11 === 3 ? 'archery' : null;
   }
-  /** The dice stake grows with the hero's level; archery is free and pays by score. */
-  gameStake(kind: MiniGame) { return kind === 'dice' ? Math.round((5 + this.profile.level * 2.5) / 5) * 5 : 0; }
   private offerGame(n: Npc, kind: MiniGame, before: string[] = []) {
-    const stake = this.gameStake(kind), dice = kind === 'dice';
-    const lines = [...before, ...(dice ? [pick(['Fancy a game of Starfall Dice? Three dice each, best of three rounds.', 'Care to roll some bones? Loser pays the winner.', 'Dice, friend? I feel lucky tonight.'])] : [pick(['Think you can shoot? The range out back needs a real archer.', 'Eight arrows, moving targets. Beat my score and I’ll pay you well.', 'A shooting match! The far targets count double.'])])];
-    const offer: QuestOffer = { id: `game:${kind}`, title: dice ? 'Starfall Dice' : 'Archery match', summary: dice ? 'Roll three dice, keep what you like and reroll the rest once. Pairs and triples score extra. Best of three rounds.' : 'Tap or click to loose eight arrows at moving targets. Bullseyes and far targets score the most.', reward: dice ? `Stake ${stake} gold · win ${stake * 2}` : 'Gold by score · a medal at 40, 70 and 100 points', main: false, game: { kind, stake, opponent: n.name, portrait: n.portrait } };
+    const lines = [...before, pick(['Think you can shoot? The range out back needs a real archer.', 'Eight arrows, moving targets. Beat my score and I’ll pay you well.', 'A shooting match! The far targets count double.'])];
+    const offer: QuestOffer = { id: `game:${kind}`, title: 'Archery match', summary: 'Tap or click to loose eight arrows at moving targets. Bullseyes and far targets score the most.', reward: 'Gold by score · a medal at 40, 70 and 100 points', main: false, game: { kind, opponent: n.name, portrait: n.portrait } };
     sfx.play('talk'); this.eventHandler({ type: 'dialogue', speaker: n.name, portrait: n.portrait, lines: this.personal(lines), offer });
   }
-  /** Takes the dice stake; false when the hero can't pay it. */
-  gameStart(kind: MiniGame) { const s = this.gameStake(kind); if (this.profile.gold < s) { this.play('nope'); return false; } this.profile.gold -= s; this.profileDirty = true; return true; }
   /** Pays out a finished game and counts it for the achievements. */
-  gameEnd(kind: MiniGame, r: { won: boolean; gold: number; score?: number }) {
+  gameEnd(r: { won: boolean; gold: number; score?: number }) {
     if (r.gold > 0) { this.profile.gold += r.gold; this.statMax('gold', this.profile.gold); }
-    if (kind === 'dice' && r.won) this.bump('diceWins');
-    if (kind === 'archery' && r.score !== undefined) this.statMax('archeryBest', r.score);
+    if (r.won) this.bump('archeryWins');
+    if (r.score !== undefined) this.statMax('archeryBest', r.score);
     this.profileDirty = true; this.persistProfile(this.profile); this.play(r.won ? 'questDone' : 'page');
   }
   trailUnlocked(id: TrailId) { return this.practice || !!this.profile.ach.got[TRAILS[id].ach]; }
@@ -2665,7 +2659,7 @@ export class GameEngine {
     if (n.role === 'inn') {
       const h = this.hero; h.hp = h.maxHp; h.mana = h.maxMana; this.play('rest');
       this.emit(h.x, h.y, 24, ['#fff1b8', '#ffcf6e', '#ffffff'], { speed: 120, life: 1, kind: 'star', glow: true, grav: -40 });
-      return this.offerGame(n, 'dice', ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Fully restored — you will return here if you fall.)']);
+      return this.say(n.name, n.portrait, ['A soft bed, a warm meal, a quiet night.', 'You wake rested. (Fully restored — you will return here if you fall.)']);
     }
     const mine = this.questsFor(n.id);
     const active = mine.find(q => q.main && this.qs(q.id).status === 'active') || mine.find(q => this.qs(q.id).status === 'active');
@@ -3320,7 +3314,7 @@ export class GameEngine {
       if (dh > ACTIVE_RANGE * 1.4 && n.activity !== 'travel') continue;
       if (!this.npcVisible(n)) continue;
       const close = dh < 150;
-      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { const game = this.gameOf(n); n.bark = this.npcMarker(n)?.mark === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : game && Math.random() < .5 ? pick(game === 'dice' ? ['Anyone for dice?', 'Roll the bones with me!', 'I feel lucky today!'] : ['Who can outshoot me?', 'A shooting match, anyone?', 'Bullseye! Beat that!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
+      if (dh < 330 && n.barkCd <= 0 && this.globalBarkT <= 0 && !close) { const game = this.gameOf(n); n.bark = this.npcMarker(n)?.mark === '!' ? pick(['Excuse me! Could you help?', 'Oh! A hero! I need a hand…', 'Psst — over here!']) : game && Math.random() < .5 ? pick(['Who can outshoot me?', 'A shooting match, anyone?', 'Bullseye! Beat that!']) : pick(n.barks.length ? n.barks : ['Hello!']); n.barkT = 3.2; n.barkCd = rand(14, 26); this.globalBarkT = 2.5; }
       n.workT += dt; n.waitT -= dt;
       if (close) { n.moving = false; n.faceX = h.x > n.x ? 1 : -1; continue; }
       let speed = 0;

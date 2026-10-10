@@ -249,8 +249,8 @@ export type NoticeTone = 'info' | 'good' | 'warn' | 'epic';
 /** A quest being offered: the dialogue ends with Accept / Decline instead of closing. */
 export type QuestOffer = { id: string; title: string; summary: string; reward: string; main: boolean;
   /** Set when a villager offers a mini-game instead of a quest: Play opens it. */
-  game?: { kind: MiniGame; stake: number; opponent: string; portrait: string } };
-export type MiniGame = 'dice' | 'archery';
+  game?: { kind: MiniGame; opponent: string; portrait: string } };
+export type MiniGame = 'archery';
 /** Cosmetic trails that follow the hero, earned by achievements. */
 export type TrailId = 'sparks' | 'clovers' | 'stardust';
 export type ShopKind = 'merchant' | 'smith' | 'armorer' | 'stable' | 'flight';

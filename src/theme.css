@@ -211,7 +211,6 @@ kbd { border: 1.5px solid var(--edge); border-bottom-width: 3px; background: var
 .settings-panel .settings-close { background: var(--paper-3); }
 .stat-row div, .dg-score { background: rgba(255, 252, 240, .6); border: 1.5px solid var(--paper-line); }
 .dg-row em { color: var(--paper-ink); } .dg-row.mine em { color: #2f7a2f; }
-.die { border: 2px solid var(--paper-ink); box-shadow: 3px 4px 0 rgba(59, 42, 47, .35), inset 0 -4px 0 rgba(0, 0, 0, .1); }
 .star-row span { color: rgba(59, 42, 47, .15); } .star-row span.on { color: #e0a02a; text-shadow: 0 2px 0 #6a4418; }
 .victory-panel p { color: var(--paper-muted); }
 .victory-panel h1 { background: none; -webkit-background-clip: initial; background-clip: initial; color: #7a3322; }

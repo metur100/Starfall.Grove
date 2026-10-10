@@ -307,7 +307,6 @@ function App() {
     if (offer.game) {
       if (!accept) { sfx.play('page'); notify(`Another time, then. ${dialogue.speaker} will be around.`, 'info', 'Not now'); return; }
       const e = engineRef.current; if (!e) return;
-      if (offer.game.kind === 'dice' && !e.gameStart('dice')) { notify(`You need ${offer.game.stake} gold to play.`, 'warn', 'Not enough gold'); return; }
       e.setMovement(0, 0); resetStick(); setMiniGame(offer.game); sfx.play('page'); return;
     }
     if (accept) engineRef.current?.acceptQuest(offer.id);
@@ -315,8 +314,8 @@ function App() {
   };
   const endGame = (r: GameResult) => {
     const g = miniGame; setMiniGame(null); if (!g) return;
-    engineRef.current?.gameEnd(g.kind, r);
-    if (r.gold > 0) notify(`${g.kind === 'dice' ? 'Starfall Dice' : 'Archery'}: +${r.gold} gold`, 'good', `+${r.gold} gold`);
+    engineRef.current?.gameEnd(r);
+    if (r.gold > 0) notify(`Archery: +${r.gold} gold`, 'good', `+${r.gold} gold`);
   };
 
   const keys = useRef(new Set<string>()), keyMove = useRef(true);
@@ -560,7 +559,7 @@ function App() {
         {journal && <Journal key={journalTab} initial={journalTab} snapshot={snapshot} engine={engineRef.current} achievements={engineRef.current?.achievementRows() ?? []} touch={touch} onClose={() => setJournal(false)} onTrack={id => engineRef.current?.track(id)} onUpgrade={id => engineRef.current?.upgradeSpell(id)} />}
         {panel === 'sheet' && snapshot && engineRef.current && <CharacterScreen snapshot={snapshot} engine={engineRef.current} initial={sheetTab} touch={touch} onUse={id => engineRef.current?.useItem(id)} onClose={() => setPanel(null)} />}
         {panel === 'shop' && shop && snapshot && engineRef.current && <ShopPanel shop={shop} snapshot={snapshot} engine={engineRef.current} onClose={() => setPanel(null)} />}
-        {miniGame && snapshot && <MiniGameOverlay kind={miniGame.kind} opponent={miniGame.opponent} portrait={miniGame.portrait} stake={miniGame.stake} level={snapshot.level} onEnd={endGame} />}
+        {miniGame && snapshot && <MiniGameOverlay kind={miniGame.kind} opponent={miniGame.opponent} portrait={miniGame.portrait} level={snapshot.level} onEnd={endGame} />}
         {mapOpen && engineRef.current && <MapOverlay engine={engineRef.current} touch={touch} onClose={() => setMapOpen(false)} />}
 
         {cine && <CineOverlay cine={cine} touch={touch} onNext={() => engineRef.current?.advanceCine()} onSkip={() => engineRef.current?.skipCine()} />}
