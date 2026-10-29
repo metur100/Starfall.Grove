@@ -1,15 +1,28 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// The iOS app carries the whole game inside it and opens it from its own files (`vite build --mode app`). A file page
+// can't load module scripts or run a service worker, so that build is one classic script with no service worker.
+const toClassicScript = (): Plugin => ({
+  name: 'starfall-classic-script',
+  apply: 'build',
+  transformIndexHtml: {
+    order: 'post',
+    handler: html => html.replace(/<script type="module" crossorigin src=/g, '<script defer src=').replace(/ crossorigin(?=[ >])/g, ''),
+  },
+});
 
 // Relative base so the build works under the GitHub Pages sub-path (/Starfall.Grove/).
 // The PWA plugin writes a service worker that keeps every game file (code, fonts, icons) on the device, so after the
 // first visit the game opens with no connection, and an app manifest so it can be installed to the home screen.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
     react(),
+    mode === 'app' && toClassicScript(),
     VitePWA({
+      disable: mode === 'app',
       registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['icon-192.png', 'apple-touch-icon.png', 'starfall.svg'],
@@ -41,5 +54,7 @@ export default defineConfig({
       },
     }),
   ],
-  build: { chunkSizeWarningLimit: 800 },
-});
+  build: mode === 'app'
+    ? { chunkSizeWarningLimit: 1600, modulePreload: false, rollupOptions: { output: { format: 'iife', inlineDynamicImports: true } } }
+    : { chunkSizeWarningLimit: 800 },
+}));

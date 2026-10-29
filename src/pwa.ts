@@ -10,7 +10,8 @@ const listeners = new Set<Listener>();
 let ready = false, restarting = false;
 
 export function startOffline() {
-  if (!('serviceWorker' in navigator) || import.meta.env.DEV) return;
+  // Opened from files (the iOS app carries the game inside it): already offline, and updates come with the app.
+  if (!('serviceWorker' in navigator) || import.meta.env.DEV || location.protocol === 'file:') return;
   registerSW({
     immediate: true,
     onNeedRefresh() { ready = true; for (const l of listeners) l(true); },

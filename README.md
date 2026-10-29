@@ -17,6 +17,8 @@ npm run preview  # preview the build
 
 Every push to `master` deploys to GitHub Pages through `.github/workflows/deploy.yml`.
 
+**The iOS app carries the game inside it.** `npm run build -- --mode app` makes the build it opens from its own files: one classic script instead of modules, and no service worker (`vite.config.ts`). The app's `npm run game` runs it, so a game change reaches iPhones only with a new app version. The service worker also stays off whenever the page is opened from a `file:` address (`src/pwa.ts`).
+
 ## Landing page
 
 The website for promoting the game (landing page, privacy policy, terms, support and imprint) is a separate Vite + React + TypeScript project in `landing/`, meant to live in its own repo. It is not part of the game's build. It carries a copy of the game's paper art, so its heroes look exactly as in the game. See `landing/README.md`.
